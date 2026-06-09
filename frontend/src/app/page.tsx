@@ -1,19 +1,14 @@
-'use client';
-
-import { useEffect } from 'react';
 import Link from 'next/link';
-import { Home, Thermometer, Zap, ChevronRight } from 'lucide-react';
+import { ChevronRight, Home, Thermometer, Zap } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { useSmartHomeStore } from '@/store/smarthome';
+import { serverApi } from '@/lib/api-server';
 
-export default function DashboardPage() {
-  const { rooms, devices, fetchRooms, fetchDevices } = useSmartHomeStore();
-
-  useEffect(() => {
-    fetchRooms();
-    fetchDevices();
-  }, [fetchRooms, fetchDevices]);
+export default async function DashboardPage() {
+  const [rooms, devices] = await Promise.all([
+    serverApi.getRooms(),
+    serverApi.getDevices(),
+  ]);
 
   const activeDevices = devices.filter((d) => d.status === 'on').length;
   const tempSensors = devices.filter((d) => d.type === 'sensor_temperature');

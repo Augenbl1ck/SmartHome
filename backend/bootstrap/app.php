@@ -1,5 +1,8 @@
 <?php
 
+// PHP 8.5: Deprecation-Warnings nicht als Output ausgeben (würde JSON-Responses kaputtmachen)
+error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -12,7 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        $middleware->statefulApi();
+        //
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

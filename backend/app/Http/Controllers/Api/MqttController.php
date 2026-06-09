@@ -36,18 +36,22 @@ class MqttController extends Controller
     {
         $newStatus = $device->status === 'on' ? 'off' : 'on';
 
-        $mqtt = new MqttClient(
-            config('mqtt.host', '127.0.0.1'),
-            (int) config('mqtt.port', 1883),
-            config('mqtt.client_id', 'laravel-smarthome-toggle')
-        );
+        try {
+            $mqtt = new MqttClient(
+                config('mqtt.host', '127.0.0.1'),
+                (int) config('mqtt.port', 1883),
+                config('mqtt.client_id', 'laravel-smarthome-toggle')
+            );
 
-        $settings = (new ConnectionSettings())->setConnectTimeout(5);
-        $mqtt->connect($settings, true);
-        $mqtt->publish($device->mqtt_topic, $newStatus, 0);
-        $mqtt->disconnect();
+            $settings = (new ConnectionSettings())->setConnectTimeout(3);
+            $mqtt->connect($settings, true);
+            $mqtt->publish($device->mqtt_topic, $newStatus, 0);
+            $mqtt->disconnect();
+        } catch (\Exception $e) {
+            // MQTT nicht verfügbar (Phase 1: kein Broker) – Status trotzdem in DB speichern
+        }
 
-        $device->update(['status' => $newStatus]);
+        $device->update(['status' => $newStatus, 'last_seen' => now()]);
 
         return response()->json($device);
     }
