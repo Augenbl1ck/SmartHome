@@ -45,7 +45,11 @@ class MqttController extends Controller
 
             $settings = (new ConnectionSettings())->setConnectTimeout(3);
             $mqtt->connect($settings, true);
-            $mqtt->publish($device->mqtt_topic, $newStatus, 0);
+
+            $protocol = $device->attributes['protocol'] ?? 'simple';
+            [$topic, $payload] = $this->buildCommand($device->mqtt_topic, $protocol, $newStatus);
+
+            $mqtt->publish($topic, $payload, 0);
             $mqtt->disconnect();
         } catch (\Exception $e) {
             // MQTT nicht verfügbar (Phase 1: kein Broker) – Status trotzdem in DB speichern
@@ -54,5 +58,36 @@ class MqttController extends Controller
         $device->update(['status' => $newStatus, 'last_seen' => now()]);
 
         return response()->json($device);
+    }
+
+    /**
+     * Gibt [topic, payload] für das jeweilige Protokoll zurück.
+     *
+     * Protokolle:
+     *  simple      → topic direkt, payload "on"/"off"
+     *  shelly_gen3 → <base>/rpc, JSON-RPC Switch.Set
+     *  shelly_gen1 → <base>/relay/0/command, payload "on"/"off"
+     */
+    private function buildCommand(string $base, string $protocol, string $status): array
+    {
+        $base = rtrim($base, '/');
+
+        if ($protocol === 'shelly_gen3') {
+            return [
+                $base . '/rpc',
+                json_encode([
+                    'id'     => 1,
+                    'src'    => 'smarthome',
+                    'method' => 'Switch.Set',
+                    'params' => ['id' => 0, 'on' => $status === 'on'],
+                ]),
+            ];
+        }
+
+        if ($protocol === 'shelly_gen1') {
+            return [$base . '/relay/0/command', $status];
+        }
+
+        return [$base, $status];
     }
 }

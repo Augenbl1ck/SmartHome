@@ -1,8 +1,11 @@
-export default function SettingsPage() {
-  return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Einstellungen</h1>
-      <p className="text-muted-foreground">Einstellungen folgen in einer späteren Phase.</p>
-    </div>
-  );
+import { serverApi } from '@/lib/api-server';
+import SettingsClient from './SettingsClient';
+
+export default async function SettingsPage() {
+  const [rooms, devices] = await Promise.all([
+    serverApi.getRooms(),
+    serverApi.getDevices(),
+  ]);
+
+  return <SettingsClient initialRooms={rooms} initialDevices={devices} />;
 }
