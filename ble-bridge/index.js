@@ -23,7 +23,7 @@
 'use strict';
 
 const express = require('express');
-const noble   = require('@abandonware/noble');
+const noble   = require('@stoprocent/noble');
 
 const PORT           = process.env.PORT           || 3001;
 const SCAN_TIMEOUT   = parseInt(process.env.SCAN_TIMEOUT  || '15000', 10); // ms
@@ -66,22 +66,35 @@ async function connectToDevice(bleAddress) {
     connected.delete(bleAddress);
   }
 
+  // Shelly-Geräte: BLE-MAC weicht von der im Namen enthaltenen WiFi-MAC ab.
+  // Wir bauen einen "fuzzy" Vergleich: erste 5 Bytes müssen übereinstimmen,
+  // letztes Byte darf ±4 abweichen (typisch: WiFi-MAC + 2 = BLE-MAC).
+  function macMatches(peripheralAddr, target) {
+    const a = peripheralAddr.toLowerCase().replace(/[:-]/g, '');
+    const t = target.toLowerCase().replace(/[:-]/g, '');
+    if (a === t) return true; // exakter Treffer
+    if (a.slice(0, 10) !== t.slice(0, 10)) return false; // erste 5 Bytes müssen gleich sein
+    const diff = Math.abs(parseInt(a.slice(10), 16) - parseInt(t.slice(10), 16));
+    return diff <= 4;
+  }
+
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       noble.stopScanning();
+      noble.removeAllListeners('discover');
       reject(new Error(`Timeout: Geraet ${bleAddress} nicht gefunden`));
     }, SCAN_TIMEOUT);
 
     noble.on('discover', async (peripheral) => {
-      const addr = peripheral.address.toLowerCase().replace(/:/g, '');
-      const target = bleAddress.toLowerCase().replace(/:/g, '');
-
-      if (addr !== target) return;
+      if (!macMatches(peripheral.address, bleAddress)) return;
 
       clearTimeout(timeout);
       noble.stopScanning();
+      noble.removeAllListeners('discover');
 
-      console.log(`[BLE Bridge] Geraet gefunden: ${peripheral.advertisement.localName || bleAddress}`);
+      // Tatsächliche BLE-Adresse für Cache verwenden
+      const actualAddress = peripheral.address.toLowerCase();
+      console.log(`[BLE Bridge] Geraet gefunden: ${peripheral.advertisement.localName || bleAddress} (${actualAddress})`);
 
       try {
         await peripheral.connectAsync();
@@ -91,7 +104,6 @@ async function connectToDevice(bleAddress) {
           [DATA_UUID.replace(/-/g, ''), TXCT_UUID.replace(/-/g, '')]
         );
 
-        // Beschreibbare Charakteristik suchen
         const writeable = characteristics.find(c =>
           c.properties.includes('write') || c.properties.includes('writeWithoutResponse')
         );
@@ -211,6 +223,35 @@ app.post('/disconnect', (req, res) => {
     connected.delete(bleAddress);
   }
   res.json({ success: true });
+});
+
+// BLE-Scan: sucht nach Shelly-Geraeten in der Naehe
+// GET /scan?timeout=8000&prefix=Shelly
+app.get('/scan', (req, res) => {
+  if (noble.state !== 'poweredOn') {
+    return res.status(503).json({ error: 'Bluetooth nicht bereit: ' + noble.state });
+  }
+
+  const timeout = Math.min(parseInt(req.query.timeout || '8000', 10), 30000);
+  const prefix  = (req.query.prefix || '').toLowerCase();
+  const found   = new Map(); // address -> { address, name, rssi }
+
+  noble.on('discover', (peripheral) => {
+    const name = peripheral.advertisement?.localName || '';
+    if (prefix && !name.toLowerCase().includes(prefix)) return;
+    const addr = peripheral.address;
+    if (!found.has(addr)) {
+      found.set(addr, { address: addr, name: name || null, rssi: peripheral.rssi });
+    }
+  });
+
+  noble.startScanning([], true); // duplicates=true fuer RSSI-Updates
+
+  setTimeout(() => {
+    noble.stopScanning();
+    noble.removeAllListeners('discover'); // Listener bereinigen
+    res.json({ devices: [...found.values()] });
+  }, timeout);
 });
 
 app.listen(PORT, BIND_HOST, () => {

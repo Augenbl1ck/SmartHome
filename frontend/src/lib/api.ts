@@ -32,6 +32,14 @@ export const api = {
   setDeviceStatus: (id: number, status: 'on' | 'off') =>
     request<Device>(`/devices/${id}/set-status`, { method: 'POST', body: JSON.stringify({ status }) }),
   getDeviceLogs: (id: number) => request<DeviceLog[]>(`/devices/${id}/logs`),
+  saveBleMac: (id: number, ble_address: string) =>
+    request<Device>(`/devices/${id}/ble-mac`, { method: 'POST', body: JSON.stringify({ ble_address }) }),
+
+  // BLE Scan
+  bleScan: (timeoutMs = 8000) =>
+    request<{ devices: { address: string; name: string | null; rssi: number }[] }>(
+      `/ble/scan?timeout=${timeoutMs}&prefix=Shelly`
+    ),
 
   // Scenes
   getScenes: () => request<Scene[]>('/scenes'),

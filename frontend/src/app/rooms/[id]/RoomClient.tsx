@@ -10,6 +10,7 @@ import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Power, Star } f
 import { cn } from '@/lib/utils';
 import DeviceHistory from '@/components/DeviceHistory';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
+import BleScanDialog from '@/components/BleScanDialog';
 
 interface Props {
   room: Room;
@@ -18,6 +19,11 @@ interface Props {
 
 function isBleDevice(device: Device): boolean {
   return device.attributes?.protocol === 'bluetooth_shelly_gen3';
+}
+
+/** Hat das Gerät eine MAC-Adresse? → BLE Bridge auf dem Server, kein Browser-BLE nötig */
+function hasMac(device: Device): boolean {
+  return !!(device.attributes?.ble_address as string | undefined)?.trim();
 }
 
 const FAV_KEY = 'smarthome_favorites';
@@ -34,6 +40,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
   const [bleStates, setBleStates] = useState<Map<number, BleState>>(new Map());
   const [bleError, setBleError]   = useState<string | null>(null);
   const [favorites, setFavorites] = useState<number[]>([]);
+  const [scanDevice, setScanDevice] = useState<Device | null>(null);
 
   // Beim Mount immer frische Gerätedaten laden (wichtig nach Navigation)
   useEffect(() => {
@@ -61,13 +68,15 @@ export default function RoomClient({ room, initialDevices }: Props) {
     });
   };
 
-  // BLE-State-Listener registrieren
+  // BLE-State-Listener registrieren + Auto-Connect beim Laden
   useEffect(() => {
     const bleDevices = initialDevices.filter(isBleDevice);
     for (const d of bleDevices) {
       shellyBle.onStateChange(d.id, (state) =>
         setBleStates((prev) => new Map(prev).set(d.id, state))
       );
+      // Automatisch verbinden wenn Gerät bereits gekoppelt wurde
+      shellyBle.tryAutoConnect(d.id);
     }
     return () => { for (const d of bleDevices) shellyBle.offStateChange(d.id); };
   }, [initialDevices]);
@@ -75,14 +84,13 @@ export default function RoomClient({ room, initialDevices }: Props) {
   const getBleState = (id: number): BleState =>
     bleStates.get(id) ?? (shellyBle.isConnected(id) ? 'connected' : 'disconnected');
 
-  const handleBleConnect = async (device: Device) => {
-    setBleError(null);
-    try {
-      await shellyBle.connect(device.id);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes('User cancelled')) setBleError(msg);
-    }
+  const handleBlePair = async (device: Device) => {
+    // Hat keine MAC und BLE Bridge verfügbar → Scan starten
+    setScanDevice(device);
+  };
+
+  const handleBleForget = (device: Device) => {
+    shellyBle.forget(device.id);
   };
 
   const handleToggle = async (device: Device) => {
@@ -93,19 +101,23 @@ export default function RoomClient({ room, initialDevices }: Props) {
       prev.map((d) => (d.id === device.id ? { ...d, status: newStatus } : d))
     );
     try {
-      if (isBleDevice(device)) {
-        if (!shellyBle.isConnected(device.id)) throw new Error('Nicht verbunden');
-        await shellyBle.switchSet(device.id, newStatus === 'on');
-        const updated = await api.toggleDevice(device.id);
-        setDevices((prev) => prev.map((d) => (d.id === device.id ? updated : d)));
-      } else {
-        const updated = await api.toggleDevice(device.id);
-        setDevices((prev) => prev.map((d) => (d.id === device.id ? updated : d)));
+      if (isBleDevice(device) && shellyBle.isSupported()) {
+        // Web Bluetooth immer versuchen wenn im Browser (Chrome/Windows).
+        // Auf dem Pi ist isSupported() false → BLE Bridge übernimmt server-seitig.
+        try {
+          await shellyBle.switchSet(device.id, newStatus === 'on');
+        } catch {
+          // Nicht verbunden oder BLE nicht verfügbar — Server (BLE Bridge) übernimmt.
+        }
       }
+      // Server-API (MQTT / HTTP / BLE Bridge via MAC)
+      const updated = await api.toggleDevice(device.id);
+      setDevices((prev) => prev.map((d) => (d.id === device.id ? updated : d)));
       emitDeviceUpdate(device.id, newStatus);
     } catch (err) {
       setDevices((prev) => prev.map((d) => (d.id === device.id ? device : d)));
-      console.warn('Toggle fehlgeschlagen:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setBleError(msg);
     } finally {
       setPending((p) => { const n = new Set(p); n.delete(device.id); return n; });
     }
@@ -160,11 +172,15 @@ export default function RoomClient({ room, initialDevices }: Props) {
           const toggleable  = isToggleable(device.type as DeviceType);
           const sensor      = isSensor(device.type as DeviceType);
           const ble         = isBleDevice(device);
+          const useBridge   = ble && hasMac(device);   // MAC → BLE Bridge, kein Browser-BLE
+          const useBleWeb   = ble && !useBridge;       // kein MAC → Web Bluetooth
           const bleState    = getBleState(device.id);
           const bleConn     = bleState === 'connected';
           const isOn        = device.status === 'on';
           const isPending   = pending.has(device.id);
-          const isDisabled  = isPending || (ble && !bleConn);
+          // BLE Bridge: Power-Button immer klickbar (Server übernimmt)
+          // Web BLE: Power-Button immer klickbar (switchSet reconnectet automatisch)
+          const isDisabled  = isPending;
 
           return (
             <div
@@ -212,17 +228,23 @@ export default function RoomClient({ room, initialDevices }: Props) {
                 </p>
               )}
 
-              {/* BLE-Chip */}
-              {ble && (
+              {/* BLE-Chip — nur anzeigen wenn Browser Web Bluetooth (kein MAC) */}
+              {useBleWeb && (
                 <div className="mt-2">
                   {bleState === 'connected' ? (
-                    <button
-                      onClick={() => shellyBle.disconnect(device.id)}
-                      className="cursor-pointer w-fit flex items-center gap-1 text-xs text-blue-500 font-medium py-1 px-2 rounded-full bg-blue-500/10 hover:bg-blue-500/20 transition-colors"
-                    >
-                      <BluetoothConnected className="h-3 w-3 shrink-0" />
-                      Verbunden
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <span className="flex items-center gap-1 text-xs text-blue-500 font-medium py-1 px-2 rounded-full bg-blue-500/10">
+                        <BluetoothConnected className="h-3 w-3 shrink-0" />
+                        {shellyBle.getPairedName(device.id) ?? 'Verbunden'}
+                      </span>
+                      <button
+                        onClick={() => handleBleForget(device)}
+                        className="cursor-pointer text-xs text-muted-foreground hover:text-destructive transition-colors px-1"
+                        title="Kopplung aufheben"
+                      >
+                        ✕
+                      </button>
+                    </div>
                   ) : bleState === 'connecting' ? (
                     <span className="w-fit flex items-center gap-1 text-xs text-muted-foreground py-1 px-2 rounded-full bg-muted">
                       <Bluetooth className="h-3 w-3 shrink-0 animate-pulse" />
@@ -230,20 +252,36 @@ export default function RoomClient({ room, initialDevices }: Props) {
                     </span>
                   ) : (
                     <button
-                      onClick={() => handleBleConnect(device)}
+                      onClick={() => handleBlePair(device)}
                       className={cn(
                         'cursor-pointer w-fit flex items-center gap-1 text-xs font-medium py-1 px-2 rounded-full transition-colors',
                         bleState === 'error'
                           ? 'text-destructive bg-destructive/10 hover:bg-destructive/20'
+                          : shellyBle.getPairedName(device.id)
+                          ? 'text-blue-500 bg-blue-500/10 hover:bg-blue-500/20'
                           : 'text-muted-foreground bg-muted hover:bg-accent'
                       )}
                     >
                       {bleState === 'error'
                         ? <BluetoothOff className="h-3 w-3 shrink-0" />
                         : <Bluetooth className="h-3 w-3 shrink-0" />}
-                      {bleState === 'error' ? 'Erneut' : 'Verbinden'}
+                      {bleState === 'error'
+                        ? 'Erneut verbinden'
+                        : shellyBle.getPairedName(device.id)
+                        ? 'Neu verbinden'
+                        : 'Koppeln'}
                     </button>
                   )}
+                </div>
+              )}
+
+              {/* BLE-Bridge-Badge — wenn MAC gesetzt, als Info */}
+              {useBridge && (
+                <div className="mt-2">
+                  <span className="w-fit flex items-center gap-1 text-xs text-muted-foreground py-1 px-2 rounded-full bg-muted">
+                    <Bluetooth className="h-3 w-3 shrink-0" />
+                    BLE Bridge
+                  </span>
                 </div>
               )}
 
@@ -285,6 +323,18 @@ export default function RoomClient({ room, initialDevices }: Props) {
           </p>
         )}
       </div>
+
+      {/* BLE-Scan-Dialog */}
+      {scanDevice && (
+        <BleScanDialog
+          device={scanDevice}
+          onSaved={updated => {
+            setDevices(prev => prev.map(d => d.id === updated.id ? updated : d));
+            setScanDevice(null);
+          }}
+          onClose={() => setScanDevice(null)}
+        />
+      )}
     </div>
   );
 }

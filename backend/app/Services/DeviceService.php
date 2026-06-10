@@ -72,7 +72,7 @@ class DeviceService
         $bridgeUrl = config('smarthome.ble_bridge_url', 'http://localhost:3001');
 
         try {
-            $response = Http::timeout(10)->post("{$bridgeUrl}/switch", [
+            $response = Http::timeout(3)->post("{$bridgeUrl}/switch", [
                 'deviceId'  => $device->id,
                 'bleAddress' => $device->attributes['ble_address'] ?? null,
                 'on'        => $status === 'on',

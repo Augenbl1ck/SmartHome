@@ -1,76 +1,130 @@
 /**
- * Shelly Gen3 BLE RPC Manager
+ * Shelly Gen3 BLE Manager
  *
- * Kommuniziert direkt per Web Bluetooth API mit Shelly Gen3 Geräten.
- * Funktioniert nur in Chrome/Edge (kein Firefox).
- * Die Seite muss über localhost oder HTTPS geladen werden.
+ * Verbindungsstrategie:
+ *   1. Automatisch: navigator.bluetooth.getDevices() — verbindet bereits
+ *      gekoppelte Geräte ohne Picker-Dialog (Chrome/Chromium 85+).
+ *   2. Manuell: requestDevice() — zeigt Picker nur beim ersten Mal.
  *
- * Shelly Gen3 BLE GATT Service UUIDs:
- *   Service:    5f6d4f53-5f52-5043-5f53-56435f49445f
- *   Data-Char:  5f6d4f53-5f52-5043-5f44-41544100ff00
- *
- * Falls der Toggle nicht funktioniert, können die UUIDs hier angepasst werden.
- * Die korrekten UUIDs sind im Shelly Developer Portal dokumentiert:
- *   https://shelly-api-docs.shelly.cloud/gen2/Protocols/BLE/
- *
- * Alternativ können sie mit nRF Connect (Android/iOS App) oder
- * Wireshark/BLE Sniffer aus dem Gerät ausgelesen werden.
+ * Shelly Gen3 GATT-UUIDs:
+ *   Service:   5f6d4f53-5f52-5043-5f53-56435f49445f
+ *   Data-Char: 5f6d4f53-5f52-5043-5f64-6174615f5f5f
  */
 
-// Shelly Gen3 BLE GATT UUIDs (aus Gerät ausgelesen)
 export const SHELLY_BLE_SERVICE  = '5f6d4f53-5f52-5043-5f53-56435f49445f';
-export const SHELLY_BLE_DATA_OUT = '5f6d4f53-5f52-5043-5f64-6174615f5f5f'; // Read+Write+Notify (Data)
-export const SHELLY_BLE_TX_CTL   = '5f6d4f53-5f52-5043-5f74-785f63746c5f'; // Write only (TX control)
-export const SHELLY_BLE_RX_CTL   = '5f6d4f53-5f52-5043-5f72-785f63746c5f'; // Read+Notify (RX control)
+export const SHELLY_BLE_DATA_OUT = '5f6d4f53-5f52-5043-5f64-6174615f5f5f';
 
 export type BleState = 'disconnected' | 'connecting' | 'connected' | 'error';
 
-interface BleConnection {
+interface BleConn {
   bleDevice: BluetoothDevice;
-  server: BluetoothRemoteGATTServer;
-  dataOut: BluetoothRemoteGATTCharacteristic;
-  onDisconnect?: () => void;
+  server:    BluetoothRemoteGATTServer;
+  dataOut:   BluetoothRemoteGATTCharacteristic;
 }
 
-class ShelllyBleManager {
-  // SmartHome-Gerät-ID → aktive BLE-Verbindung
-  private connections = new Map<number, BleConnection>();
+// localStorage: smarthomeId → previously paired BLE device name
+const PAIRED_KEY = 'smarthome_ble_paired';
+function loadPaired(): Record<number, string> {
+  try { return JSON.parse(localStorage.getItem(PAIRED_KEY) ?? '{}'); } catch { return {}; }
+}
+function savePaired(id: number, name: string) {
+  const p = loadPaired(); p[id] = name;
+  localStorage.setItem(PAIRED_KEY, JSON.stringify(p));
+}
+function forgetPaired(id: number) {
+  const p = loadPaired(); delete p[id];
+  localStorage.setItem(PAIRED_KEY, JSON.stringify(p));
+}
+
+class ShellyBleManager {
+  private connections  = new Map<number, BleConn>();
   private stateListeners = new Map<number, (s: BleState) => void>();
+  private reconnectTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
-  isSupported(): boolean {
-    return typeof navigator !== 'undefined' && 'bluetooth' in navigator;
-  }
+  isSupported() { return typeof navigator !== 'undefined' && 'bluetooth' in navigator; }
+  isConnected(id: number) { return !!this.connections.get(id)?.server.connected; }
 
-  isConnected(id: number): boolean {
-    return !!this.connections.get(id)?.server.connected;
-  }
+  onStateChange(id: number, cb: (s: BleState) => void)  { this.stateListeners.set(id, cb); }
+  offStateChange(id: number)                             { this.stateListeners.delete(id); }
+  private notify(id: number, s: BleState)                { this.stateListeners.get(id)?.(s); }
 
-  onStateChange(id: number, cb: (s: BleState) => void) {
-    this.stateListeners.set(id, cb);
-  }
+  // ── Kernlogik: BleDevice → verbundene GATT-Verbindung ────────────
+  private async connectDevice(smarthomeId: number, bleDevice: BluetoothDevice): Promise<void> {
+    const server = await bleDevice.gatt!.connect();
 
-  offStateChange(id: number) {
-    this.stateListeners.delete(id);
-  }
-
-  private notify(id: number, state: BleState) {
-    this.stateListeners.get(id)?.(state);
-  }
-
-  /**
-   * Öffnet den Browser-BLE-Scanner.
-   * Zeigt alle Geräte in der Nähe an — der Shelly erscheint als
-   * "ShellyPlugSG3-XXXXXX" (Groß-/Kleinschreibung je nach Firmware).
-   * Falls nur ein bestimmtes Gerät angezeigt werden soll, kann namePrefix
-   * gesetzt werden (z.B. 'ShellyPlugSG3-').
-   */
-  async connect(smarthomeId: number, namePrefix?: string): Promise<void> {
-    if (!this.isSupported()) {
-      throw new Error('Web Bluetooth wird nicht unterstützt. Bitte Chrome oder Edge verwenden.');
+    // Writable Characteristic finden
+    let dataOut: BluetoothRemoteGATTCharacteristic;
+    try {
+      const service = await server.getPrimaryService(SHELLY_BLE_SERVICE);
+      const chars   = await service.getCharacteristics();
+      const writable = chars.find(c => c.properties.write || c.properties.writeWithoutResponse);
+      dataOut = writable ?? await service.getCharacteristic(SHELLY_BLE_DATA_OUT);
+      console.info('[BLE] Verbunden mit', bleDevice.name, '— Char:', dataOut.uuid);
+    } catch (err) {
+      server.disconnect();
+      throw new Error(`BLE Characteristic nicht gefunden: ${err instanceof Error ? err.message : err}`);
     }
 
-    this.notify(smarthomeId, 'connecting');
+    this.connections.set(smarthomeId, { bleDevice, server, dataOut });
 
+    // Automatisch wieder verbinden bei unerwartetem Trennen
+    bleDevice.addEventListener('gattserverdisconnected', () => {
+      this.connections.delete(smarthomeId);
+      this.notify(smarthomeId, 'disconnected');
+      console.info('[BLE] Getrennt von', bleDevice.name, '— versuche Auto-Reconnect…');
+      this.scheduleAutoReconnect(smarthomeId);
+    });
+
+    this.notify(smarthomeId, 'connected');
+  }
+
+  // ── Automatische Wiederverbindung (ohne Picker) ───────────────────
+  async tryAutoConnect(smarthomeId: number): Promise<boolean> {
+    if (!this.isSupported() || this.isConnected(smarthomeId)) return this.isConnected(smarthomeId);
+
+    const paired = loadPaired();
+    const pairedName = paired[smarthomeId];
+
+    try {
+      // getDevices() gibt alle bisher genehmigten BLE-Geräte zurück — kein Picker nötig
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const getDevices = (navigator as any).bluetooth?.getDevices;
+      if (!getDevices) return false;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const allDevices: BluetoothDevice[] = await (navigator as any).bluetooth.getDevices();
+      if (allDevices.length === 0) return false;
+
+      // Passendes Gerät finden: zuerst nach gespeichertem Namen, sonst erstes Gerät
+      const target = pairedName
+        ? allDevices.find(d => d.name === pairedName) ?? allDevices[0]
+        : allDevices[0];
+
+      this.notify(smarthomeId, 'connecting');
+      await this.connectDevice(smarthomeId, target);
+      return true;
+    } catch (err) {
+      console.warn('[BLE] Auto-Connect fehlgeschlagen:', err);
+      this.notify(smarthomeId, 'disconnected');
+      return false;
+    }
+  }
+
+  private scheduleAutoReconnect(smarthomeId: number, delayMs = 3000) {
+    clearTimeout(this.reconnectTimers.get(smarthomeId));
+    const t = setTimeout(async () => {
+      this.reconnectTimers.delete(smarthomeId);
+      if (!this.isConnected(smarthomeId)) {
+        await this.tryAutoConnect(smarthomeId);
+      }
+    }, delayMs);
+    this.reconnectTimers.set(smarthomeId, t);
+  }
+
+  // ── Manueller Connect (zeigt Picker — nur beim ersten Mal nötig) ──
+  async connect(smarthomeId: number, namePrefix?: string): Promise<void> {
+    if (!this.isSupported()) throw new Error('Web Bluetooth wird nicht unterstützt (Chrome/Edge/Chromium).');
+    this.notify(smarthomeId, 'connecting');
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const bleDevice: BluetoothDevice = await (navigator as any).bluetooth.requestDevice(
@@ -78,103 +132,92 @@ class ShelllyBleManager {
           ? { filters: [{ namePrefix }], optionalServices: [SHELLY_BLE_SERVICE] }
           : { acceptAllDevices: true, optionalServices: [SHELLY_BLE_SERVICE] }
       );
-
-      bleDevice.addEventListener('gattserverdisconnected', () => {
-        this.connections.delete(smarthomeId);
-        this.notify(smarthomeId, 'disconnected');
-      });
-
-      const server = await bleDevice.gatt!.connect();
-
-      // Alle verfügbaren Services ausgeben (hilft bei falschen UUIDs)
-      try {
-        const services = await server.getPrimaryServices();
-        console.info(
-          '[SmartHome BLE] Verfügbare Services auf',
-          bleDevice.name,
-          ':\n',
-          services.map((s) => s.uuid).join('\n'),
-        );
-      } catch {
-        // Nur informativ — ignorieren wenn nicht möglich
-      }
-
-      let dataOut: BluetoothRemoteGATTCharacteristic;
-      try {
-        const service = await server.getPrimaryService(SHELLY_BLE_SERVICE);
-
-        // Alle Characteristics ausgeben um die korrekte UUID zu finden
-        try {
-          const chars = await service.getCharacteristics();
-          console.info(
-            '[SmartHome BLE] Characteristics im RPC Service:\n',
-            chars.map((c) => `${c.uuid} | props: ${JSON.stringify({
-              read: c.properties.read,
-              write: c.properties.write,
-              writeWithoutResponse: c.properties.writeWithoutResponse,
-              notify: c.properties.notify,
-            })}`).join('\n'),
-          );
-          // Erste Characteristic mit Write-Berechtigung automatisch verwenden
-          const writable = chars.find((c) => c.properties.write || c.properties.writeWithoutResponse);
-          if (writable) {
-            console.info('[SmartHome BLE] Verwende Characteristic:', writable.uuid);
-            dataOut = writable;
-          } else {
-            dataOut = await service.getCharacteristic(SHELLY_BLE_DATA_OUT);
-          }
-        } catch {
-          dataOut = await service.getCharacteristic(SHELLY_BLE_DATA_OUT);
-        }
-      } catch (charErr) {
-        server.disconnect();
-        throw new Error(
-          `BLE Characteristic nicht gefunden. Schaue in der Browser-Konsole (F12) nach den verfügbaren UUIDs.\n\nFehler: ${charErr instanceof Error ? charErr.message : String(charErr)}`
-        );
-      }
-
-      this.connections.set(smarthomeId, { bleDevice, server, dataOut });
-      this.notify(smarthomeId, 'connected');
+      await this.connectDevice(smarthomeId, bleDevice);
+      // Gerätename merken → nächstes Mal ohne Picker verbinden
+      if (bleDevice.name) savePaired(smarthomeId, bleDevice.name);
     } catch (err) {
       this.notify(smarthomeId, 'error');
       throw err;
     }
   }
 
-  /**
-   * Sendet einen Switch.Set RPC-Befehl an das Shelly-Gerät.
-   * Dieser Befehl ist identisch mit dem MQTT-Befehl, nur über BLE.
-   */
+  // ── Switch.Set RPC ────────────────────────────────────────────────
   async switchSet(smarthomeId: number, on: boolean): Promise<void> {
-    const conn = this.connections.get(smarthomeId);
-    if (!conn || !conn.server.connected) {
-      throw new Error('Gerät nicht verbunden');
+    // Wenn nicht verbunden: Auto-Reconnect versuchen bevor Fehler
+    if (!this.isConnected(smarthomeId)) {
+      const ok = await this.tryAutoConnect(smarthomeId);
+      if (!ok) throw new Error('BLE nicht verbunden — bitte einmal manuell koppeln.');
     }
 
-    const rpc = JSON.stringify({
-      id: Date.now(),
-      method: 'Switch.Set',
-      params: { id: 0, on },
-    });
-
-    const encoded = new TextEncoder().encode(rpc);
-
-    // writeValue (mit Response) verwenden — writeWithoutResponse ist false
-    await conn.dataOut.writeValue(encoded);
-    console.info('[SmartHome BLE] Sent Switch.Set', on ? 'ON' : 'OFF');
+    const conn = this.connections.get(smarthomeId)!;
+    const rpc  = JSON.stringify({ id: Date.now(), method: 'Switch.Set', params: { id: 0, on } });
+    await conn.dataOut.writeValue(new TextEncoder().encode(rpc));
+    console.info('[BLE] Switch.Set', on ? 'ON' : 'OFF', '→', conn.bleDevice.name);
   }
 
+  // ── Kopplung aufheben ─────────────────────────────────────────────
   disconnect(smarthomeId: number): void {
+    clearTimeout(this.reconnectTimers.get(smarthomeId));
+    this.reconnectTimers.delete(smarthomeId);
     const conn = this.connections.get(smarthomeId);
     if (conn?.server.connected) conn.server.disconnect();
     this.connections.delete(smarthomeId);
     this.notify(smarthomeId, 'disconnected');
   }
 
+  forget(smarthomeId: number): void {
+    this.disconnect(smarthomeId);
+    forgetPaired(smarthomeId);
+  }
+
   disconnectAll(): void {
-    for (const id of this.connections.keys()) this.disconnect(id);
+    for (const id of [...this.connections.keys()]) this.disconnect(id);
+  }
+
+  // Gibt gespeicherten Gerätenamen zurück (für UI-Anzeige)
+  getPairedName(smarthomeId: number): string | undefined {
+    if (typeof localStorage === 'undefined') return undefined;
+    return loadPaired()[smarthomeId];
+  }
+
+  /**
+   * Öffnet den Chrome BLE Picker, liest die MAC aus dem Gerätenamen
+   * (ShellyPlugSG3-AABBCCDDEEFF → AA:BB:CC:DD:EE:FF) und gibt sie zurück.
+   * Braucht keine GATT-Verbindung und funktioniert auch auf Windows.
+   */
+  async getDeviceMacViaPicker(): Promise<{ mac: string; bleName: string }> {
+    if (!this.isSupported()) {
+      throw new Error('Web Bluetooth wird nicht unterstützt — nutze Chrome oder Chromium.');
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bleDevice: BluetoothDevice = await (navigator as any).bluetooth.requestDevice({
+      filters: [{ namePrefix: 'Shelly' }],
+      optionalServices: [SHELLY_BLE_SERVICE],
+    });
+
+    if (!bleDevice.name) {
+      throw new Error('Gerät hat keinen Namen. Bitte MAC-Adresse manuell eingeben.');
+    }
+
+    const mac = extractMacFromShellyName(bleDevice.name);
+    if (!mac) {
+      throw new Error(
+        `Kein 12-stelliger MAC im Namen "${bleDevice.name}" gefunden. Bitte MAC manuell eingeben.`
+      );
+    }
+
+    return { mac, bleName: bleDevice.name };
   }
 }
 
-// Singleton-Instanz — eine pro Browser-Tab
-export const shellyBle = new ShelllyBleManager();
+/** Extrahiert AA:BB:CC:DD:EE:FF aus "ShellyPlugSG3-AABBCCDDEEFF" */
+function extractMacFromShellyName(name: string): string | null {
+  const last = name.split('-').pop() ?? '';
+  if (/^[0-9A-Fa-f]{12}$/.test(last)) {
+    return (last.match(/.{2}/g) as string[]).join(':').toUpperCase();
+  }
+  return null;
+}
+
+// Singleton — eine Instanz pro Browser-Tab
+export const shellyBle = new ShellyBleManager();

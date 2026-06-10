@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AutomationController;
+use App\Http\Controllers\Api\BleController;
 use App\Http\Controllers\Api\DeviceController;
 use App\Http\Controllers\Api\DeviceLogController;
 use App\Http\Controllers\Api\MqttController;
@@ -19,4 +20,8 @@ Route::prefix('v1')->group(function () {
     Route::post('devices/{device}/toggle', [MqttController::class, 'toggleDevice']);
     Route::post('devices/{device}/set-status', [DeviceController::class, 'setStatus']);
     Route::get('devices/{device}/logs', [DeviceLogController::class, 'index']);
+
+    // BLE
+    Route::get('ble/scan', [BleController::class, 'scan']);
+    Route::post('devices/{device}/ble-mac', [BleController::class, 'saveMac']);
 });
