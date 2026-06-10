@@ -6,8 +6,10 @@ import { api, Device, Room } from '@/lib/api';
 import { shellyBle, BleState } from '@/lib/bluetooth';
 import { deviceIcons, deviceLabels, isSensor, isToggleable } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
-import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Power } from 'lucide-react';
+import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Power, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import DeviceHistory from '@/components/DeviceHistory';
+import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 
 interface Props {
   room: Room;
@@ -18,12 +20,46 @@ function isBleDevice(device: Device): boolean {
   return device.attributes?.protocol === 'bluetooth_shelly_gen3';
 }
 
+const FAV_KEY = 'smarthome_favorites';
+
+function loadFavs(): number[] {
+  try { const r = localStorage.getItem(FAV_KEY); return r ? JSON.parse(r) : []; } catch { return []; }
+}
+function saveFavs(ids: number[]) { localStorage.setItem(FAV_KEY, JSON.stringify(ids)); }
+
 export default function RoomClient({ room, initialDevices }: Props) {
   const router = useRouter();
   const [devices, setDevices]     = useState(initialDevices);
   const [pending, setPending]     = useState<Set<number>>(new Set());
   const [bleStates, setBleStates] = useState<Map<number, BleState>>(new Map());
   const [bleError, setBleError]   = useState<string | null>(null);
+  const [favorites, setFavorites] = useState<number[]>([]);
+
+  // Beim Mount immer frische Gerätedaten laden (wichtig nach Navigation)
+  useEffect(() => {
+    api.getDevices(room.id).then(fresh => setDevices(fresh)).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.id]);
+
+  useEffect(() => { setFavorites(loadFavs()); }, []);
+
+  // Gerätezustand-Updates von anderen Komponenten empfangen
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { id, status } = (e as CustomEvent<{ id: number; status: string }>).detail;
+      setDevices(prev => prev.map(d => d.id === id ? { ...d, status } : d));
+    };
+    window.addEventListener(DEVICE_UPDATE_EVENT, handler);
+    return () => window.removeEventListener(DEVICE_UPDATE_EVENT, handler);
+  }, []);
+
+  const toggleFav = (id: number) => {
+    setFavorites(prev => {
+      const next = prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id];
+      saveFavs(next);
+      return next;
+    });
+  };
 
   // BLE-State-Listener registrieren
   useEffect(() => {
@@ -66,6 +102,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
         const updated = await api.toggleDevice(device.id);
         setDevices((prev) => prev.map((d) => (d.id === device.id ? updated : d)));
       }
+      emitDeviceUpdate(device.id, newStatus);
     } catch (err) {
       setDevices((prev) => prev.map((d) => (d.id === device.id ? device : d)));
       console.warn('Toggle fehlgeschlagen:', err);
@@ -139,6 +176,15 @@ export default function RoomClient({ room, initialDevices }: Props) {
                   : 'border-border bg-card'
               )}
             >
+              {/* Favoriten-Stern oben links */}
+              <button
+                onClick={() => toggleFav(device.id)}
+                className="cursor-pointer absolute top-2 right-2 h-6 w-6 flex items-center justify-center rounded-full hover:bg-accent transition-colors z-10"
+                aria-label="Favorit"
+              >
+                <Star className={cn('h-3.5 w-3.5', favorites.includes(device.id) ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground')} />
+              </button>
+
               {/* Icon + Name — rechts Platz für Power-Button */}
               <div className={cn('flex items-start gap-2', toggleable && !sensor && 'pr-12')}>
                 <div className={cn(
@@ -198,6 +244,13 @@ export default function RoomClient({ room, initialDevices }: Props) {
                       {bleState === 'error' ? 'Erneut' : 'Verbinden'}
                     </button>
                   )}
+                </div>
+              )}
+
+              {/* Geräteverlauf */}
+              {toggleable && !sensor && (
+                <div className="mt-2">
+                  <DeviceHistory deviceId={device.id} deviceName={device.name} />
                 </div>
               )}
 

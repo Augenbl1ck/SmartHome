@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Device;
+use App\Models\DeviceLog;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use PhpMqtt\Client\ConnectionSettings;
@@ -29,6 +30,12 @@ class DeviceService
             $protocol === 'bluetooth_shelly_gen3' => $this->sendBleBridge($device, $status),
             default                               => $this->sendMqtt($device, $status),
         };
+
+        DeviceLog::create([
+            'device_id'   => $device->id,
+            'status'      => $status,
+            'recorded_at' => now(),
+        ]);
     }
 
     // -------------------------------------------------------------------------

@@ -3,6 +3,7 @@ import { serverApi } from '@/lib/api-server';
 import { cn } from '@/lib/utils';
 import { isToggleable } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
+import QuickAccess from '@/components/QuickAccess';
 
 export default async function DashboardPage() {
   const [rooms, devices] = await Promise.all([
@@ -52,6 +53,9 @@ export default async function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* ── Schnellzugriff ──────────────────────────────────────── */}
+      <QuickAccess initialDevices={devices} />
 
       {/* ── Räume ───────────────────────────────────────────────── */}
       <div>

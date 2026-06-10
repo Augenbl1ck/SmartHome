@@ -3,14 +3,16 @@
 import Link from 'next/link';
 import { useLayoutEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { Home, Zap, Settings, LockKeyhole } from 'lucide-react';
+import { Home, Zap, Settings, LockKeyhole, Clapperboard } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePinLockContext } from '@/components/PinLockProvider';
+import ThemeToggle from '@/components/ThemeToggle';
 
 const NAV = [
-  { href: '/',            icon: Home,     label: 'Home' },
-  { href: '/automations', icon: Zap,      label: 'Automationen' },
-  { href: '/settings',    icon: Settings, label: 'Einstellungen' },
+  { href: '/',            icon: Home,         label: 'Home' },
+  { href: '/scenes',      icon: Clapperboard, label: 'Szenen' },
+  { href: '/automations', icon: Zap,          label: 'Automationen' },
+  { href: '/settings',    icon: Settings,     label: 'Einstellungen' },
 ] as const;
 
 export default function NavBar() {
@@ -48,11 +50,12 @@ export default function NavBar() {
           <button
             onClick={lock}
             title="Sperren"
-            className="cursor-pointer ml-2 h-8 w-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            className="cursor-pointer ml-1 h-8 w-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
           >
             <LockKeyhole className="h-4 w-4" />
           </button>
         )}
+        <ThemeToggle />
       </header>
 
       {/* ── Mobile top bar ──────────────────────────────────────────── */}

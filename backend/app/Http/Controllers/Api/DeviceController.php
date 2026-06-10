@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Device;
+use App\Services\DeviceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class DeviceController extends Controller
 {
+    public function __construct(private DeviceService $deviceService) {}
     public function index(Request $request): JsonResponse
     {
         $query = Device::with('room');
@@ -61,5 +63,13 @@ class DeviceController extends Controller
         $device->delete();
 
         return response()->json(null, 204);
+    }
+
+    public function setStatus(Request $request, Device $device): JsonResponse
+    {
+        $data = $request->validate(['status' => 'required|string|in:on,off']);
+        $this->deviceService->setStatus($device, $data['status']);
+        $device->update(['status' => $data['status'], 'last_seen' => now()]);
+        return response()->json($device);
     }
 }

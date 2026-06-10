@@ -29,6 +29,16 @@ export const api = {
   updateDevice: (id: number, data: Partial<Device>) => request<Device>(`/devices/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteDevice: (id: number) => request<void>(`/devices/${id}`, { method: 'DELETE' }),
   toggleDevice: (id: number) => request<Device>(`/devices/${id}/toggle`, { method: 'POST' }),
+  setDeviceStatus: (id: number, status: 'on' | 'off') =>
+    request<Device>(`/devices/${id}/set-status`, { method: 'POST', body: JSON.stringify({ status }) }),
+  getDeviceLogs: (id: number) => request<DeviceLog[]>(`/devices/${id}/logs`),
+
+  // Scenes
+  getScenes: () => request<Scene[]>('/scenes'),
+  createScene: (data: Partial<Scene>) => request<Scene>('/scenes', { method: 'POST', body: JSON.stringify(data) }),
+  updateScene: (id: number, data: Partial<Scene>) => request<Scene>(`/scenes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteScene: (id: number) => request<void>(`/scenes/${id}`, { method: 'DELETE' }),
+  activateScene: (id: number) => request<{ activated: boolean; scene: string }>(`/scenes/${id}/activate`, { method: 'POST' }),
 
   // Automations
   getAutomations: () => request<Automation[]>('/automations'),
@@ -62,6 +72,20 @@ export interface Device {
 export type DeviceType =
   | 'light' | 'plug' | 'sensor_temperature' | 'sensor_humidity'
   | 'sensor_motion' | 'sensor_door' | 'led' | 'fan' | 'other';
+
+export interface Scene {
+  id: number;
+  name: string;
+  icon: string;
+  actions: { device_id: number; status: 'on' | 'off' | 'toggle' }[];
+  active: boolean;
+}
+
+export interface DeviceLog {
+  id: number;
+  status: string;
+  recorded_at: string;
+}
 
 export interface Automation {
   id: number;

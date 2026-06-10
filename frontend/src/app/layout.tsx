@@ -31,7 +31,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="de" className={`${geistSans.variable} h-full antialiased`}>
       <head>
-        {/* Läuft synchron vor dem ersten Paint — verhindert Flash wenn PIN aktiv */}
+        {/* Theme: verhindert Flash beim Laden */}
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function(){
+            try {
+              var t = localStorage.getItem('smarthome_theme') || 'system';
+              var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+              if (dark) document.documentElement.classList.add('dark');
+            } catch(e) {}
+          })();
+        `}} />
+        {/* PIN: verhindert Flash wenn PIN aktiv */}
         <script dangerouslySetInnerHTML={{ __html: `
           (function(){
             try {
