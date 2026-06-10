@@ -1,9 +1,11 @@
 'use client';
 
 import Link from 'next/link';
+import { useLayoutEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { Home, Zap, Settings } from 'lucide-react';
+import { Home, Zap, Settings, LockKeyhole } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { usePinLockContext } from '@/components/PinLockProvider';
 
 const NAV = [
   { href: '/',            icon: Home,     label: 'Home' },
@@ -12,7 +14,10 @@ const NAV = [
 ] as const;
 
 export default function NavBar() {
-  const path = usePathname();
+  const path  = usePathname();
+  const { enabled, lock } = usePinLockContext();
+  const [mounted, setMounted] = useState(false);
+  useLayoutEffect(() => setMounted(true), []);
 
   const isActive = (href: string) =>
     href === '/' ? path === '/' : path.startsWith(href);
@@ -22,7 +27,7 @@ export default function NavBar() {
       {/* ── Desktop top bar ─────────────────────────────────────────── */}
       <header className="hidden md:flex items-center gap-2 border-b px-6 h-14 bg-background/95 backdrop-blur sticky top-0 z-40">
         <span className="font-bold text-lg mr-4 tracking-tight">🏠 SmartHome</span>
-        <nav className="flex gap-1">
+        <nav className="flex gap-1 flex-1">
           {NAV.map(({ href, icon: Icon, label }) => (
             <Link
               key={href}
@@ -39,6 +44,15 @@ export default function NavBar() {
             </Link>
           ))}
         </nav>
+        {mounted && enabled && (
+          <button
+            onClick={lock}
+            title="Sperren"
+            className="cursor-pointer ml-2 h-8 w-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          >
+            <LockKeyhole className="h-4 w-4" />
+          </button>
+        )}
       </header>
 
       {/* ── Mobile top bar ──────────────────────────────────────────── */}
@@ -78,6 +92,19 @@ export default function NavBar() {
               </Link>
             );
           })}
+
+          {/* Manueller Lock-Button in der Bottom-Nav */}
+          {mounted && enabled && (
+            <button
+              onClick={lock}
+              className="flex-1 flex flex-col items-center justify-center gap-1 py-3 min-h-[60px] text-xs font-medium cursor-pointer"
+            >
+              <div className="flex items-center justify-center rounded-full w-10 h-7">
+                <LockKeyhole className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <span className="text-muted-foreground">Sperren</span>
+            </button>
+          )}
         </div>
       </nav>
     </>

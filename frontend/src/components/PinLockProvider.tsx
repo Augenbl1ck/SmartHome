@@ -1,0 +1,42 @@
+'use client';
+
+/**
+ * Globaler PinLock-Provider.
+ * Stellt PinLockContext bereit und rendert den Lock-Screen wenn nötig.
+ * Exportiert usePinLockContext für Komponenten die lock/unlock aufrufen wollen.
+ */
+
+import { createContext, useContext, useLayoutEffect, useState } from 'react';
+import { usePinLock, PinLockState } from '@/hooks/usePinLock';
+import PinLockScreen from '@/components/PinLockScreen';
+
+const PinLockContext = createContext<PinLockState | null>(null);
+
+export function usePinLockContext(): PinLockState {
+  const ctx = useContext(PinLockContext);
+  if (!ctx) throw new Error('usePinLockContext must be used within PinLockProvider');
+  return ctx;
+}
+
+export default function PinLockProvider({ children }: { children: React.ReactNode }) {
+  const state = usePinLock();
+  const [mounted, setMounted] = useState(false);
+  useLayoutEffect(() => {
+    setMounted(true);
+    // Inline-Blocker entfernen sobald React übernimmt
+    document.getElementById('pin-blocker')?.remove();
+  }, []);
+
+  return (
+    <PinLockContext.Provider value={state}>
+      {children}
+      {mounted && state.enabled && (state.locked || state.screenOff) && (
+        <PinLockScreen
+          onUnlock={state.unlock}
+          onWake={state.wakeScreen}
+          isScreenOff={state.screenOff && !state.locked}
+        />
+      )}
+    </PinLockContext.Provider>
+  );
+}

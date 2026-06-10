@@ -3,6 +3,7 @@ import { Geist } from "next/font/google";
 import NavBar from "@/components/NavBar";
 import AutomationRunnerProvider from "@/components/AutomationRunnerProvider";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
+import PinLockProvider from "@/components/PinLockProvider";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -29,13 +30,31 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="de" className={`${geistSans.variable} h-full antialiased`}>
+      <head>
+        {/* Läuft synchron vor dem ersten Paint — verhindert Flash wenn PIN aktiv */}
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function(){
+            try {
+              var en  = JSON.parse(localStorage.getItem('smarthome_pin_enabled') || 'false');
+              var has = !!localStorage.getItem('smarthome_pin_hash');
+              if (en && has) {
+                var d = document.createElement('div');
+                d.id = 'pin-blocker';
+                d.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#09090b';
+                document.documentElement.appendChild(d);
+              }
+            } catch(e) {}
+          })();
+        `}} /></head>
       <body className="min-h-full flex flex-col bg-background text-foreground">
-        <NavBar />
-        <main className="flex-1 p-4 md:p-6 max-w-6xl mx-auto w-full pb-24 md:pb-8">
-          {children}
-        </main>
-        <AutomationRunnerProvider />
-        <ServiceWorkerRegistrar />
+        <PinLockProvider>
+          <NavBar />
+          <main className="flex-1 p-4 md:p-6 max-w-6xl mx-auto w-full pb-24 md:pb-8">
+            {children}
+          </main>
+          <AutomationRunnerProvider />
+          <ServiceWorkerRegistrar />
+        </PinLockProvider>
       </body>
     </html>
   );

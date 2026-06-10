@@ -21,7 +21,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Pencil, Plus, Trash2, Wifi } from 'lucide-react';
+import { Pencil, Plus, Trash2, Wifi, LockKeyhole, LockKeyholeOpen, Timer } from 'lucide-react';
+import { usePinLockContext } from '@/components/PinLockProvider';
 
 interface Props {
   initialRooms: Room[];
@@ -110,6 +111,53 @@ function deviceToForm(d: Device): DeviceFormState {
 export default function SettingsClient({ initialRooms, initialDevices }: Props) {
   const [rooms, setRooms] = useState(initialRooms);
   const [devices, setDevices] = useState(initialDevices);
+
+  const pinLock = usePinLockContext();
+
+  // PIN-Dialog-State
+  const [pinDialog, setPinDialog] = useState<{
+    open: boolean;
+    mode: 'set' | 'change' | 'remove';
+    oldPin: string;
+    newPin: string;
+    confirmPin: string;
+    error: string;
+    saving: boolean;
+  }>({ open: false, mode: 'set', oldPin: '', newPin: '', confirmPin: '', error: '', saving: false });
+
+  const openPinDialog = (mode: 'set' | 'change' | 'remove') =>
+    setPinDialog({ open: true, mode, oldPin: '', newPin: '', confirmPin: '', error: '', saving: false });
+
+  const savePinDialog = async () => {
+    const { mode, oldPin, newPin, confirmPin } = pinDialog;
+    setPinDialog((s) => ({ ...s, saving: true, error: '' }));
+
+    if (mode === 'remove') {
+      const ok = await pinLock.setPin(oldPin, oldPin); // verify
+      if (!ok) {
+        setPinDialog((s) => ({ ...s, saving: false, error: 'Falscher PIN' }));
+        return;
+      }
+      pinLock.removePin();
+      setPinDialog((s) => ({ ...s, open: false, saving: false }));
+      return;
+    }
+
+    if (newPin.length < 4) {
+      setPinDialog((s) => ({ ...s, saving: false, error: 'PIN muss 4 Ziffern haben' }));
+      return;
+    }
+    if (newPin !== confirmPin) {
+      setPinDialog((s) => ({ ...s, saving: false, error: 'PINs stimmen nicht überein' }));
+      return;
+    }
+    const ok = await pinLock.setPin(mode === 'change' ? oldPin : null, newPin);
+    if (!ok) {
+      setPinDialog((s) => ({ ...s, saving: false, error: 'Alter PIN falsch' }));
+      return;
+    }
+    setPinDialog((s) => ({ ...s, open: false, saving: false }));
+  };
 
   // Gerät-Dialog
   const [deviceDialog, setDeviceDialog] = useState<{
@@ -600,6 +648,156 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
             </Button>
             <Button onClick={saveRoom} disabled={roomDialog.saving}>
               {roomDialog.saving ? 'Speichern…' : 'Speichern'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── PIN & Sicherheit ────────────────────────────────────────── */}
+      <Separator />
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          <LockKeyhole className="h-5 w-5" /> PIN & Bildschirmsperre
+        </h2>
+
+        <div className="rounded-xl border bg-card divide-y">
+          {/* PIN aktivieren / ändern / entfernen */}
+          <div className="flex items-center justify-between px-4 py-3">
+            <div>
+              <p className="text-sm font-medium">PIN-Sperre</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {pinLock.hasPin ? 'Aktiviert — Dashboard ist gesperrt' : 'Deaktiviert'}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              {pinLock.hasPin ? (
+                <>
+                  <Button size="sm" variant="outline" onClick={() => openPinDialog('change')}>
+                    Ändern
+                  </Button>
+                  <Button size="sm" variant="outline" className="text-destructive border-destructive/40 hover:bg-destructive/10" onClick={() => openPinDialog('remove')}>
+                    Entfernen
+                  </Button>
+                </>
+              ) : (
+                <Button size="sm" onClick={() => openPinDialog('set')}>
+                  PIN einrichten
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Auto-Lock Timeout */}
+          <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-2">
+              <Timer className="h-4 w-4 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium">Automatisch sperren</p>
+                <p className="text-xs text-muted-foreground">Nach Inaktivität</p>
+              </div>
+            </div>
+            <select
+              disabled={!pinLock.hasPin}
+              value={pinLock.lockTimeout}
+              onChange={(e) => pinLock.setLockTimeout(Number(e.target.value))}
+              className="text-sm rounded-md border border-input bg-background px-2 py-1 cursor-pointer disabled:opacity-40"
+            >
+              <option value={0}>Nie</option>
+              <option value={30}>30 Sekunden</option>
+              <option value={60}>1 Minute</option>
+              <option value={120}>2 Minuten</option>
+              <option value={300}>5 Minuten</option>
+              <option value={600}>10 Minuten</option>
+            </select>
+          </div>
+
+          {/* Screen-Off Timeout */}
+          <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-2">
+              <LockKeyholeOpen className="h-4 w-4 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium">Bildschirm ausschalten</p>
+                <p className="text-xs text-muted-foreground">Display schwärzen nach Inaktivität</p>
+              </div>
+            </div>
+            <select
+              disabled={!pinLock.hasPin}
+              value={pinLock.screenTimeout}
+              onChange={(e) => pinLock.setScreenTimeout(Number(e.target.value))}
+              className="text-sm rounded-md border border-input bg-background px-2 py-1 cursor-pointer disabled:opacity-40"
+            >
+              <option value={0}>Nie</option>
+              <option value={30}>30 Sekunden</option>
+              <option value={60}>1 Minute</option>
+              <option value={120}>2 Minuten</option>
+              <option value={300}>5 Minuten</option>
+            </select>
+          </div>
+
+          {/* Manuell sperren */}
+          {pinLock.hasPin && (
+            <div className="flex items-center justify-between px-4 py-3">
+              <p className="text-sm font-medium">Jetzt sperren</p>
+              <Button size="sm" variant="outline" onClick={pinLock.lock}>
+                <LockKeyhole className="h-4 w-4 mr-1" /> Sperren
+              </Button>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ── PIN-Dialog ──────────────────────────────────────────────────── */}
+      <Dialog
+        open={pinDialog.open}
+        onOpenChange={(open) => !open && setPinDialog((s) => ({ ...s, open: false }))}
+      >
+        <DialogContent className="sm:max-w-xs">
+          <DialogHeader>
+            <DialogTitle>
+              {pinDialog.mode === 'set'    && 'PIN einrichten'}
+              {pinDialog.mode === 'change' && 'PIN ändern'}
+              {pinDialog.mode === 'remove' && 'PIN entfernen'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {(pinDialog.mode === 'change' || pinDialog.mode === 'remove') && (
+              <Input
+                label="Aktueller PIN"
+                value={pinDialog.oldPin}
+                onChange={(v) => setPinDialog((s) => ({ ...s, oldPin: v.replace(/\D/g, '').slice(0, 4) }))}
+                placeholder="••••"
+              />
+            )}
+            {pinDialog.mode !== 'remove' && (
+              <>
+                <Input
+                  label="Neuer PIN (4 Ziffern)"
+                  value={pinDialog.newPin}
+                  onChange={(v) => setPinDialog((s) => ({ ...s, newPin: v.replace(/\D/g, '').slice(0, 4) }))}
+                  placeholder="••••"
+                />
+                <Input
+                  label="PIN bestätigen"
+                  value={pinDialog.confirmPin}
+                  onChange={(v) => setPinDialog((s) => ({ ...s, confirmPin: v.replace(/\D/g, '').slice(0, 4) }))}
+                  placeholder="••••"
+                />
+              </>
+            )}
+            {pinDialog.error && (
+              <p className="text-sm text-destructive">{pinDialog.error}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPinDialog((s) => ({ ...s, open: false }))}>
+              Abbrechen
+            </Button>
+            <Button
+              onClick={savePinDialog}
+              disabled={pinDialog.saving}
+              variant={pinDialog.mode === 'remove' ? 'destructive' : 'default'}
+            >
+              {pinDialog.mode === 'remove' ? 'Entfernen' : 'Speichern'}
             </Button>
           </DialogFooter>
         </DialogContent>
