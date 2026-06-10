@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('rooms', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->string('icon')->default('home');
+            $table->string('icon')->default('🏠');
             $table->timestamps();
         });
     }

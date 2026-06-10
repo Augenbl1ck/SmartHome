@@ -1,0 +1,19 @@
+[Unit]
+Description=SmartHome BLE Bridge (Shelly Gen3 Bluetooth Daemon)
+After=network.target bluetooth.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/smarthome/ble-bridge
+ExecStart=/usr/bin/node /home/pi/smarthome/ble-bridge/index.js
+Restart=always
+RestartSec=5
+Environment=PORT=3001
+Environment=BIND_HOST=127.0.0.1
+
+# Bluetooth-Zugriff
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+
+[Install]
+WantedBy=multi-user.target

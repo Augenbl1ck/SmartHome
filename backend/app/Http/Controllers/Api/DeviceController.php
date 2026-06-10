@@ -26,8 +26,9 @@ class DeviceController extends Controller
             'name'       => 'required|string|max:255',
             'type'       => 'required|string',
             'room_id'    => 'required|exists:rooms,id',
-            'mqtt_topic' => 'required|string|max:255',
+            'mqtt_topic' => 'nullable|string|max:255',
             'attributes' => 'nullable|array',
+            'active'     => 'sometimes|boolean',
         ]);
 
         return response()->json(Device::create($data), 201);

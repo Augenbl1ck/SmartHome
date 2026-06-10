@@ -64,12 +64,14 @@ function Input({
 }
 
 // ─── Gerät-Dialog ────────────────────────────────────────────────────────────
-type MqttProtocol = 'simple' | 'shelly_gen3' | 'shelly_gen1';
+type DeviceProtocol = 'simple' | 'shelly_gen3' | 'shelly_gen1' | 'shelly_gen3_http' | 'bluetooth_shelly_gen3';
 
-const PROTOCOLS: { value: MqttProtocol; label: string; hint: string }[] = [
-  { value: 'simple',      label: 'Einfach (on/off)',    hint: 'Schickt "on" oder "off" direkt an das Topic.' },
-  { value: 'shelly_gen3', label: 'Shelly Gen3 (RPC)',    hint: 'Topic-Format: shellygen3/shellyplugsg3-XXXXXX — der Broker erhält automatisch JSON-RPC an <topic>/rpc.' },
-  { value: 'shelly_gen1', label: 'Shelly Gen1/Gen2',     hint: 'Topic-Format: shellies/shellyplug-s-XXXXXX — Befehl geht an <topic>/relay/0/command.' },
+const PROTOCOLS: { value: DeviceProtocol; label: string; hint: string; isBle?: boolean; isHttp?: boolean }[] = [
+  { value: 'simple',                label: 'Einfach (MQTT on/off)',      hint: 'Schickt "on" oder "off" direkt an das MQTT-Topic.' },
+  { value: 'shelly_gen3',           label: 'Shelly Gen3 (MQTT RPC)',     hint: 'Topic-Format: shellygen3/shellyplugsg3-XXXXXX — JSON-RPC über MQTT-Broker.' },
+  { value: 'shelly_gen1',           label: 'Shelly Gen1/Gen2 (MQTT)',    hint: 'Topic-Format: shellies/shellyplug-s-XXXXXX — Befehl geht an <topic>/relay/0/command.' },
+  { value: 'shelly_gen3_http',      label: 'Shelly Gen3 (LAN/HTTP)',     hint: 'Direkter HTTP-Zugriff im selben Netzwerk — ideal für Raspberry Pi. Kein MQTT-Broker nötig. IP-Adresse des Shelly eingeben.', isHttp: true },
+  { value: 'bluetooth_shelly_gen3', label: 'Shelly Gen3 (Bluetooth)',    hint: 'Direktverbindung per Bluetooth Low Energy — kein Broker nötig. Nur Chrome/Edge. Im Verbinden-Dialog erscheint das Gerät als "ShellyPlugSG3-XXXXXX".', isBle: true },
 ];
 
 interface DeviceFormState {
@@ -77,7 +79,8 @@ interface DeviceFormState {
   type: DeviceType;
   room_id: string;
   mqtt_topic: string;
-  mqtt_protocol: MqttProtocol;
+  mqtt_protocol: DeviceProtocol;
+  ble_address: string;
   active: boolean;
 }
 
@@ -87,6 +90,7 @@ const emptyDevice = (): DeviceFormState => ({
   room_id: '',
   mqtt_topic: '',
   mqtt_protocol: 'simple',
+  ble_address: '',
   active: true,
 });
 
@@ -96,7 +100,8 @@ function deviceToForm(d: Device): DeviceFormState {
     type: d.type,
     room_id: String(d.room_id),
     mqtt_topic: d.mqtt_topic ?? '',
-    mqtt_protocol: (d.attributes?.protocol as MqttProtocol) ?? 'simple',
+    mqtt_protocol: (d.attributes?.protocol as DeviceProtocol) ?? 'simple',
+    ble_address: (d.attributes?.ble_address as string) ?? '',
     active: d.active,
   };
 }
@@ -147,13 +152,16 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
 
     setDeviceDialog((s) => ({ ...s, saving: true, error: '' }));
     try {
+      const attrs: Record<string, string> = { protocol: form.mqtt_protocol };
+      if (form.ble_address.trim()) attrs.ble_address = form.ble_address.trim();
+
       const payload = {
         name: form.name.trim(),
         type: form.type,
         room_id: Number(form.room_id),
         mqtt_topic: form.mqtt_topic.trim() || null,
         active: form.active,
-        attributes: { protocol: form.mqtt_protocol },
+        attributes: attrs,
       };
 
       if (editing) {
@@ -429,7 +437,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
               <Select
                 value={deviceDialog.form.mqtt_protocol}
                 onValueChange={(v) =>
-                  setDeviceDialog((s) => ({ ...s, form: { ...s.form, mqtt_protocol: v as MqttProtocol } }))
+                  setDeviceDialog((s) => ({ ...s, form: { ...s.form, mqtt_protocol: v as DeviceProtocol } }))
                 }
               >
                 <SelectTrigger>
@@ -448,21 +456,62 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
               </p>
             </div>
 
-            <Input
-              label="MQTT Topic (Basis)"
-              value={deviceDialog.form.mqtt_topic}
-              onChange={(v) =>
-                setDeviceDialog((s) => ({ ...s, form: { ...s.form, mqtt_topic: v } }))
-              }
-              placeholder={
-                deviceDialog.form.mqtt_protocol === 'shelly_gen3'
-                  ? 'shellygen3/shellyplugsg3-XXXXXX'
-                  : deviceDialog.form.mqtt_protocol === 'shelly_gen1'
-                  ? 'shellies/shellyplug-s-XXXXXX'
-                  : 'home/wohnzimmer/lampe'
-              }
-              hint="Tipp: Die Geräte-ID steht in der Shelly App unter Einstellungen → Geräteinformationen."
-            />
+            {/* MQTT Topic — für alle außer BLE und HTTP */}
+            {deviceDialog.form.mqtt_protocol !== 'bluetooth_shelly_gen3' &&
+             deviceDialog.form.mqtt_protocol !== 'shelly_gen3_http' && (
+              <Input
+                label="MQTT Topic (Basis)"
+                value={deviceDialog.form.mqtt_topic}
+                onChange={(v) =>
+                  setDeviceDialog((s) => ({ ...s, form: { ...s.form, mqtt_topic: v } }))
+                }
+                placeholder={
+                  deviceDialog.form.mqtt_protocol === 'shelly_gen3'
+                    ? 'shellygen3/shellyplugsg3-XXXXXX'
+                    : deviceDialog.form.mqtt_protocol === 'shelly_gen1'
+                    ? 'shellies/shellyplug-s-XXXXXX'
+                    : 'home/wohnzimmer/lampe'
+                }
+                hint="Tipp: Die Geräte-ID steht in der Shelly App unter Einstellungen → Geräteinformationen."
+              />
+            )}
+
+            {/* IP-Adresse — nur für shelly_gen3_http */}
+            {deviceDialog.form.mqtt_protocol === 'shelly_gen3_http' && (
+              <Input
+                label="IP-Adresse des Shelly"
+                value={deviceDialog.form.mqtt_topic}
+                onChange={(v) =>
+                  setDeviceDialog((s) => ({ ...s, form: { ...s.form, mqtt_topic: v } }))
+                }
+                placeholder="192.168.1.42"
+                hint="IP-Adresse aus der Shelly-App. Das Backend sendet HTTP direkt an das Gerät — ideal für den Raspberry Pi."
+              />
+            )}
+
+            {/* BLE-Adresse — nur für bluetooth_shelly_gen3 */}
+            {deviceDialog.form.mqtt_protocol === 'bluetooth_shelly_gen3' && (
+              <>
+                <Input
+                  label="Bluetooth-Adresse (MAC)"
+                  value={deviceDialog.form.ble_address}
+                  onChange={(v) =>
+                    setDeviceDialog((s) => ({ ...s, form: { ...s.form, ble_address: v } }))
+                  }
+                  placeholder="AA:BB:CC:DD:EE:FF"
+                  hint="Für Browser-BLE: leer lassen (Gerät wird per Dialog ausgewählt). Für Raspberry Pi BLE Bridge: MAC-Adresse aus der Shelly-App eintragen."
+                />
+                <div className="rounded-md bg-muted px-4 py-3 text-sm space-y-1">
+                  <p className="font-medium flex items-center gap-1.5">
+                    🔵 Bluetooth-Modus aktiv
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    Browser: Verbindung direkt im Dashboard herstellen (Chrome/Edge).
+                    Raspberry Pi: BLE Bridge Daemon übernimmt automatisch.
+                  </p>
+                </div>
+              </>
+            )}
 
             <div className="flex items-center gap-3">
               <label className="text-sm font-medium flex-1">Aktiv</label>

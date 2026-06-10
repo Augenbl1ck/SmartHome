@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import Link from "next/link";
 import { Home, Settings, Zap } from "lucide-react";
+import AutomationRunnerProvider from "@/components/AutomationRunnerProvider";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -30,6 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </nav>
         </header>
         <main className="flex-1 p-6 max-w-6xl mx-auto w-full">{children}</main>
+        <AutomationRunnerProvider />
       </body>
     </html>
   );

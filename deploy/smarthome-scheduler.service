@@ -1,0 +1,14 @@
+[Unit]
+Description=SmartHome Laravel Scheduler (Automationen jede Minute)
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/smarthome/backend
+ExecStart=/usr/bin/php artisan schedule:work
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
