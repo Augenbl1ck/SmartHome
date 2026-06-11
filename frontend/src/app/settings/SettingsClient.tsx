@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/select';
 import {
   Pencil, Plus, Trash2, Wifi, LockKeyhole, LockKeyholeOpen, Timer,
-  ChevronDown, Home, Cpu,
+  ChevronDown, Home, Cpu, Cloud, LayoutDashboard,
 } from 'lucide-react';
 import { usePinLockContext } from '@/components/PinLockProvider';
 import { cn } from '@/lib/utils';
@@ -131,6 +131,140 @@ function deviceToForm(d: Device): DeviceForm {
 // ─────────────────────────────────────────────────────────────────
 // Hauptkomponente
 // ─────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────
+// Dashboard-Widget-Einstellungen (localStorage)
+// ─────────────────────────────────────────────────────────────────
+
+const WIDGETS_KEY = 'smarthome_dashboard_widgets';
+
+function DashboardWidgetsSection({ devices }: { devices: Device[] }) {
+  const [selected, setSelected] = useState<number[]>([]);
+  const [saved, setSaved] = useState(false);
+
+  // Beim Mount aus localStorage laden
+  useState(() => {
+    try {
+      const raw = localStorage.getItem(WIDGETS_KEY);
+      if (raw) setSelected(JSON.parse(raw));
+    } catch { /* */ }
+  });
+
+  const toggle = (id: number) => {
+    setSelected(prev => {
+      if (prev.includes(id)) return prev.filter(x => x !== id);
+      if (prev.length >= 2)  return prev; // max 2
+      return [...prev, id];
+    });
+  };
+
+  const save = () => {
+    localStorage.setItem(WIDGETS_KEY, JSON.stringify(selected));
+    // Andere Tabs informieren (DashboardLive lauscht auf storage-Event)
+    window.dispatchEvent(new StorageEvent('storage', { key: WIDGETS_KEY }));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const reset = () => {
+    setSelected([]);
+    localStorage.removeItem(WIDGETS_KEY);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <Section title="Dashboard-Widgets" icon={LayoutDashboard}>
+      <div className="px-4 py-3 space-y-3">
+        <p className="text-xs text-muted-foreground">
+          Wähle bis zu <strong>2 Geräte oder Sensoren</strong>, die oben auf dem Dashboard als Status-Kacheln angezeigt werden (nur lesend, kein Schalten).
+        </p>
+        <div className="space-y-1 max-h-56 overflow-y-auto">
+          {devices.map(d => {
+            const checked = selected.includes(d.id);
+            const disabled = !checked && selected.length >= 2;
+            return (
+              <label key={d.id}
+                className={cn(
+                  'flex items-center gap-3 px-2 py-2 rounded-lg cursor-pointer select-none transition-colors',
+                  checked ? 'bg-primary/10 border border-primary/30' : 'border border-transparent hover:bg-accent',
+                  disabled && 'opacity-40 cursor-not-allowed'
+                )}
+              >
+                <input type="checkbox" checked={checked} disabled={disabled}
+                  onChange={() => toggle(d.id)}
+                  className="accent-primary h-4 w-4 shrink-0 cursor-pointer" />
+                <span className="text-sm font-medium flex-1 truncate">{d.name}</span>
+                <span className="text-xs text-muted-foreground shrink-0">{d.type.replace('sensor_', '')}</span>
+              </label>
+            );
+          })}
+          {devices.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-4">Keine Geräte vorhanden.</p>
+          )}
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          {selected.length}/2 ausgewählt
+          {selected.length === 0 && ' — Standard: erster Temp- und Feuchte-Sensor'}
+        </p>
+        <div className="flex gap-2">
+          <Button onClick={save} size="sm">
+            {saved ? '✓ Gespeichert' : 'Speichern'}
+          </Button>
+          {selected.length > 0 && (
+            <Button onClick={reset} size="sm" variant="outline">Zurücksetzen</Button>
+          )}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Wetter-Einstellungen (localStorage)
+// ─────────────────────────────────────────────────────────────────
+
+const WEATHER_KEY = 'smarthome_weather_cfg';
+
+function WeatherSection() {
+  const [city, setCity] = useState('');
+  const [unit, setUnit] = useState<'metric' | 'imperial'>('metric');
+  const [saved, setSaved] = useState(false);
+
+  useState(() => {
+    try {
+      const raw = localStorage.getItem(WEATHER_KEY);
+      if (raw) { const c = JSON.parse(raw); setCity(c.city ?? ''); setUnit(c.unit ?? 'metric'); }
+    } catch { /* */ }
+  });
+
+  const save = () => {
+    localStorage.setItem(WEATHER_KEY, JSON.stringify({ city: city.trim(), unit }));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <Section title="Wetter-Widget" icon={Cloud}>
+      <div className="divide-y">
+        <div className="px-4 py-3 space-y-3">
+          <Field label="Stadt" value={city} onChange={setCity} placeholder="z.B. Berlin" />
+          <div className="space-y-1">
+            <label className="block text-sm font-medium">Einheit</label>
+            <select value={unit} onChange={e => setUnit(e.target.value as 'metric' | 'imperial')}
+              className="rounded-lg border border-input bg-background px-3 py-2 text-sm">
+              <option value="metric">Celsius (°C)</option>
+              <option value="imperial">Fahrenheit (°F)</option>
+            </select>
+          </div>
+          <Button onClick={save} size="sm">
+            {saved ? '✓ Gespeichert' : 'Speichern'}
+          </Button>
+        </div>
+      </div>
+    </Section>
+  );
+}
 
 export default function SettingsClient({ initialRooms, initialDevices }: Props) {
   const [rooms, setRooms]     = useState(initialRooms);
@@ -424,6 +558,8 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
           )}
         </div>
       </Section>
+
+      {/* ── Wetter-Widget ──────────────────────────────────────────── */}      <DashboardWidgetsSection devices={devices} />      <WeatherSection />
 
       {/* ═══════════════════════════════════════════════════════════
           Dialoge

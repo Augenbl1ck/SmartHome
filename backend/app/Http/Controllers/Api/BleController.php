@@ -62,4 +62,44 @@ class BleController extends Controller
 
         return response()->json($device);
     }
+
+    /**
+     * Sendet einen Shelly RPC-Befehl via BLE Bridge und gibt die Antwort zurück.
+     * POST /devices/{device}/ble-rpc
+     * Body: { method: string, params?: object }
+     */
+    public function rpc(Request $request, Device $device): JsonResponse
+    {
+        $data = $request->validate([
+            'method' => 'required|string|max:100',
+            'params' => 'nullable|array',
+        ]);
+
+        $bleAddress = $device->attributes['ble_address'] ?? null;
+        if (!$bleAddress) {
+            return response()->json(['error' => 'Keine BLE-MAC-Adresse konfiguriert'], 400);
+        }
+
+        try {
+            $response = Http::timeout(20)->post("{$this->bridgeUrl}/rpc", [
+                'bleAddress' => $bleAddress,
+                'method'     => $data['method'],
+                'params'     => $data['params'] ?? [],
+            ]);
+
+            if ($response->failed()) {
+                return response()->json(
+                    ['error' => 'BLE Bridge Fehler: ' . $response->body()],
+                    $response->status()
+                );
+            }
+
+            return response()->json($response->json());
+        } catch (\Exception $e) {
+            return response()->json(
+                ['error' => 'BLE Bridge nicht erreichbar: ' . $e->getMessage()],
+                503
+            );
+        }
+    }
 }

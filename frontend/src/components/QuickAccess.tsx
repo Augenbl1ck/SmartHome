@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useReducer, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api, Device } from '@/lib/api';
 import { deviceIcons, isToggleable } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
@@ -35,8 +35,8 @@ export default function QuickAccess({ initialDevices }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   // Zähler erhöht sich bei jedem BLE-State-Change → erzwingt Re-Render mit frischen isConnected()-Werten
-  const [, dispatch] = useReducer((x: number) => x + 1, 0);
-  const forceUpdate = useCallback(() => dispatch(0), []);
+  const [, setTick] = useState(0);
+  const forceUpdate = useCallback(() => setTick(t => t + 1), []);
 
   useEffect(() => {
     setFavorites(loadFavorites());
@@ -48,6 +48,17 @@ export default function QuickAccess({ initialDevices }: Props) {
 
     setMounted(true);
     return () => { for (const d of bleDevices) shellyBle.offStateChange(d.id); };
+  }, [initialDevices]);
+
+  // initialDevices-Prop-Änderungen (z.B. nach Dashboard-Refresh) in State übernehmen
+  useEffect(() => {
+    setDevices(prev => {
+      // Nur Geräte updaten die nicht gerade getoggelt werden
+      return prev.map(d => {
+        const fresh = initialDevices.find(f => f.id === d.id);
+        return fresh && !toggling.has(d.id) ? { ...d, status: fresh.status } : d;
+      });
+    });
   }, [initialDevices]);
 
   // Gerätezustand-Updates von anderen Komponenten empfangen
@@ -82,7 +93,7 @@ export default function QuickAccess({ initialDevices }: Props) {
       }
       const updated = await api.toggleDevice(device.id);
       setDevices(prev => prev.map(d => d.id === device.id ? updated : d));
-      emitDeviceUpdate(device.id, newStatus);
+      emitDeviceUpdate(device.id, updated.status);
     } catch (err) {
       setDevices(prev => prev.map(d => d.id === device.id ? { ...d, status: device.status } : d));
       const msg = err instanceof Error ? err.message : String(err);
@@ -125,8 +136,9 @@ export default function QuickAccess({ initialDevices }: Props) {
             const isOn = device.status === 'on';
             const isRunning = toggling.has(device.id);
             const ble = isBle(device);
-            // Live-Check direkt am Singleton (kein State-Cache)
-            const connected = !ble || shellyBle.isConnected(device.id);
+            const hasMac = !!(device.attributes?.ble_address as string | undefined)?.trim();
+            // Bridge-Geräte (hasMac) gelten als verbunden; Web-BLE prüft isConnected()
+            const connected = !ble || hasMac || shellyBle.isConnected(device.id);
             const Icon = deviceIcons[device.type as DeviceType];
             return (
               <button
@@ -149,7 +161,7 @@ export default function QuickAccess({ initialDevices }: Props) {
                   <p className="text-sm font-medium truncate">{device.name}</p>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     {ble && <Bluetooth className={cn('h-3 w-3 shrink-0', connected ? 'text-blue-500' : '')} />}
-                    {ble && !connected ? 'Nicht verbunden' : isOn ? 'An' : 'Aus'}
+                    {ble && !connected ? 'Nicht verbunden' : 'Verbunden'}
                   </p>
                 </div>
               </button>

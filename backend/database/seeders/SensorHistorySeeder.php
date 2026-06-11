@@ -20,6 +20,7 @@ class SensorHistorySeeder extends Seeder
             $base   = $isTemp ? 20.0 : 55.0;
             $range  = $isTemp ? 4.0  : 15.0;
 
+            $lastVal = null;
             // 24h × 3 Messungen = 72 Datenpunkte pro Sensor
             for ($i = 0; $i < 24; $i++) {
                 for ($j = 0; $j < 3; $j++) {
@@ -34,8 +35,12 @@ class SensorHistorySeeder extends Seeder
                         'status'      => (string) $val,
                         'recorded_at' => now()->subHours(24 - $i)->addMinutes($j * 18),
                     ]);
+                    $lastVal = $val;
                 }
             }
+
+            // devices.status auf den neuesten Seed-Wert setzen
+            $sensor->update(['status' => (string) $lastVal]);
 
             $this->command->info("Sensor \"{$sensor->name}\" ({$sensor->type}): 72 Messwerte eingefügt");
         }

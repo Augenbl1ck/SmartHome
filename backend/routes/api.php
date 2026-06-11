@@ -25,4 +25,5 @@ Route::prefix('v1')->group(function () {
     // BLE
     Route::get('ble/scan', [BleController::class, 'scan']);
     Route::post('devices/{device}/ble-mac', [BleController::class, 'saveMac']);
+    Route::post('devices/{device}/ble-rpc', [BleController::class, 'rpc']);
 });

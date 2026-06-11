@@ -3,6 +3,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api/v
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    cache: 'no-store',
     ...options,
   });
 
@@ -42,6 +43,13 @@ export const api = {
     request<{ devices: { address: string; name: string | null; rssi: number }[] }>(
       `/ble/scan?timeout=${timeoutMs}&prefix=Shelly`
     ),
+
+  // BLE RPC — sendet beliebige Shelly-Befehle via BLE Bridge
+  bleRpc: (deviceId: number, method: string, params: Record<string, unknown> = {}) =>
+    request<{ result: unknown }>(`/devices/${deviceId}/ble-rpc`, {
+      method: 'POST',
+      body: JSON.stringify({ method, params }),
+    }),
 
   // Scenes
   getScenes: () => request<Scene[]>('/scenes'),

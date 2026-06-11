@@ -10,6 +10,7 @@ import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Power, Star } f
 import { cn } from '@/lib/utils';
 import DeviceHistory from '@/components/DeviceHistory';
 import SensorChart from '@/components/SensorChart';
+import ShellyPlugPanel from '@/components/ShellyPlugPanel';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import BleScanDialog from '@/components/BleScanDialog';
 
@@ -166,7 +167,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
       )}
 
       {/* ── Geräte-Grid ───────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {devices.map((device) => {
           const Icon        = deviceIcons[device.type as DeviceType] ?? deviceIcons.other;
           const label       = deviceLabels[device.type as DeviceType] ?? 'Gerät';
@@ -187,10 +188,11 @@ export default function RoomClient({ room, initialDevices }: Props) {
             <div
               key={device.id}
               className={cn(
-                'relative rounded-xl border p-3 transition-all min-h-[96px]',
+                'relative rounded-xl border p-4 transition-all min-h-[112px]',
                 isOn && !sensor
                   ? 'border-green-500/25 bg-green-500/[0.04]'
-                  : 'border-border bg-card'
+                  : 'border-border bg-card',
+                useBridge && toggleable && !sensor && 'pb-15'
               )}
             >
               {/* Favoriten-Stern oben links */}
@@ -288,11 +290,16 @@ export default function RoomClient({ room, initialDevices }: Props) {
               {/* BLE-Bridge-Badge — wenn MAC gesetzt, als Info */}
               {useBridge && (
                 <div className="mt-2">
-                  <span className="w-fit flex items-center gap-1 text-xs text-muted-foreground py-1 px-2 rounded-full bg-muted">
+                  <span className="w-fit flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium py-1 px-2 rounded-full bg-emerald-500/10">
                     <Bluetooth className="h-3 w-3 shrink-0" />
                     BLE Bridge
                   </span>
                 </div>
+              )}
+
+              {/* Shelly-Konfigurationsbereich (LED, Auto-Aus, Verbrauch) */}
+              {useBridge && toggleable && !sensor && (
+                <ShellyPlugPanel deviceId={device.id} />
               )}
 
               {/* Geräteverlauf */}
@@ -309,7 +316,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
                   disabled={isDisabled}
                   aria-label={isOn ? 'Ausschalten' : 'Einschalten'}
                   className={cn(
-                    'absolute bottom-3 right-3 h-10 w-10 rounded-full',
+                    'absolute bottom-3 right-3 h-11 w-11 rounded-full',
                     'flex items-center justify-center transition-all',
                     'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background',
                     'active:scale-90',
