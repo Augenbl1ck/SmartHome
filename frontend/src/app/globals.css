@@ -2,6 +2,19 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* Alle klickbaren Elemente bekommen automatisch cursor: pointer */
+button,
+[role="button"],
+[role="switch"],
+[role="checkbox"],
+[role="radio"],
+a[href],
+label[for],
+select,
+summary {
+  cursor: pointer;
+}
+
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   15%       { transform: translateX(-8px); }

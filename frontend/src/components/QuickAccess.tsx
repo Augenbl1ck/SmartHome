@@ -64,8 +64,10 @@ export default function QuickAccess({ initialDevices }: Props) {
     if (!isToggleable(device.type as DeviceType)) return;
 
     const ble = isBle(device);
-    // Direkt am Singleton: immer aktuell, kein veralteter State
-    if (ble && !shellyBle.isConnected(device.id)) {
+    const hasMac = !!(device.attributes?.ble_address as string | undefined)?.trim();
+
+    // Nur blockieren wenn kein MAC (Web BLE) UND nicht verbunden
+    if (ble && !hasMac && !shellyBle.isConnected(device.id)) {
       setError(`"${device.name}" ist nicht verbunden — bitte zuerst im Raum verbinden.`);
       return;
     }
@@ -75,8 +77,8 @@ export default function QuickAccess({ initialDevices }: Props) {
     const newStatus = device.status === 'on' ? 'off' : 'on';
     setDevices(prev => prev.map(d => d.id === device.id ? { ...d, status: newStatus } : d));
     try {
-      if (ble) {
-        await shellyBle.switchSet(device.id, newStatus === 'on');
+      if (ble && !hasMac && shellyBle.isSupported()) {
+        try { await shellyBle.switchSet(device.id, newStatus === 'on'); } catch { /* Bridge übernimmt */ }
       }
       const updated = await api.toggleDevice(device.id);
       setDevices(prev => prev.map(d => d.id === device.id ? updated : d));
@@ -102,9 +104,6 @@ export default function QuickAccess({ initialDevices }: Props) {
         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           Schnellzugriff
         </p>
-        <span className="text-[11px] text-muted-foreground">
-          Stern in Raumansicht zum Anheften
-        </span>
       </div>
 
       {error && (
