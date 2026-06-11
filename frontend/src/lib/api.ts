@@ -32,6 +32,8 @@ export const api = {
   setDeviceStatus: (id: number, status: 'on' | 'off') =>
     request<Device>(`/devices/${id}/set-status`, { method: 'POST', body: JSON.stringify({ status }) }),
   getDeviceLogs: (id: number) => request<DeviceLog[]>(`/devices/${id}/logs`),
+  getSensorHistory: (id: number, hours = 24) =>
+    request<SensorHistory>(`/devices/${id}/sensor-history?hours=${hours}`),
   saveBleMac: (id: number, ble_address: string) =>
     request<Device>(`/devices/${id}/ble-mac`, { method: 'POST', body: JSON.stringify({ ble_address }) }),
 
@@ -93,6 +95,20 @@ export interface DeviceLog {
   id: number;
   status: string;
   recorded_at: string;
+}
+
+export interface SensorReading {
+  time: string;
+  value: number;
+  min: number;
+  max: number;
+}
+
+export interface SensorHistory {
+  readings: SensorReading[];
+  min: number | null;
+  max: number | null;
+  avg: number | null;
 }
 
 export interface Automation {

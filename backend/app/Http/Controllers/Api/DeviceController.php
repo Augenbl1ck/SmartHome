@@ -55,6 +55,15 @@ class DeviceController extends Controller
 
         $device->update($data);
 
+        // Sensor-Messwerte in device_logs mitschreiben
+        if (isset($data['status']) && str_starts_with($device->type, 'sensor_')) {
+            \App\Models\DeviceLog::create([
+                'device_id'   => $device->id,
+                'status'      => $data['status'],
+                'recorded_at' => now(),
+            ]);
+        }
+
         return response()->json($device->load('room'));
     }
 

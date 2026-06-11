@@ -9,6 +9,7 @@ import { DeviceType } from '@/lib/api';
 import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Power, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import DeviceHistory from '@/components/DeviceHistory';
+import SensorChart from '@/components/SensorChart';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import BleScanDialog from '@/components/BleScanDialog';
 
@@ -217,15 +218,24 @@ export default function RoomClient({ room, initialDevices }: Props) {
                 </div>
               </div>
 
-              {/* Sensor-Wert */}
+              {/* Sensor-Wert + Verlaufsgraph */}
               {sensor && (
-                <p className="mt-2 text-2xl font-bold tabular-nums">
-                  {device.status !== 'unknown' ? device.status : '–'}
-                  <span className="text-sm font-medium text-muted-foreground ml-0.5">
-                    {device.type === 'sensor_temperature' && '°C'}
-                    {device.type === 'sensor_humidity' && '%'}
-                  </span>
-                </p>
+                <>
+                  <p className="mt-2 text-2xl font-bold tabular-nums">
+                    {device.status !== 'unknown' ? device.status : '–'}
+                    <span className="text-sm font-medium text-muted-foreground ml-0.5">
+                      {device.type === 'sensor_temperature' && '°C'}
+                      {device.type === 'sensor_humidity' && '%'}
+                    </span>
+                  </p>
+                  {(device.type === 'sensor_temperature' || device.type === 'sensor_humidity') && (
+                    <SensorChart
+                      deviceId={device.id}
+                      deviceType={device.type as DeviceType}
+                      currentValue={device.status}
+                    />
+                  )}
+                </>
               )}
 
               {/* BLE-Chip — nur anzeigen wenn Browser Web Bluetooth (kein MAC) */}

@@ -63,6 +63,44 @@ function checkDeviceStatusTrigger(trigger: Record<string, unknown>, devices: Dev
   return false;
 }
 
+/**
+ * sensor_threshold: feuert wenn Sensor-Wert eine Bedingung erfüllt.
+ *   trigger.device_id  → Sensor-Gerät
+ *   trigger.operator   → 'lt' | 'gt' | 'lte' | 'gte'
+ *   trigger.threshold  → Vergleichswert (Zahl)
+ *
+ * Auch: temperature_above / temperature_below / humidity_above / humidity_below
+ */
+function checkSensorThresholdTrigger(trigger: Record<string, unknown>, devices: Device[]): boolean {
+  const type = trigger.type as string;
+  const isSensorThreshold = type === 'sensor_threshold'
+    || type === 'temperature_above' || type === 'temperature_below'
+    || type === 'humidity_above'    || type === 'humidity_below';
+
+  if (!isSensorThreshold) return false;
+
+  const device = devices.find((d) => d.id === Number(trigger.device_id));
+  if (!device) return false;
+
+  const value = parseFloat(device.status);
+  if (isNaN(value)) return false;
+
+  const threshold = Number(trigger.threshold);
+
+  // Expliziter Operator (sensor_threshold)
+  const op = trigger.operator as string | undefined;
+  if (op === 'lt')  return value <  threshold;
+  if (op === 'gt')  return value >  threshold;
+  if (op === 'lte') return value <= threshold;
+  if (op === 'gte') return value >= threshold;
+
+  // Namensbasierte Typen
+  if (type === 'temperature_above' || type === 'humidity_above') return value > threshold;
+  if (type === 'temperature_below' || type === 'humidity_below') return value < threshold;
+
+  return false;
+}
+
 async function executeAction(action: Record<string, unknown>, devices: Device[]): Promise<void> {
   const t = action.type as string;
 
@@ -138,6 +176,9 @@ async function runAutomations() {
         shouldFire = checkTimeTrigger(trigger);
       } else if (trigger.type === 'device_status') {
         shouldFire = checkDeviceStatusTrigger(trigger, devices);
+      } else {
+        // sensor_threshold, temperature_above/below, humidity_above/below
+        shouldFire = checkSensorThresholdTrigger(trigger, devices);
       }
 
       if (shouldFire) {

@@ -308,7 +308,7 @@ function WeekdayPicker({ value, onChange }: { value: number[]; onChange: (v: num
             type="button"
             onClick={() => toggle(day)}
             className={cn(
-              'px-2.5 py-1 text-xs rounded-md border font-medium transition-colors',
+              'cursor-pointer px-2.5 py-1 text-xs rounded-md border font-medium transition-colors',
               value.includes(day)
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'bg-background border-input text-muted-foreground hover:bg-accent',
@@ -319,11 +319,11 @@ function WeekdayPicker({ value, onChange }: { value: number[]; onChange: (v: num
         ))}
       </div>
       <div className="flex gap-2">
-        <button type="button" className="text-xs text-muted-foreground underline underline-offset-2"
+        <button type="button" className="cursor-pointer text-xs text-muted-foreground underline underline-offset-2"
           onClick={() => onChange([1, 2, 3, 4, 5])}>Werktags</button>
-        <button type="button" className="text-xs text-muted-foreground underline underline-offset-2"
+        <button type="button" className="cursor-pointer text-xs text-muted-foreground underline underline-offset-2"
           onClick={() => onChange([6, 0])}>Wochenende</button>
-        <button type="button" className="text-xs text-muted-foreground underline underline-offset-2"
+        <button type="button" className="cursor-pointer text-xs text-muted-foreground underline underline-offset-2"
           onClick={() => onChange([0, 1, 2, 3, 4, 5, 6])}>Taeglich</button>
       </div>
     </div>

@@ -20,6 +20,7 @@ Route::prefix('v1')->group(function () {
     Route::post('devices/{device}/toggle', [MqttController::class, 'toggleDevice']);
     Route::post('devices/{device}/set-status', [DeviceController::class, 'setStatus']);
     Route::get('devices/{device}/logs', [DeviceLogController::class, 'index']);
+    Route::get('devices/{device}/sensor-history', [DeviceLogController::class, 'sensorHistory']);
 
     // BLE
     Route::get('ble/scan', [BleController::class, 'scan']);
