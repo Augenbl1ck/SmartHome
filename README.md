@@ -177,6 +177,119 @@ npm run dev                           # läuft auf http://localhost:3000
 
 ---
 
+## Raspberry Pi Ersteinrichtung
+
+### 1. Grundpakete installieren
+
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y git nodejs npm php8.2 php8.2-sqlite3 php8.2-mbstring php8.2-xml php8.2-curl mosquitto mosquitto-clients
+```
+
+**Composer installieren:**
+```bash
+curl -sS https://getcomposer.org/installer | php
+sudo mv composer.phar /usr/local/bin/composer
+```
+
+### 2. Repo klonen
+
+```bash
+cd ~
+git clone git@github.com:Augenbl1ck/SmartHome.git
+cd SmartHome
+```
+
+### 3. Was nach dem Clone fehlt (gitignored)
+
+| Was | Wo | Befehl |
+|---|---|---|
+| `vendor/` | `backend/` | `composer install` |
+| `node_modules/` | `frontend/` | `npm install` |
+| `node_modules/` | `ble-bridge/` | `npm install` |
+| `*.sqlite` | `backend/database/` | `php artisan migrate --seed` |
+| `.env` | `backend/` | manuell anlegen (siehe unten) |
+| `.env.local` | `frontend/` | manuell anlegen (siehe unten) |
+
+### 4. Backend einrichten
+
+```bash
+cd ~/SmartHome/backend
+cp .env.example .env
+php artisan key:generate
+php artisan migrate --seed
+```
+
+**`backend/.env` wichtige Werte:**
+```env
+APP_URL=http://localhost:8000
+DB_CONNECTION=sqlite
+MQTT_HOST=127.0.0.1
+MQTT_PORT=1883
+```
+
+### 5. Frontend einrichten
+
+```bash
+cd ~/SmartHome/frontend
+npm install
+```
+
+**`frontend/.env.local` anlegen:**
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+OPENWEATHERMAP_API_KEY=<dein-key>
+```
+
+### 6. BLE Bridge einrichten
+
+```bash
+cd ~/SmartHome/ble-bridge
+npm install
+```
+
+### 7. Mosquitto konfigurieren
+
+```bash
+sudo nano /etc/mosquitto/mosquitto.conf
+```
+
+Folgendes am Ende der Datei hinzufügen:
+```
+listener 1883 0.0.0.0
+allow_anonymous true
+```
+
+```bash
+sudo systemctl restart mosquitto
+sudo systemctl enable mosquitto   # Autostart beim Booten
+```
+
+### 8. Shelly MQTT-Server anpassen
+
+Da der Pi eine andere IP hat als Windows, muss im Shelly die MQTT-Server-IP auf die Pi-IP gesetzt werden:
+- Shelly App → Einstellungen → MQTT → Server: `<Pi-IP>` (z.B. `192.168.178.x`)
+
+### 9. Alles starten
+
+```bash
+# Backend
+cd ~/SmartHome/backend
+php artisan serve &
+
+# BLE Bridge (falls Bluetooth-Geräte)
+cd ~/SmartHome/ble-bridge
+node index.js &
+
+# Frontend
+cd ~/SmartHome/frontend
+npm run dev -- --hostname 0.0.0.0
+```
+
+> Für dauerhaften Betrieb empfiehlt sich PM2 (`npm install -g pm2`).
+
+---
+
 ## Gerät hinzufügen (Shelly Plug S Gen3)
 
 1. Shelly mit WLAN verbinden → Shelly App öffnen
