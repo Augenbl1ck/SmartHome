@@ -181,8 +181,26 @@ npm run dev                           # läuft auf http://localhost:3000
 
 ### 1. Grundpakete installieren
 
+**System aktualisieren:**
 ```bash
 sudo apt update && sudo apt upgrade -y
+```
+
+**PHP 8.2+ Repository hinzufügen** (Standard-Repos haben nur PHP 7.4/8.0):
+```bash
+# Abhängigkeiten für Repo-Verwaltung
+sudo apt install -y lsb-release ca-certificates apt-transport-https curl
+
+# Sury PHP-Repository hinzufügen
+sudo curl -sSLo /usr/share/keyrings/deb.sury.org-php.gpg https://packages.sury.org/php/apt.gpg
+sudo sh -c 'echo "deb [signed-by=/usr/share/keyrings/deb.sury.org-php.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/php.list'
+
+# Paketliste aktualisieren
+sudo apt update
+```
+
+**Alle Pakete installieren:**
+```bash
 sudo apt install -y git nodejs npm php8.2 php8.2-sqlite3 php8.2-mbstring php8.2-xml php8.2-curl mosquitto mosquitto-clients
 ```
 
