@@ -61,7 +61,7 @@ class ShellyBleManager {
     try {
       const service = await server.getPrimaryService(SHELLY_BLE_SERVICE);
       const chars   = await service.getCharacteristics();
-      const writable = chars.find(c => c.properties.write || c.properties.writeWithoutResponse);
+      const writable = chars.find((c: any) => c.properties.write || c.properties.writeWithoutResponse);
       dataOut = writable ?? await service.getCharacteristic(SHELLY_BLE_DATA_OUT);
       console.info('[BLE] Verbunden mit', bleDevice.name, '— Char:', dataOut.uuid);
     } catch (err) {
