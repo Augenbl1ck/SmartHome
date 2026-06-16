@@ -48,7 +48,7 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
   const [deleteId, setDeleteId]       = useState<number | null>(null);
 
   // BLE-State-Listener → Re-Render bei Verbindungsänderung
-  const [, dispatch] = useReducer((x: number) => x + 1, 0);
+  const [, dispatch] = useReducer((x: number, _?: unknown) => x + 1, 0);
   const forceUpdate  = useCallback(() => dispatch(0), []);
   useEffect(() => {
     const bleDevices = devices.filter(isBle);
