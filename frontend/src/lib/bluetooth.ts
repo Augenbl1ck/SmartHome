@@ -17,9 +17,12 @@ export const SHELLY_BLE_DATA_OUT = '5f6d4f53-5f52-5043-5f64-6174615f5f5f';
 export type BleState = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 interface BleConn {
-  bleDevice: BluetoothDevice;
-  server:    BluetoothRemoteGATTServer;
-  dataOut:   BluetoothRemoteGATTCharacteristic;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  bleDevice: any; // BluetoothDevice — Web Bluetooth API (browser only)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  server:    any; // BluetoothRemoteGATTServer
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  dataOut:   any; // BluetoothRemoteGATTCharacteristic
 }
 
 // localStorage: smarthomeId → previously paired BLE device name
@@ -49,11 +52,12 @@ class ShellyBleManager {
   private notify(id: number, s: BleState)                { this.stateListeners.get(id)?.(s); }
 
   // ── Kernlogik: BleDevice → verbundene GATT-Verbindung ────────────
-  private async connectDevice(smarthomeId: number, bleDevice: BluetoothDevice): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async connectDevice(smarthomeId: number, bleDevice: any): Promise<void> {
     const server = await bleDevice.gatt!.connect();
 
     // Writable Characteristic finden
-    let dataOut: BluetoothRemoteGATTCharacteristic;
+    let dataOut: any; // BluetoothRemoteGATTCharacteristic
     try {
       const service = await server.getPrimaryService(SHELLY_BLE_SERVICE);
       const chars   = await service.getCharacteristics();
@@ -92,7 +96,7 @@ class ShellyBleManager {
       if (!getDevices) return false;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const allDevices: BluetoothDevice[] = await (navigator as any).bluetooth.getDevices();
+      const allDevices: any[] = await (navigator as any).bluetooth.getDevices();
       if (allDevices.length === 0) return false;
 
       // Passendes Gerät finden: zuerst nach gespeichertem Namen, sonst erstes Gerät
@@ -127,7 +131,7 @@ class ShellyBleManager {
     this.notify(smarthomeId, 'connecting');
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const bleDevice: BluetoothDevice = await (navigator as any).bluetooth.requestDevice(
+      const bleDevice: any = await (navigator as any).bluetooth.requestDevice(
         namePrefix
           ? { filters: [{ namePrefix }], optionalServices: [SHELLY_BLE_SERVICE] }
           : { acceptAllDevices: true, optionalServices: [SHELLY_BLE_SERVICE] }
@@ -190,7 +194,7 @@ class ShellyBleManager {
       throw new Error('Web Bluetooth wird nicht unterstützt — nutze Chrome oder Chromium.');
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const bleDevice: BluetoothDevice = await (navigator as any).bluetooth.requestDevice({
+    const bleDevice: any = await (navigator as any).bluetooth.requestDevice({
       filters: [{ namePrefix: 'Shelly' }],
       optionalServices: [SHELLY_BLE_SERVICE],
     });
