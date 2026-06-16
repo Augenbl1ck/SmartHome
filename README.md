@@ -35,7 +35,8 @@ SmartHome/
 ```bash
 # Backend
 cd backend
-C:\php82\php.exe artisan serve        # läuft auf http://localhost:8000
+php artisan serve                     # läuft auf http://localhost:8000
+# Falls php nicht im PATH: %LOCALAPPDATA%\Microsoft\WinGet\Packages\PHP.PHP.8.4_Microsoft.Winget.Source_8wekyb3d8bbwe\php.exe artisan serve
 
 # Frontend
 cd frontend

@@ -29,7 +29,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="de" className={`${geistSans.variable} h-full antialiased`}>
+    <html lang="de" className={`${geistSans.variable} h-full antialiased`} suppressHydrationWarning>
       <head>
         {/* Theme: verhindert Flash beim Laden */}
         <script dangerouslySetInnerHTML={{ __html: `
