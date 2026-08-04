@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Events\AutomationFired;
 use App\Jobs\DelayedDeviceAction;
 use App\Models\Automation;
 use App\Models\Device;
@@ -33,7 +34,7 @@ class AutomationEngine
         foreach (Automation::where('enabled', true)->get() as $automation) {
             if ($this->deviceTriggerFires($automation->trigger, $device, $previousStatus)) {
                 Log::info("[AutomationEngine] Automation '{$automation->name}' ausgelöst (Gerät: {$device->name})");
-                $this->executeAction($automation->action);
+                $this->executeAction($automation->action, $automation->name);
             }
         }
     }
@@ -57,7 +58,7 @@ class AutomationEngine
                 }
                 Cache::put($cacheKey, true, now()->addMinutes(1));
                 Log::info("[AutomationEngine] Zeit-Automation '{$automation->name}' um {$time}");
-                $this->executeAction($automation->action);
+                $this->executeAction($automation->action, $automation->name);
             }
 
             if ($type === 'weekday_time'
@@ -70,7 +71,7 @@ class AutomationEngine
                 }
                 Cache::put($cacheKey, true, now()->addMinutes(1));
                 Log::info("[AutomationEngine] Wochentag-Automation '{$automation->name}' um {$time}");
-                $this->executeAction($automation->action);
+                $this->executeAction($automation->action, $automation->name);
             }
         }
     }
@@ -110,10 +111,10 @@ class AutomationEngine
 
             $elapsed = (int) now()->diffInMinutes($onSince);
             if ($elapsed >= $minutes) {
-                Log::info("[AutomationEngine] Dauertrigger '{$automation->name}': {$device->name} seit {$elapsed} Min. an");
-                $this->executeAction($automation->action);
                 $attrs['on_duration_fired'] = true;
                 $device->update(['attributes' => $attrs]);
+                Log::info("[AutomationEngine] Dauertrigger '{$automation->name}': {$device->name} seit {$elapsed} Min. an");
+                $this->executeAction($automation->action, $automation->name);
             }
         }
     }
@@ -180,9 +181,10 @@ class AutomationEngine
     // Aktionsausführung
     // ─────────────────────────────────────────────────────────────────────────
 
-    private function executeAction(array $action): void
+    private function executeAction(array $action, string $automationName = ''): void
     {
-        $type = $action['type'] ?? '';
+        $type    = $action['type'] ?? '';
+        $summary = $this->describeAction($action);
 
         switch ($type) {
             case 'set_device_status':
@@ -227,6 +229,36 @@ class AutomationEngine
                 Log::info('[Automation] Benachrichtigung: ' . ($action['message'] ?? ''));
                 break;
         }
+
+        if ($automationName) {
+            AutomationFired::dispatch($automationName, $summary);
+        }
+    }
+
+    /** Erzeugt eine lesbare Aktionsbeschreibung für die Frontend-Benachrichtigung. */
+    private function describeAction(array $action): string
+    {
+        $type = $action['type'] ?? '';
+
+        $deviceName = fn () => optional(Device::find($action['device_id'] ?? null))->name ?? 'Gerät';
+
+        return match ($type) {
+            'set_device_status' => sprintf(
+                '„%s" %s',
+                $deviceName(),
+                ($action['status'] ?? '') === 'on' ? 'eingeschaltet' : 'ausgeschaltet'
+            ),
+            'toggle_device'     => sprintf('„%s" umgeschaltet', $deviceName()),
+            'set_room_devices'  => sprintf(
+                'Raum %s: alle Geräte %s',
+                $action['room_id'] ?? '?',
+                ($action['status'] ?? '') === 'on' ? 'an' : 'aus'
+            ),
+            'delayed_off'       => sprintf('„%s" in %d Min. aus', $deviceName(), (int) ($action['minutes'] ?? 0)),
+            'delayed_on'        => sprintf('„%s" in %d Min. an', $deviceName(), (int) ($action['minutes'] ?? 0)),
+            'notify'            => (string) ($action['message'] ?? ''),
+            default             => $type,
+        };
     }
 
     // ─────────────────────────────────────────────────────────────────────────

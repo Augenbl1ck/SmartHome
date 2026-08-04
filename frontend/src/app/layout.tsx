@@ -4,6 +4,8 @@ import NavBar from "@/components/NavBar";
 import AutomationRunnerProvider from "@/components/AutomationRunnerProvider";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 import PinLockProvider from "@/components/PinLockProvider";
+import AutomationNotifications from "@/components/AutomationNotifications";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -63,7 +65,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {children}
           </main>
           <AutomationRunnerProvider />
+          <AutomationNotifications />
           <ServiceWorkerRegistrar />
+          <Toaster position="bottom-right" richColors closeButton />
         </PinLockProvider>
       </body>
     </html>
