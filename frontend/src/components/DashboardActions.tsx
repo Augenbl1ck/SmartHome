@@ -57,10 +57,12 @@ export default function DashboardActions({ devices }: Props) {
         ? <Loader2 className="h-4 w-4 animate-spin" />
         : <PowerOff className="h-4 w-4" />}
       {done
-        ? 'Alle ausgeschaltet ✓'
+        ? '✓ Alle aus'
         : loading
-        ? 'Schalte aus…'
-        : `Alle ausschalten (${activeCount} aktiv)`}
+        ? 'Schalte…'
+        : activeCount > 0
+        ? `Alle aus (${activeCount})`
+        : 'Alle aus'}
     </button>
   );
 }

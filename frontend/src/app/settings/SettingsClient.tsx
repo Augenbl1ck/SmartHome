@@ -14,8 +14,9 @@ import {
 import {
   Pencil, Plus, Trash2, Wifi, LockKeyhole, LockKeyholeOpen, Timer,
   ChevronDown, Home, Cpu, Cloud, LayoutDashboard, Search, Loader2, Radio,
-  ChevronUp, X,
+  ChevronUp, X, ChevronRight, ArrowLeft, Clapperboard, Zap, Monitor,
 } from 'lucide-react';
+import Link from 'next/link';
 import { usePinLockContext } from '@/components/PinLockProvider';
 import { useKiosk } from '@/components/KioskProvider';
 import EmojiPicker from '@/components/EmojiPicker';
@@ -126,14 +127,17 @@ function PrefixField({
   );
 }
 
-/** Aufklappbare Sektion */
+/** Sektion — optional ohne Ausklapp-Toggle (alwaysOpen=true) */
 function Section({
-  title, icon: Icon, badge, children, defaultOpen = false,
+  title, icon: Icon, badge, children, defaultOpen = false, alwaysOpen = false,
 }: {
   title: string; icon: React.ElementType; badge?: number | string;
-  children: React.ReactNode; defaultOpen?: boolean;
+  children: React.ReactNode; defaultOpen?: boolean; alwaysOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  if (alwaysOpen) {
+    return <div className="rounded-xl border bg-card overflow-hidden">{children}</div>;
+  }
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
       <button
@@ -428,6 +432,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
   const [rooms, setRooms]     = useState(initialRooms);
   const [devices, setDevices] = useState(initialDevices);
   const pinLock = usePinLockContext();
+  const [view, setView] = useState<string | null>(null);
 
   // ── Gerät-Dialog ────────────────────────────────────────────────
   const [deviceDialog, setDeviceDialog] = useState<{
@@ -608,12 +613,68 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
   const proto = deviceDialog.form.mqtt_protocol;
   const isZigbee  = proto === 'zigbee2mqtt';
 
+  const CATEGORIES = [
+    { id: 'devices',  icon: Cpu,          color: 'text-blue-500   bg-blue-500/10',   label: 'Ger\u00e4te',           desc: `${devices.length} Ger\u00e4t${devices.length !== 1 ? 'e' : ''}` },
+    { id: 'rooms',    icon: Home,         color: 'text-violet-500 bg-violet-500/10', label: 'R\u00e4ume',            desc: `${rooms.length} Raum/${rooms.length !== 1 ? 'R\u00e4ume' : ''}` },
+    { id: 'scenes',   icon: Clapperboard, color: 'text-amber-500  bg-amber-500/10',  label: 'Szenen',           desc: 'Szenen verwalten',         href: '/scenes' },
+    { id: 'automat',  icon: Zap,          color: 'text-green-500  bg-green-500/10',  label: 'Automationen',     desc: 'Regeln & Zeitpl\u00e4ne',        href: '/automations' },
+    { id: 'dashboard',icon: LayoutDashboard, color: 'text-indigo-500 bg-indigo-500/10',label: 'Dashboard',      desc: 'Widgets konfigurieren' },
+    { id: 'weather',  icon: Cloud,        color: 'text-sky-500    bg-sky-500/10',    label: 'Wetter-Widget',    desc: 'Ort & Einheiten' },
+    { id: 'security', icon: LockKeyhole,  color: 'text-orange-500 bg-orange-500/10', label: 'Sicherheit',       desc: 'PIN & Bildschirmsperre' },
+    { id: 'kiosk',    icon: Monitor,      color: 'text-teal-500   bg-teal-500/10',   label: 'Kiosk-Modus',      desc: 'Wandbildschirm einrichten' },
+  ];
+  const viewLabel = CATEGORIES.find(c => c.id === view)?.label ?? view;
+
   return (
-    <div className="space-y-4 max-w-2xl">
-      <h1 className="text-xl font-bold">Einstellungen</h1>
+    <div className="max-w-2xl mx-auto">
+
+      {/* ── Header ────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-3 mb-5">
+        {view && (
+          <button onClick={() => setView(null)}
+            className="cursor-pointer h-12 w-12 rounded-full bg-muted flex items-center justify-center shrink-0 active:scale-90 transition-all">
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+        )}
+        <h1 className="text-xl font-bold">{view ? viewLabel : 'Einstellungen'}</h1>
+      </div>
+
+      {/* ── Kategorien-Übersicht ──────────────────────────────────── */}
+      {!view && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {CATEGORIES.map(cat => {
+            const Icon = cat.icon;
+            const [textCls, bgCls] = cat.color.trim().split(/\s+/);
+            const inner = (
+              <>
+                <div className={cn('h-14 w-14 rounded-2xl flex items-center justify-center mb-2', bgCls)}>
+                  <Icon className={cn('h-7 w-7', textCls)} />
+                </div>
+                <p className="font-semibold text-sm leading-tight">{cat.label}</p>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-tight">{cat.desc}</p>
+              </>
+            );
+            if ('href' in cat && cat.href) {
+              return (
+                <Link key={cat.id} href={cat.href}
+                  className="flex flex-col items-center text-center rounded-2xl border bg-card p-4 transition-all active:scale-[0.97] hover:bg-accent/50">
+                  {inner}
+                </Link>
+              );
+            }
+            return (
+              <button key={cat.id} onClick={() => setView(cat.id)}
+                className="cursor-pointer flex flex-col items-center text-center rounded-2xl border bg-card p-4 transition-all active:scale-[0.97] hover:bg-accent/50">
+                {inner}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── Geräte ────────────────────────────────────────────────── */}
-      <Section title="Geräte" icon={Cpu} badge={devices.length}>
+      {view === 'devices' && (
+        <Section title="Geräte" icon={Cpu} badge={devices.length} alwaysOpen>
         <div className="p-3 space-y-2">
           <Button size="sm" className="w-full" onClick={() => openDevice()}>
             <Plus className="h-4 w-4 mr-1" /> Neues Gerät
@@ -654,9 +715,11 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
           })}
         </div>
       </Section>
+      )}
 
       {/* ── Räume ─────────────────────────────────────────────────── */}
-      <Section title="Räume" icon={Home} badge={rooms.length}>
+      {view === 'rooms' && (
+      <Section title="Räume" icon={Home} badge={rooms.length} alwaysOpen>
         <div className="p-3 space-y-2">
           <Button size="sm" className="w-full" variant="outline" onClick={() => openRoom()}>
             <Plus className="h-4 w-4 mr-1" /> Neuer Raum
@@ -690,9 +753,11 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
           })}
         </div>
       </Section>
+      )}
 
       {/* ── PIN & Sicherheit ──────────────────────────────────────── */}
-      <Section title="PIN & Bildschirmsperre" icon={LockKeyhole}>
+      {view === 'security' && (
+      <Section title="PIN & Bildschirmsperre" icon={LockKeyhole} alwaysOpen>
         <div className="divide-y">
 
           {/* PIN aktivieren / ändern / entfernen */}
@@ -775,11 +840,11 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
           )}
         </div>
       </Section>
+      )}
 
-      {/* ── Wetter-Widget ──────────────────────────────────────────── */}      <DashboardWidgetsSection devices={devices} />      <WeatherSection />
-
-      {/* ── Kiosk-Modus ──────────────────────────────────────────── */}
-      <KioskSection />
+      {view === 'dashboard' && <DashboardWidgetsSection devices={devices} />}
+      {view === 'weather'   && <WeatherSection />}
+      {view === 'kiosk'     && <KioskSection />}
 
       {/* ═══════════════════════════════════════════════════════════
           Dialoge

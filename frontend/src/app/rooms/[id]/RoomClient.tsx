@@ -4,15 +4,15 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, Device, Room } from '@/lib/api';
 import { shellyBle, BleState } from '@/lib/bluetooth';
-import { deviceIcons, deviceLabels, deviceColors, isSensor, isToggleable, getDeviceColors, getDeviceEmoji } from '@/lib/devices';
+import { deviceIcons, isSensor, isToggleable, getDeviceColors, getDeviceEmoji } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
-import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Star, ChevronUp, ChevronDown, Square, Minus, Plus, PowerOff, Loader2 } from 'lucide-react';
+import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Star, ChevronUp, ChevronDown, Square, Minus, Plus, PowerOff, Loader2, Power } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import DeviceHistory from '@/components/DeviceHistory';
 import SensorChart from '@/components/SensorChart';
 import ShellyPlugPanel from '@/components/ShellyPlugPanel';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
-import { getEcho, disconnectEcho } from '@/lib/echo';
+import { getEcho } from '@/lib/echo';
 import BleScanDialog from '@/components/BleScanDialog';
 
 // Tile-Hintergrundfarbe wenn Gerät aktiv ist (nach Typ)
@@ -400,17 +400,17 @@ export default function RoomClient({ room, initialDevices }: Props) {
                 isPending && 'opacity-60',
               )}
             >
-              {/* ── Favoriten-Stern ──────────────────────────────── */}
+              {/* ── Favoriten-Stern (klein, oben links) ──────────── */}
               <button
                 onClick={e => { e.stopPropagation(); toggleFav(device.id); }}
-                className="cursor-pointer absolute top-3 right-3 h-9 w-9 flex items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors z-10"
+                className="cursor-pointer absolute top-2 left-2 h-7 w-7 flex items-center justify-center rounded-full z-10"
                 aria-label="Favorit"
               >
-                <Star className={cn('h-4 w-4', favorites.includes(device.id) ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground')} />
+                <Star className={cn('h-3.5 w-3.5', favorites.includes(device.id) ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground/30')} />
               </button>
 
               {/* ── Icon + Name + Status ──────────────────────────── */}
-              <div className="flex items-start gap-3 pr-10">
+              <div className="flex items-start gap-3">
                 <div className={cn(
                   'h-12 w-12 rounded-xl flex items-center justify-center shrink-0 transition-all duration-300 ease-in-out',
                   isActive && !sensor
@@ -433,6 +433,26 @@ export default function RoomClient({ room, initialDevices }: Props) {
                     </p>
                   )}
                 </div>
+
+                {/* Power-Button für alle schaltbaren Nicht-Sensor-Geräte */}
+                {toggleable && !sensor && !isCover && (
+                  <button
+                    onClick={e => { e.stopPropagation(); handleToggle(device); }}
+                    disabled={isDisabled}
+                    aria-label={isActive ? 'Ausschalten' : 'Einschalten'}
+                    className={cn(
+                      'h-12 w-12 rounded-full flex items-center justify-center shrink-0 transition-all duration-300',
+                      'focus:outline-none active:scale-90',
+                      isActive
+                        ? cn(typeColor.bg.replace('/10', '/20'), typeColor.text)
+                        : 'bg-muted text-muted-foreground',
+                      isDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer',
+                      isPending && 'animate-pulse'
+                    )}
+                  >
+                    <Power className="h-5 w-5" />
+                  </button>
+                )}
               </div>
 
               {/* ── Controls (event isolation) ────────────────────── */}

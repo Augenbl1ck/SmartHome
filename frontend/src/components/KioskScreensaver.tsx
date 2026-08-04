@@ -14,7 +14,7 @@ export default function KioskScreensaver() {
 
     const reset = () => {
       clearTimeout(timer);
-      if (idle) setIdle(false);
+      setIdle(false); // React bailout wenn schon false
       timer = setTimeout(() => setIdle(true), IDLE_MS);
     };
 

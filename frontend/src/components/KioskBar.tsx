@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Settings } from 'lucide-react';
+import { Home, Settings, Clapperboard, Zap } from 'lucide-react';
 import { api, Room } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -21,58 +21,44 @@ export default function KioskBar() {
   return (
     <nav className="fixed bottom-0 inset-x-0 z-50 h-20 bg-background/95 backdrop-blur border-t flex items-stretch">
       {/* Home */}
-      <Link
-        href="/"
-        className={cn(
-          'flex flex-col items-center justify-center gap-1 min-w-[72px] px-3 text-xs font-medium transition-colors',
-          isActive('/') ? 'text-primary' : 'text-muted-foreground'
-        )}
-      >
-        <div className={cn(
-          'h-9 w-9 rounded-xl flex items-center justify-center transition-colors',
-          isActive('/') ? 'bg-primary/10' : 'hover:bg-accent'
-        )}>
+      <Link href="/" className={cn('flex flex-col items-center justify-center gap-1 min-w-[72px] px-3 text-xs font-medium transition-colors', isActive('/') ? 'text-primary' : 'text-muted-foreground')}>
+        <div className={cn('h-9 w-9 rounded-xl flex items-center justify-center', isActive('/') ? 'bg-primary/10' : 'hover:bg-accent')}>
           <Home className="h-5 w-5" />
         </div>
         <span>Home</span>
       </Link>
 
-      {/* Räume */}
+      {/* Szenen */}
+      <Link href="/scenes" className={cn('flex flex-col items-center justify-center gap-1 min-w-[72px] px-3 text-xs font-medium transition-colors', isActive('/scenes') ? 'text-primary' : 'text-muted-foreground')}>
+        <div className={cn('h-9 w-9 rounded-xl flex items-center justify-center', isActive('/scenes') ? 'bg-primary/10' : 'hover:bg-accent')}>
+          <Clapperboard className="h-5 w-5" />
+        </div>
+        <span>Szenen</span>
+      </Link>
+
+      {/* Automationen */}
+      <Link href="/automations" className={cn('flex flex-col items-center justify-center gap-1 min-w-[72px] px-3 text-xs font-medium transition-colors', isActive('/automations') ? 'text-primary' : 'text-muted-foreground')}>
+        <div className={cn('h-9 w-9 rounded-xl flex items-center justify-center', isActive('/automations') ? 'bg-primary/10' : 'hover:bg-accent')}>
+          <Zap className="h-5 w-5" />
+        </div>
+        <span>Automation</span>
+      </Link>
+
+      {/* Räume (scrollbar) */}
       <div className="flex-1 flex items-stretch overflow-x-auto scrollbar-none">
         {rooms.map(room => (
-          <Link
-            key={room.id}
-            href={`/rooms/${room.id}`}
-            className={cn(
-              'flex flex-col items-center justify-center gap-1 min-w-[80px] px-2 text-xs font-medium transition-colors',
-              isActive(`/rooms/${room.id}`) ? 'text-primary' : 'text-muted-foreground'
-            )}
-          >
-            <div className={cn(
-              'h-9 w-9 rounded-xl flex items-center justify-center text-xl transition-colors',
-              isActive(`/rooms/${room.id}`) ? 'bg-primary/10' : 'hover:bg-accent'
-            )}>
+          <Link key={room.id} href={`/rooms/${room.id}`} className={cn('flex flex-col items-center justify-center gap-1 min-w-[80px] px-2 text-xs font-medium transition-colors', isActive(`/rooms/${room.id}`) ? 'text-primary' : 'text-muted-foreground')}>
+            <div className={cn('h-9 w-9 rounded-xl flex items-center justify-center text-xl', isActive(`/rooms/${room.id}`) ? 'bg-primary/10' : 'hover:bg-accent')}>
               {room.icon ?? '🏠'}
             </div>
-            <span className="truncate max-w-[72px] text-center leading-tight">
-              {room.name}
-            </span>
+            <span className="truncate max-w-[72px] text-center leading-tight">{room.name}</span>
           </Link>
         ))}
       </div>
 
       {/* Einstellungen */}
-      <Link
-        href="/settings"
-        className={cn(
-          'flex flex-col items-center justify-center gap-1 min-w-[72px] px-3 text-xs font-medium transition-colors',
-          isActive('/settings') ? 'text-primary' : 'text-muted-foreground'
-        )}
-      >
-        <div className={cn(
-          'h-9 w-9 rounded-xl flex items-center justify-center transition-colors',
-          isActive('/settings') ? 'bg-primary/10' : 'hover:bg-accent'
-        )}>
+      <Link href="/settings" className={cn('flex flex-col items-center justify-center gap-1 min-w-[72px] px-3 text-xs font-medium transition-colors', isActive('/settings') ? 'text-primary' : 'text-muted-foreground')}>
+        <div className={cn('h-9 w-9 rounded-xl flex items-center justify-center', isActive('/settings') ? 'bg-primary/10' : 'hover:bg-accent')}>
           <Settings className="h-5 w-5" />
         </div>
         <span>Einst.</span>

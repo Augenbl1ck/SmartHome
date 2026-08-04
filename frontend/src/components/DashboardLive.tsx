@@ -2,8 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { api, Device, Room, Scene } from '@/lib/api';
-import { DeviceType } from '@/lib/api';
+import { api, Device, DeviceType, Room, Scene } from '@/lib/api';
 import { isToggleable } from '@/lib/devices';
 import { DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { getEcho } from '@/lib/echo';
@@ -232,4 +231,4 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes }: 
   );
 }
 
-const WIDGETS_KEY = 'smarthome_dashboard_widgets'; // Konfigurations-Key bleibt erhalten (Settings nutzt ihn noch)
+// WIDGETS_KEY bleibt erhalten — Settings-Widget-Konfigurator nutzt ihn noch

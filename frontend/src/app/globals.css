@@ -68,13 +68,13 @@ input[type="range"].range-slider {
   border-radius: 999px;
   outline: none;
   cursor: pointer;
-  /* Filled-Track via CSS-Variable */
+  /* Filled-Track via CSS-Variable (var(--primary) ist vollständiger oklch-Wert) */
   background: linear-gradient(
     to right,
-    hsl(var(--primary) / 1) 0%,
-    hsl(var(--primary) / 1) var(--val, 50%),
-    hsl(var(--muted) / 1) var(--val, 50%),
-    hsl(var(--muted) / 1) 100%
+    var(--primary) 0%,
+    var(--primary) var(--val, 50%),
+    var(--muted) var(--val, 50%),
+    var(--muted) 100%
   );
 }
 input[type="range"].range-slider::-webkit-slider-thumb {
@@ -84,7 +84,7 @@ input[type="range"].range-slider::-webkit-slider-thumb {
   height: 22px;
   border-radius: 50%;
   background: var(--background);
-  border: 2.5px solid hsl(var(--primary) / 1);
+  border: 2.5px solid var(--primary);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -98,23 +98,10 @@ input[type="range"].range-slider::-moz-range-thumb {
   height: 22px;
   border-radius: 50%;
   background: var(--background);
-  border: 2.5px solid hsl(var(--primary) / 1);
+  border: 2.5px solid var(--primary);
   cursor: pointer;
 }
-/* Dark mode: Primärfarbe für Range-Track anpassen */
-.dark input[type="range"].range-slider {
-  background: linear-gradient(
-    to right,
-    oklch(0.922 0 0) 0%,
-    oklch(0.922 0 0) var(--val, 50%),
-    oklch(0.269 0 0) var(--val, 50%),
-    oklch(0.269 0 0) 100%
-  );
-}
-.dark input[type="range"].range-slider::-webkit-slider-thumb {
-  background: oklch(0.145 0 0);
-  border-color: oklch(0.922 0 0);
-}
+/* Dark mode: automatisch durch CSS-Variablen abgedeckt */
 
 @custom-variant dark (&:is(.dark *));
 
