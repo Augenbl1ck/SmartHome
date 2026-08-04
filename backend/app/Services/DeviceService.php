@@ -13,11 +13,12 @@ use PhpMqtt\Client\MqttClient;
  * Zentraler Service für Gerätesteuerung.
  *
  * Protokolle:
- *   simple                  → MQTT
- *   shelly_gen1             → MQTT
- *   shelly_gen3             → MQTT
- *   shelly_gen3_http        → direktes HTTP (LAN, ideal für Raspberry Pi)
+ *   simple                  → MQTT (sendet "on"/"off" direkt ans Topic)
+ *   shelly_gen1             → MQTT relay/0/command
+ *   shelly_gen3             → MQTT JSON-RPC über <topic>/rpc
+ *   shelly_gen3_http        → direktes HTTP (LAN)
  *   bluetooth_shelly_gen3   → BLE Bridge (Node.js Daemon auf dem Pi)
+ *   zigbee2mqtt             → MQTT über Zigbee2MQTT (<topic>/set)
  */
 class DeviceService
 {
@@ -133,6 +134,13 @@ class DeviceService
 
         if ($protocol === 'shelly_gen1') {
             return [$base . '/relay/0/command', $status];
+        }
+
+        if ($protocol === 'zigbee2mqtt') {
+            return [
+                $base . '/set',
+                json_encode(['state' => strtoupper($status)]),
+            ];
         }
 
         return [$base, $status];

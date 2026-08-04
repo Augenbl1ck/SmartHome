@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AutomationController;
 use App\Http\Controllers\Api\BleController;
 use App\Http\Controllers\Api\DeviceController;
 use App\Http\Controllers\Api\DeviceLogController;
+use App\Http\Controllers\Api\DiscoverController;
 use App\Http\Controllers\Api\MqttController;
 use App\Http\Controllers\Api\RoomController;
 use App\Http\Controllers\Api\SceneController;
@@ -26,4 +27,8 @@ Route::prefix('v1')->group(function () {
     Route::get('ble/scan', [BleController::class, 'scan']);
     Route::post('devices/{device}/ble-mac', [BleController::class, 'saveMac']);
     Route::post('devices/{device}/ble-rpc', [BleController::class, 'rpc']);
+
+    // Geräteerkennung
+    Route::get('discover/zigbee', [DiscoverController::class, 'zigbee']);
+    Route::get('discover/all', [DiscoverController::class, 'all']);
 });

@@ -19,12 +19,11 @@ Write-Host ""
 
 # 1. Mosquitto
 Write-Host "  [1/5] Mosquitto MQTT-Broker..." -ForegroundColor Yellow
-[System.IO.File]::WriteAllText("$env:TEMP\mqtt.conf", "listener 1883 0.0.0.0`nallow_anonymous true`n")
 $running = Get-Process mosquitto -ErrorAction SilentlyContinue
 if ($running) {
     Write-Host "        bereits aktiv (PID $($running.Id))" -ForegroundColor DarkGray
 } else {
-    Start-Process "C:\Program Files\mosquitto\mosquitto.exe" -ArgumentList "-c $env:TEMP\mqtt.conf" -NoNewWindow
+    Start-Process "C:\Program Files\mosquitto\mosquitto.exe" -ArgumentList "-c `"$root\.vscode\mqtt.conf`"" -NoNewWindow
     Start-Sleep 1
     $test = Test-NetConnection -ComputerName 127.0.0.1 -Port 1883 -WarningAction SilentlyContinue
     if ($test.TcpTestSucceeded) {
@@ -41,21 +40,26 @@ Start-Sleep 2
 Write-Host "        http://localhost:8000" -ForegroundColor Green
 
 # 3. MQTT Subscriber
-Write-Host "  [3/5] MQTT Subscriber..." -ForegroundColor Yellow
+Write-Host "  [3/6] MQTT Subscriber..." -ForegroundColor Yellow
 Start-Window "MQTT Subscriber" "$root\backend" "C:\php82\php.exe artisan mqtt:subscribe"
 Write-Host "        lauscht auf alle Topics" -ForegroundColor Green
 
-# 4. BLE Bridge
+# 4. Reverb WebSocket
+Write-Host "  [4/6] Reverb WebSocket-Server..." -ForegroundColor Yellow
+Start-Window "Reverb" "$root\backend" "C:\php82\php.exe artisan reverb:start"
+Write-Host "        ws://localhost:8080" -ForegroundColor Green
+
+# 5. BLE Bridge
 if (-not $NoBle) {
-    Write-Host "  [4/5] BLE Bridge..." -ForegroundColor Yellow
+    Write-Host "  [5/6] BLE Bridge..." -ForegroundColor Yellow
     Start-Window "BLE Bridge" "$root\ble-bridge" "node index.js"
     Write-Host "        http://localhost:3001" -ForegroundColor Green
 } else {
-    Write-Host "  [4/5] BLE Bridge übersprungen (-NoBle)" -ForegroundColor DarkGray
+    Write-Host "  [5/6] BLE Bridge übersprungen (-NoBle)" -ForegroundColor DarkGray
 }
 
-# 5. Frontend
-Write-Host "  [5/5] Next.js Frontend..." -ForegroundColor Yellow
+# 6. Frontend
+Write-Host "  [6/6] Next.js Frontend..." -ForegroundColor Yellow
 Start-Window "Frontend" "$root\frontend" "npm run dev -- --hostname 0.0.0.0"
 Write-Host "        http://localhost:3000  (bereit in ~10s)" -ForegroundColor Green
 

@@ -7,6 +7,7 @@ import { api, Device, Room } from '@/lib/api';
 import { DeviceType } from '@/lib/api';
 import { deviceLabels, deviceIcons, deviceColors, isToggleable } from '@/lib/devices';
 import { DEVICE_UPDATE_EVENT } from '@/lib/device-events';
+import { getEcho, disconnectEcho } from '@/lib/echo';
 import { cn } from '@/lib/utils';
 import QuickAccess from '@/components/QuickAccess';
 import DashboardActions from '@/components/DashboardActions';
@@ -107,7 +108,8 @@ export default function DashboardLive({ initialDevices, rooms }: Props) {
     const onFocus = () => refresh();
     window.addEventListener('focus', onFocus);
 
-    const interval = setInterval(refresh, 60_000);
+    // Fallback-Polling alle 5 Minuten (falls WebSocket getrennt)
+    const interval = setInterval(refresh, 5 * 60_000);
 
     const handler = (e: Event) => {
       const { id, status } = (e as CustomEvent<{ id: number; status: string }>).detail;
@@ -120,11 +122,33 @@ export default function DashboardLive({ initialDevices, rooms }: Props) {
     };
     window.addEventListener('storage', onStorage);
 
+    // WebSocket: Echtzeit-Updates via Laravel Reverb
+    let echo: ReturnType<typeof getEcho> | null = null;
+    try {
+      echo = getEcho();
+      echo.channel('devices').listen('.device.updated', (data: {
+        id: number; status: string; attributes: Record<string, unknown>; last_seen: string;
+      }) => {
+        setDevices(prev => prev
+          ? prev.map(d => d.id === data.id
+              ? { ...d, status: data.status, attributes: data.attributes, last_seen: data.last_seen }
+              : d)
+          : prev
+        );
+      });
+    } catch (err) {
+      console.warn('[WebSocket] Reverb nicht erreichbar, nur Polling aktiv', err);
+    }
+
     return () => {
       window.removeEventListener('focus', onFocus);
       window.removeEventListener(DEVICE_UPDATE_EVENT, handler);
       window.removeEventListener('storage', onStorage);
       clearInterval(interval);
+      if (echo) {
+        echo.leaveChannel('devices');
+        disconnectEcho();
+      }
     };
   }, [refresh]);
 

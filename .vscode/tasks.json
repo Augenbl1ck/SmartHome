@@ -4,7 +4,7 @@
     {
       "label": "Mosquitto",
       "type": "shell",
-      "command": "[System.IO.File]::WriteAllText(\"$env:TEMP\\mqtt.conf\", \"listener 1883 0.0.0.0`nallow_anonymous true`n\"); & 'C:\\Program Files\\mosquitto\\mosquitto.exe' -c \"$env:TEMP\\mqtt.conf\" -v",
+      "command": "Get-Process mosquitto -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep 1; & 'C:\\Program Files\\mosquitto\\mosquitto.exe' -c '${workspaceFolder}\\.vscode\\mqtt.conf' -v",
       "options": { "shell": { "executable": "powershell.exe" } },
       "presentation": { "panel": "dedicated", "group": "smarthome", "reveal": "always" },
       "isBackground": true,
@@ -56,8 +56,17 @@
       "problemMatcher": []
     },
     {
+      "label": "Reverb WebSocket",
+      "type": "shell",
+      "command": "C:\\php82\\php.exe artisan reverb:start",
+      "options": { "cwd": "${workspaceFolder}/backend", "shell": { "executable": "powershell.exe" } },
+      "presentation": { "panel": "dedicated", "group": "smarthome", "reveal": "always" },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
       "label": "SmartHome: Alles starten",
-      "dependsOn": ["Mosquitto", "Backend", "MQTT Subscriber", "BLE Bridge", "Frontend", "Sensor Sim"],
+      "dependsOn": ["Mosquitto", "Backend", "MQTT Subscriber", "Reverb WebSocket", "BLE Bridge", "Frontend", "Sensor Sim"],
       "dependsOrder": "parallel",
       "presentation": { "reveal": "silent" },
       "problemMatcher": [],
@@ -65,7 +74,7 @@
     },
     {
       "label": "SmartHome: Ohne BLE & Sim",
-      "dependsOn": ["Mosquitto", "Backend", "MQTT Subscriber", "Frontend"],
+      "dependsOn": ["Mosquitto", "Backend", "MQTT Subscriber", "Reverb WebSocket", "Frontend"],
       "dependsOrder": "parallel",
       "presentation": { "reveal": "silent" },
       "problemMatcher": []

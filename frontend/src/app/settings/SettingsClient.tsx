@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/select';
 import {
   Pencil, Plus, Trash2, Wifi, LockKeyhole, LockKeyholeOpen, Timer,
-  ChevronDown, Home, Cpu, Cloud, LayoutDashboard,
+  ChevronDown, Home, Cpu, Cloud, LayoutDashboard, Search, Loader2, Radio,
 } from 'lucide-react';
 import { usePinLockContext } from '@/components/PinLockProvider';
 import { cn } from '@/lib/utils';
@@ -40,14 +40,26 @@ const DEVICE_TYPES: DeviceType[] = [
 
 const ROOM_ICONS = ['🛋️', '🛏️', '🍳', '🚿', '🏠', '💡', '📦', '🪴', '🖥️', '🎮'];
 
-type DeviceProtocol = 'simple' | 'shelly_gen3' | 'shelly_gen1' | 'shelly_gen3_http' | 'bluetooth_shelly_gen3';
+type DeviceProtocol = 'simple' | 'shelly_gen3' | 'shelly_gen1' | 'shelly_gen3_http' | 'bluetooth_shelly_gen3' | 'zigbee2mqtt';
 
-const PROTOCOLS: { value: DeviceProtocol; label: string; hint: string }[] = [
-  { value: 'simple',                label: 'Einfach (MQTT)',        hint: 'Schickt "on"/"off" direkt ans MQTT-Topic.' },
-  { value: 'shelly_gen3',           label: 'Shelly Gen3 (MQTT)',    hint: 'Topic: shellygen3/shellyplugsg3-XXXXXX' },
-  { value: 'shelly_gen1',           label: 'Shelly Gen1/2 (MQTT)',  hint: 'Topic: shellies/shellyplug-s-XXXXXX' },
-  { value: 'shelly_gen3_http',      label: 'Shelly Gen3 (LAN/HTTP)','hint': 'Direkter HTTP-Zugriff — ideal für Raspberry Pi. IP des Shelly eintragen.' },
-  { value: 'bluetooth_shelly_gen3', label: 'Shelly Gen3 (Bluetooth)','hint': 'Web Bluetooth (Chrome/Edge) oder BLE Bridge auf dem Pi.' },
+// Vereinfachte Hersteller-Auswahl (ersetzt Protokoll-Dropdown für normale Nutzer)
+const VENDOR_PRESETS: {
+  id: string; label: string; icon: string; desc: string;
+  protocol: DeviceProtocol; topicPrefix: string; topicPlaceholder: string; topicLabel: string;
+  group?: string;
+}[] = [
+  { id: 'zigbee',        label: 'Zigbee',              icon: '📡', desc: 'SONOFF, NOUS, Aqara …',
+    protocol: 'zigbee2mqtt',  topicPrefix: 'zigbee2mqtt/', topicPlaceholder: 'Wohnzimmer Steckdose', topicLabel: 'Gerätename (Zigbee2MQTT)' },
+  { id: 'shelly_plugs3', label: 'Plug S Gen3',          icon: '🔶', desc: 'shellyplugsg3-…',
+    protocol: 'shelly_gen3', topicPrefix: 'shellyplugsg3-', topicPlaceholder: '90706947XXXX', topicLabel: 'Geräte-MAC', group: 'shelly' },
+  { id: 'shelly_plus1',  label: 'Plus 1 / 1PM',         icon: '🔶', desc: 'shellyplus1pm-…',
+    protocol: 'shelly_gen3', topicPrefix: 'shellyplus1pm-', topicPlaceholder: 'XXXXXXXXXXXX', topicLabel: 'Geräte-MAC', group: 'shelly' },
+  { id: 'shelly_plus2',  label: 'Plus 2PM',             icon: '🔶', desc: 'shellyplus2pm-…',
+    protocol: 'shelly_gen3', topicPrefix: 'shellyplus2pm-', topicPlaceholder: 'XXXXXXXXXXXX', topicLabel: 'Geräte-MAC', group: 'shelly' },
+  { id: 'shelly_other',  label: 'Anderes Shelly',       icon: '🔶', desc: 'Vollständige ID eingeben',
+    protocol: 'shelly_gen3', topicPrefix: '', topicPlaceholder: 'shellyXXXX-XXXXXXXXXXXX', topicLabel: 'Geräte-ID', group: 'shelly' },
+  { id: 'custom',        label: 'ESP32 / Sonstiges',    icon: '⚡', desc: 'Eigenes MQTT-Gerät',
+    protocol: 'simple',      topicPrefix: '', topicPlaceholder: 'home/wohnzimmer/licht', topicLabel: 'MQTT Topic' },
 ];
 
 // ─────────────────────────────────────────────────────────────────
@@ -78,8 +90,34 @@ function Field({
         inputMode={inputMode}
         pattern={pattern}
         autoComplete={autoComplete}
-        /* py-2.5 + text-base ensures mobile browsers open the keyboard */
       />
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
+/** Eingabefeld mit festem Prefix (z.B. "zigbee2mqtt/") */
+function PrefixField({
+  label, prefix, value, onChange, placeholder, hint,
+}: {
+  label: string; prefix: string; value: string; onChange: (v: string) => void;
+  placeholder?: string; hint?: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <label className="block text-sm font-medium">{label}</label>
+      <div className="flex rounded-lg border border-input overflow-hidden focus-within:ring-2 focus-within:ring-ring">
+        <span className="flex items-center px-3 bg-muted text-muted-foreground text-sm border-r border-input whitespace-nowrap select-none">
+          {prefix}
+        </span>
+        <input
+          className="flex-1 bg-background px-3 py-2.5 text-base placeholder:text-muted-foreground focus:outline-none"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          autoComplete="off"
+        />
+      </div>
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
@@ -114,26 +152,63 @@ function Section({
 }
 
 // ─────────────────────────────────────────────────────────────────
+// Discovery
+// ─────────────────────────────────────────────────────────────────
+
+interface DiscoveredDevice {
+  friendly_name: string;
+  ieee_address: string | null;
+  vendor: string | null;
+  model: string | null;
+  description: string | null;
+  supported: boolean;
+  device_type: DeviceType;
+  mqtt_topic: string;
+  protocol: DeviceProtocol;
+  source: 'zigbee2mqtt' | 'shelly';
+}
+
+// ─────────────────────────────────────────────────────────────────
 // Gerät-Formular-State
 // ─────────────────────────────────────────────────────────────────
 
 interface DeviceForm {
   name: string; type: DeviceType; room_id: string;
   mqtt_topic: string; mqtt_protocol: DeviceProtocol; ble_address: string; active: boolean;
+  vendorId: string; // 'zigbee' | 'shelly' | 'custom' | '' (bei Discovery-Import)
 }
 
 const emptyDevice = (): DeviceForm => ({
-  name: '', type: 'light', room_id: '', mqtt_topic: '',
-  mqtt_protocol: 'simple', ble_address: '', active: true,
+  name: '', type: 'plug', room_id: '', mqtt_topic: '',
+  mqtt_protocol: 'zigbee2mqtt', ble_address: '', active: true, vendorId: 'zigbee',
 });
 
 function deviceToForm(d: Device): DeviceForm {
+  const proto = (d.attributes?.protocol as DeviceProtocol) ?? 'simple';
+  const vendorId = proto === 'zigbee2mqtt' ? 'zigbee'
+    : proto === 'shelly_gen3' || proto === 'shelly_gen1' || proto === 'shelly_gen3_http' || proto === 'bluetooth_shelly_gen3'
+      ? (() => {
+          // Shelly-Modell aus Topic ableiten
+          const t = d.mqtt_topic ?? '';
+          if (t.startsWith('shellyplugsg3-'))  return 'shelly_plugs3';
+          if (t.startsWith('shellyplus1pm-'))  return 'shelly_plus1';
+          if (t.startsWith('shellyplus2pm-'))  return 'shelly_plus2';
+          return 'shelly_other';
+        })()
+    : 'custom';
+  const vendor = VENDOR_PRESETS.find(v => v.id === vendorId);
+  const fullTopic = d.mqtt_topic ?? '';
+  const prefix = vendor?.topicPrefix ?? '';
+  const displayTopic = prefix && fullTopic.startsWith(prefix)
+    ? fullTopic.slice(prefix.length)
+    : fullTopic;
   return {
     name: d.name, type: d.type, room_id: String(d.room_id),
-    mqtt_topic: d.mqtt_topic ?? '',
-    mqtt_protocol: (d.attributes?.protocol as DeviceProtocol) ?? 'simple',
+    mqtt_topic: displayTopic,
+    mqtt_protocol: proto,
     ble_address: (d.attributes?.ble_address as string) ?? '',
     active: d.active,
+    vendorId,
   };
 }
 
@@ -283,13 +358,58 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
   // ── Gerät-Dialog ────────────────────────────────────────────────
   const [deviceDialog, setDeviceDialog] = useState<{
     open: boolean; editing?: Device; form: DeviceForm; saving: boolean; error: string;
-  }>({ open: false, form: emptyDevice(), saving: false, error: '' });
+    discovered: DiscoveredDevice[] | null; discovering: boolean; discoverError: string;
+  }>({ open: false, form: emptyDevice(), saving: false, error: '', discovered: null, discovering: false, discoverError: '' });
 
   const openDevice = (d?: Device) => setDeviceDialog({
-    open: true, editing: d, form: d ? deviceToForm(d) : emptyDevice(), saving: false, error: '',
+    open: true, editing: d, form: d ? deviceToForm(d) : emptyDevice(),
+    saving: false, error: '', discovered: null, discovering: false, discoverError: '',
   });
   const patchDevice = (patch: Partial<DeviceForm>) =>
     setDeviceDialog(s => ({ ...s, form: { ...s.form, ...patch } }));
+
+  const discoverZigbee = async () => {
+    setDeviceDialog(s => ({ ...s, discovering: true, discoverError: '', discovered: null }));
+    try {
+      const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1';
+      const res = await fetch(`${BASE}/discover/all`, { cache: 'no-store' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error ?? 'Fehler beim Suchen');
+      }
+      const list: DiscoveredDevice[] = await res.json();
+      // Bereits hinzugefügte Geräte herausfiltern
+      const existingTopics = new Set(devices.map(d => d.mqtt_topic));
+      const fresh = list.filter(d => !existingTopics.has(d.mqtt_topic));
+      setDeviceDialog(s => ({ ...s, discovering: false, discovered: fresh }));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Verbindung fehlgeschlagen';
+      setDeviceDialog(s => ({ ...s, discovering: false, discoverError: msg }));
+    }
+  };
+
+  const selectVendor = (vendorId: string) => {
+    const preset = VENDOR_PRESETS.find(v => v.id === vendorId);
+    if (!preset) return;
+    patchDevice({ vendorId, mqtt_protocol: preset.protocol, mqtt_topic: '' });
+  };
+
+  const selectDiscovered = (d: DiscoveredDevice) => {
+    const vendorId = d.source === 'zigbee2mqtt' ? 'zigbee' : d.source === 'shelly' ? 'shelly' : 'custom';
+    const vendor = VENDOR_PRESETS.find(v => v.id === vendorId);
+    const prefix = vendor?.topicPrefix ?? '';
+    const displayTopic = prefix && d.mqtt_topic.startsWith(prefix)
+      ? d.mqtt_topic.slice(prefix.length)
+      : d.mqtt_topic;
+    patchDevice({
+      name: d.friendly_name,
+      mqtt_topic: displayTopic,
+      mqtt_protocol: d.protocol,
+      type: d.device_type as DeviceType,
+      vendorId: '',
+    });
+    setDeviceDialog(s => ({ ...s, discovered: null }));
+  };
 
   const saveDevice = async () => {
     const { form, editing } = deviceDialog;
@@ -299,12 +419,19 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     try {
       const attrs: Record<string, string> = { protocol: form.mqtt_protocol };
       if (form.ble_address.trim()) attrs.ble_address = form.ble_address.trim();
+
+      // Prefix automatisch voranstellen (z.B. "zigbee2mqtt/" für Zigbee-Geräte)
+      const vendor = VENDOR_PRESETS.find(v => v.id === form.vendorId);
+      const prefix = vendor?.topicPrefix ?? '';
+      const rawTopic = form.mqtt_topic.trim();
+      const fullTopic = rawTopic
+        ? (prefix && !rawTopic.startsWith(prefix) ? prefix + rawTopic : rawTopic)
+        : null;
       const payload: Record<string, unknown> = {
         name: form.name.trim(), type: form.type, room_id: Number(form.room_id),
         active: form.active, attributes: attrs,
+        mqtt_topic: fullTopic,
       };
-      if (form.mqtt_topic.trim()) payload.mqtt_topic = form.mqtt_topic.trim();
-      else payload.mqtt_topic = null;
       if (editing) {
         const updated = await api.updateDevice(editing.id, payload);
         setDevices(prev => prev.map(d => d.id === updated.id ? updated : d));
@@ -312,7 +439,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
         const created = await api.createDevice(payload);
         setDevices(prev => [...prev, created]);
       }
-      setDeviceDialog({ open: false, form: emptyDevice(), saving: false, error: '' });
+      setDeviceDialog({ open: false, form: emptyDevice(), saving: false, error: '', discovered: null, discovering: false, discoverError: '' });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setDeviceDialog(s => ({ ...s, saving: false, error: msg || 'Speichern fehlgeschlagen.' }));
@@ -396,9 +523,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
   // ─────────────────────────────────────────────────────────────────
 
   const proto = deviceDialog.form.mqtt_protocol;
-  const isBle  = proto === 'bluetooth_shelly_gen3';
-  const isHttp = proto === 'shelly_gen3_http';
-  const showTopic = !isBle && !isHttp;
+  const isZigbee  = proto === 'zigbee2mqtt';
 
   return (
     <div className="space-y-4 max-w-2xl">
@@ -576,18 +701,84 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
 
       {/* ── Gerät-Dialog ──────────────────────────────────────────── */}
       <Dialog open={deviceDialog.open}
-        onOpenChange={open => !open && setDeviceDialog({ open: false, form: emptyDevice(), saving: false, error: '' })}>
+        onOpenChange={open => !open && setDeviceDialog({ open: false, form: emptyDevice(), saving: false, error: '', discovered: null, discovering: false, discoverError: '' })}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{deviceDialog.editing ? 'Gerät bearbeiten' : 'Neues Gerät'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
 
+            {/* ── Zigbee Discovery ──────────────────────────────── */}
+            {!deviceDialog.editing && (
+              <div className="rounded-xl border bg-muted/30 p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Radio className="h-4 w-4 text-primary" />
+                    Zigbee-Geräte suchen
+                  </div>
+                  <Button size="sm" variant="outline" onClick={discoverZigbee}
+                    disabled={deviceDialog.discovering}>
+                    {deviceDialog.discovering
+                      ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Suche…</>
+                      : <><Search className="h-3 w-3 mr-1" /> Suchen</>}
+                  </Button>
+                </div>
+
+                {deviceDialog.discoverError && (
+                  <p className="text-xs text-destructive">{deviceDialog.discoverError}</p>
+                )}
+
+                {deviceDialog.discovered !== null && deviceDialog.discovered.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Keine neuen Geräte gefunden.</p>
+                )}
+
+                {deviceDialog.discovered && deviceDialog.discovered.length > 0 && (
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {deviceDialog.discovered.map(d => (
+                      <button key={d.ieee_address ?? d.mqtt_topic}
+                        onClick={() => selectDiscovered(d)}
+                        className="w-full text-left rounded-lg border bg-background px-3 py-2.5 hover:bg-accent transition-colors space-y-0.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-sm truncate">{d.friendly_name}</span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className={cn(
+                              'text-[10px] px-1.5 py-0.5 rounded font-medium',
+                              d.source === 'zigbee2mqtt'
+                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+                            )}>
+                              {d.source === 'zigbee2mqtt' ? 'Zigbee' : 'Shelly'}
+                            </span>
+                            {!d.supported && (
+                              <span className="text-[10px] bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 px-1.5 py-0.5 rounded">
+                                Experimentell
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {[d.vendor, d.model].filter(Boolean).join(' · ')}
+                          {d.description ? ` — ${d.description}` : ''}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <p className="text-[11px] text-muted-foreground">
+                  Gerät antippen um das Formular automatisch auszufüllen.
+                  Oder unten manuell eingeben.
+                </p>
+              </div>
+            )}
+
+            {/* ── Name ─────────────────────────────────────────── */}
             <Field label="Name" value={deviceDialog.form.name}
               onChange={v => patchDevice({ name: v })}
-              placeholder="z.B. Deckenlampe"
+              placeholder="z.B. Wohnzimmer Steckdose"
               inputMode="text" autoComplete="off" />
 
+            {/* ── Typ ──────────────────────────────────────────── */}
             <div className="space-y-1">
               <label className="block text-sm font-medium">Typ</label>
               <Select value={deviceDialog.form.type}
@@ -599,6 +790,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
               </Select>
             </div>
 
+            {/* ── Raum ─────────────────────────────────────────── */}
             <div className="space-y-1">
               <label className="block text-sm font-medium">Raum</label>
               <Select value={deviceDialog.form.room_id}
@@ -610,57 +802,105 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
               </Select>
             </div>
 
-            <div className="space-y-1">
-              <label className="block text-sm font-medium">Protokoll</label>
-              <Select value={deviceDialog.form.mqtt_protocol}
-                onValueChange={v => patchDevice({ mqtt_protocol: v as DeviceProtocol })}>
-                <SelectTrigger className="h-11 text-base"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {PROTOCOLS.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {PROTOCOLS.find(p => p.value === proto)?.hint}
-              </p>
-            </div>
+            {/* ── Hersteller / Verbindung ───────────────────────── */}
+            {!deviceDialog.editing && deviceDialog.form.vendorId !== '' && (() => {
+              const isShelly = deviceDialog.form.vendorId.startsWith('shelly');
+              const shellyModels = VENDOR_PRESETS.filter(v => v.group === 'shelly');
+              const mainPresets  = VENDOR_PRESETS.filter(v => !v.group);
+              return (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium">Verbindung</label>
+                  {/* Hauptkategorien */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'zigbee', label: 'Zigbee', icon: '📡', desc: 'SONOFF, NOUS …' },
+                      { id: 'shelly_plugs3', label: 'Shelly', icon: '🔶', desc: 'Plug, Plus …' },
+                      { id: 'custom', label: 'ESP32 / Sonst.', icon: '⚡', desc: 'Eigenes MQTT' },
+                    ].map(v => (
+                      <button key={v.id} type="button"
+                        onClick={() => selectVendor(v.id)}
+                        className={cn(
+                          'flex flex-col items-center gap-1 rounded-xl border-2 py-3 px-2 text-center transition-all',
+                          (v.id === 'shelly_plugs3' ? isShelly : deviceDialog.form.vendorId === v.id)
+                            ? 'border-primary bg-primary/10'
+                            : 'border-transparent bg-muted/40 hover:border-muted-foreground/30'
+                        )}>
+                        <span className="text-2xl">{v.icon}</span>
+                        <span className="text-xs font-semibold leading-tight">{v.label}</span>
+                        <span className="text-[10px] text-muted-foreground leading-tight">{v.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {/* Shelly-Modellauswahl */}
+                  {isShelly && (
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {shellyModels.map(m => (
+                        <button key={m.id} type="button"
+                          onClick={() => selectVendor(m.id)}
+                          className={cn(
+                            'flex items-center gap-2 rounded-lg border-2 px-3 py-2 text-left transition-all',
+                            deviceDialog.form.vendorId === m.id
+                              ? 'border-primary bg-primary/10'
+                              : 'border-transparent bg-muted/40 hover:border-muted-foreground/30'
+                          )}>
+                          <span className="text-base shrink-0">{m.icon}</span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold truncate">{m.label}</p>
+                            <p className="text-[10px] text-muted-foreground truncate">{m.desc}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
-            {showTopic && (
-              <Field
-                label="MQTT Topic (Basis)"
-                value={deviceDialog.form.mqtt_topic}
-                onChange={v => patchDevice({ mqtt_topic: v })}
-                placeholder={
-                  proto === 'shelly_gen3' ? 'shellygen3/shellyplugsg3-XXXXXX'
-                  : proto === 'shelly_gen1' ? 'shellies/shellyplug-s-XXXXXX'
-                  : 'home/wohnzimmer/lampe'
-                }
-                hint="Geräte-ID steht in der Shelly-App unter Einstellungen → Geräteinformationen."
-                inputMode="text" autoComplete="off"
-              />
-            )}
+            {/* ── Topic ─────────────────────────────────────────── */}
+            {(() => {
+              const vendor = VENDOR_PRESETS.find(v => v.id === deviceDialog.form.vendorId);
+              const proto  = deviceDialog.form.mqtt_protocol;
+              if (proto === 'bluetooth_shelly_gen3') return (
+                <Field label="Bluetooth-Adresse (MAC, optional)"
+                  value={deviceDialog.form.ble_address}
+                  onChange={v => patchDevice({ ble_address: v })}
+                  placeholder="AA:BB:CC:DD:EE:FF"
+                  hint="Leer lassen für Browser-BLE. Für Pi BLE-Bridge: MAC aus der Shelly-App."
+                  inputMode="text" autoComplete="off" />
+              );
+              if (proto === 'shelly_gen3_http') return (
+                <Field label="IP-Adresse des Shelly"
+                  value={deviceDialog.form.mqtt_topic}
+                  onChange={v => patchDevice({ mqtt_topic: v })}
+                  placeholder="192.168.1.42"
+                  hint="IP aus der Shelly-App — kein MQTT-Broker nötig."
+                  type="text" inputMode="numeric" />
+              );
+              if (vendor?.topicPrefix) return (
+                <PrefixField
+                  label={vendor.topicLabel}
+                  prefix={vendor.topicPrefix}
+                  value={deviceDialog.form.mqtt_topic}
+                  onChange={v => patchDevice({ mqtt_topic: v })}
+                  placeholder={vendor.topicPlaceholder}
+                  hint="Name exakt wie in Zigbee2MQTT — oder oben auf Suchen klicken." />
+              );
+              return (
+                <Field
+                  label={vendor?.topicLabel ?? 'MQTT Topic'}
+                  value={deviceDialog.form.mqtt_topic}
+                  onChange={v => patchDevice({ mqtt_topic: v })}
+                  placeholder={vendor?.topicPlaceholder ?? 'home/wohnzimmer/licht'}
+                  hint={
+                    deviceDialog.form.vendorId === 'shelly'
+                      ? 'Geräte-ID aus der Shelly-App (Einstellungen → Geräteinformationen).'
+                      : 'MQTT-Topic das dein Gerät verwendet.'
+                  }
+                  inputMode="text" autoComplete="off" />
+              );
+            })()}
 
-            {isHttp && (
-              <Field
-                label="IP-Adresse des Shelly"
-                value={deviceDialog.form.mqtt_topic}
-                onChange={v => patchDevice({ mqtt_topic: v })}
-                placeholder="192.168.1.42"
-                hint="IP aus der Shelly-App. Kein MQTT-Broker nötig — ideal für Raspberry Pi."
-                type="text" inputMode="numeric" pattern="[0-9.]*"
-              />
-            )}
-
-            {isBle && (
-              <Field
-                label="Bluetooth-Adresse (MAC, optional)"
-                value={deviceDialog.form.ble_address}
-                onChange={v => patchDevice({ ble_address: v })}
-                placeholder="AA:BB:CC:DD:EE:FF"
-                hint="Leer lassen für Browser-BLE (Gerät wird im Dialog ausgewählt). Für Pi BLE-Bridge: MAC aus der Shelly-App."
-                inputMode="text" autoComplete="off"
-              />
-            )}
-
+            {/* ── Aktiv ─────────────────────────────────────────── */}
             <div className="flex items-center gap-3 py-1">
               <label className="text-sm font-medium flex-1">Aktiv</label>
               <input type="checkbox" className="h-5 w-5 rounded"
@@ -672,7 +912,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
           </div>
           <DialogFooter>
             <Button variant="ghost"
-              onClick={() => setDeviceDialog({ open: false, form: emptyDevice(), saving: false, error: '' })}>
+              onClick={() => setDeviceDialog({ open: false, form: emptyDevice(), saving: false, error: '', discovered: null, discovering: false, discoverError: '' })}>
               Abbrechen
             </Button>
             <Button onClick={saveDevice} disabled={deviceDialog.saving}>
