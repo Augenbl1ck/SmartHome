@@ -12,6 +12,7 @@ import DeviceHistory from '@/components/DeviceHistory';
 import SensorChart from '@/components/SensorChart';
 import ShellyPlugPanel from '@/components/ShellyPlugPanel';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
+import { getEcho, disconnectEcho } from '@/lib/echo';
 import BleScanDialog from '@/components/BleScanDialog';
 
 interface Props {
@@ -71,7 +72,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
 
   useEffect(() => { setFavorites(loadFavs()); }, []);
 
-  // Gerätezustand-Updates von anderen Komponenten empfangen
+  // Gerätezustand-Updates von anderen Komponenten empfangen (lokale Events bei Klick)
   useEffect(() => {
     const handler = (e: Event) => {
       const { id, status } = (e as CustomEvent<{ id: number; status: string }>).detail;
@@ -80,6 +81,34 @@ export default function RoomClient({ room, initialDevices }: Props) {
     window.addEventListener(DEVICE_UPDATE_EVENT, handler);
     return () => window.removeEventListener(DEVICE_UPDATE_EVENT, handler);
   }, []);
+
+  // Echtzeit-Updates via Laravel Reverb WebSocket (MQTT → Backend → Browser)
+  useEffect(() => {
+    const deviceIds = new Set(initialDevices.map(d => d.id));
+    let echo: ReturnType<typeof getEcho> | null = null;
+    try {
+      echo = getEcho();
+      echo.channel('devices').listen('.device.updated', (data: {
+        id: number; status: string; attributes: Record<string, unknown>; last_seen: string;
+      }) => {
+        if (!deviceIds.has(data.id)) return; // nur Geräte dieses Raums
+        setDevices(prev => prev.map(d => d.id === data.id
+          ? { ...d, status: data.status, attributes: data.attributes, last_seen: data.last_seen }
+          : d
+        ));
+        // Thermostat-Sollwert synchronisieren
+        if (data.attributes?.setpoint !== undefined) {
+          setSetpoints(m => new Map(m).set(data.id, Number(data.attributes.setpoint)));
+        }
+      });
+    } catch (err) {
+      console.warn('[WebSocket] Reverb nicht erreichbar', err);
+    }
+    return () => {
+      if (echo) echo.leaveChannel('devices');
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room.id]);
 
   const toggleFav = (id: number) => {
     setFavorites(prev => {

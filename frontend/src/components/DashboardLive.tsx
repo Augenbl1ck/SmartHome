@@ -145,10 +145,7 @@ export default function DashboardLive({ initialDevices, rooms }: Props) {
       window.removeEventListener(DEVICE_UPDATE_EVENT, handler);
       window.removeEventListener('storage', onStorage);
       clearInterval(interval);
-      if (echo) {
-        echo.leaveChannel('devices');
-        disconnectEcho();
-      }
+      if (echo) echo.leaveChannel('devices');
     };
   }, [refresh]);
 
