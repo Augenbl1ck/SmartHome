@@ -113,7 +113,7 @@ sudo curl -sSLo /usr/share/keyrings/deb.sury.org-php.gpg https://packages.sury.o
 echo "deb [signed-by=/usr/share/keyrings/deb.sury.org-php.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main" \
   | sudo tee /etc/apt/sources.list.d/php.list
 sudo apt update
-sudo apt install -y php8.2 php8.2-sqlite3 php8.2-mbstring php8.2-xml php8.2-curl
+sudo apt install -y php8.2 php8.2-sqlite3 php8.2-pgsql php8.2-mbstring php8.2-xml php8.2-curl
 
 # Node.js 20
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
@@ -136,16 +136,38 @@ cd SmartHome
 **`backend/.env`**
 ```env
 APP_KEY=           # wird durch key:generate gesetzt
-APP_URL=http://localhost:8000
-DB_CONNECTION=sqlite
+APP_URL=http://<PI-IP>:8000
+
+# Datenbank (PostgreSQL)
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=smarthome
+DB_USERNAME=smarthome
+DB_PASSWORD=geheimesPasswort
+
+# MQTT
 MQTT_HOST=127.0.0.1
 MQTT_PORT=1883
+
+# Reverb WebSocket
+BROADCAST_CONNECTION=reverb
+REVERB_APP_ID=<zufällig>
+REVERB_APP_KEY=<zufällig>
+REVERB_APP_SECRET=<zufällig>
+REVERB_HOST=<PI-IP>
+REVERB_PORT=8080
+REVERB_SCHEME=http
 ```
 
 **`frontend/.env.local`**
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
-OPENWEATHERMAP_API_KEY=<key>
+NEXT_PUBLIC_API_URL=http://<PI-IP>:8000/api/v1
+NEXT_PUBLIC_WEATHER_API_KEY=<key>
+NEXT_PUBLIC_REVERB_APP_KEY=<gleicher Wert wie REVERB_APP_KEY>
+NEXT_PUBLIC_REVERB_HOST=<PI-IP>
+NEXT_PUBLIC_REVERB_PORT=8080
+NEXT_PUBLIC_REVERB_SCHEME=http
 ```
 
 ### 4. Dependencies installieren
@@ -156,7 +178,25 @@ cd ../frontend   && npm install
 cd ../ble-bridge && npm install
 ```
 
-### 5. Mosquitto konfigurieren
+### 5. PostgreSQL einrichten
+
+```bash
+sudo apt install -y postgresql postgresql-client
+sudo systemctl enable postgresql
+sudo systemctl start postgresql
+
+# Datenbank und Nutzer anlegen
+sudo -u postgres psql << 'SQL'
+CREATE USER smarthome WITH PASSWORD 'geheimesPasswort';
+CREATE DATABASE smarthome OWNER smarthome;
+SQL
+
+# Migrations ausführen
+cd ~/SmartHome/backend
+php artisan migrate
+```
+
+### 6. Mosquitto konfigurieren
 
 ```bash
 echo -e "listener 1883 0.0.0.0\nallow_anonymous true" | sudo tee -a /etc/mosquitto/mosquitto.conf

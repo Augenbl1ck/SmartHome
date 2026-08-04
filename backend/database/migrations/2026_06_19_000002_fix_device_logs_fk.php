@@ -7,10 +7,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // SQLite speichert FK-Referenzen als literalen Text im CREATE TABLE.
-        // Die vorige Migration hat 'devices' → '_devices_old' umbenannt und
-        // danach '_devices_old' gelöscht, aber device_logs' FK zeigt noch dorthin.
-        // Fix: device_logs neu erstellen mit korrekter FK auf 'devices'.
+        // Dieser Fix ist nur für SQLite nötig (FK-Referenz nach Tabellen-Rename kaputt).
+        // Auf PostgreSQL/MySQL ist der FK korrekt → Migration überspringen.
+        if (DB::getDriverName() !== 'sqlite') {
+            return;
+        }
 
         DB::statement('PRAGMA foreign_keys = OFF');
 
@@ -34,8 +35,5 @@ return new class extends Migration
         DB::statement('PRAGMA foreign_keys = ON');
     }
 
-    public function down(): void
-    {
-        // Nicht rückgängig machen nötig
-    }
+    public function down(): void {}
 };
