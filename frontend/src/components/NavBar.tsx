@@ -7,6 +7,7 @@ import { Home, Zap, Settings, LockKeyhole, Clapperboard } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePinLockContext } from '@/components/PinLockProvider';
 import ThemeToggle from '@/components/ThemeToggle';
+import { useKiosk } from '@/components/KioskProvider';
 
 const NAV = [
   { href: '/',            icon: Home,         label: 'Home' },
@@ -18,8 +19,12 @@ const NAV = [
 export default function NavBar() {
   const path  = usePathname();
   const { enabled, lock } = usePinLockContext();
+  const { kioskMode } = useKiosk();
   const [mounted, setMounted] = useState(false);
   useLayoutEffect(() => setMounted(true), []);
+
+  // Im Kiosk-Modus wird die NavBar durch die KioskBar ersetzt
+  if (kioskMode) return null;
 
   const isActive = (href: string) =>
     href === '/' ? path === '/' : path.startsWith(href);

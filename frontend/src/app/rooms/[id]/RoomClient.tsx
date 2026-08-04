@@ -6,7 +6,7 @@ import { api, Device, Room } from '@/lib/api';
 import { shellyBle, BleState } from '@/lib/bluetooth';
 import { deviceIcons, deviceLabels, deviceColors, isSensor, isToggleable, getDeviceColors, getDeviceEmoji } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
-import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Star, ChevronUp, ChevronDown, Square, Minus, Plus } from 'lucide-react';
+import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Star, ChevronUp, ChevronDown, Square, Minus, Plus, PowerOff, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import DeviceHistory from '@/components/DeviceHistory';
 import SensorChart from '@/components/SensorChart';
@@ -46,6 +46,16 @@ function getActiveTileClasses(device: Device): string {
   }
 }
 
+// Relativer Zeitstempel für last_seen
+function formatLastSeen(lastSeen: string | null | undefined): string | null {
+  if (!lastSeen) return null;
+  const diffSec = Math.floor((Date.now() - new Date(lastSeen).getTime()) / 1000);
+  if (diffSec < 60)   return 'gerade eben';
+  if (diffSec < 3600) return `vor ${Math.floor(diffSec / 60)} Min.`;
+  if (diffSec < 86400) return `vor ${Math.floor(diffSec / 3600)} Std.`;
+  return `vor ${Math.floor(diffSec / 86400)} Tagen`;
+}
+
 interface Props {
   room: Room;
   initialDevices: Device[];
@@ -77,6 +87,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
   const [scanDevice, setScanDevice] = useState<Device | null>(null);
   const [setpoints, setSetpoints] = useState<Map<number, number>>(new Map());
   const [dimmerLevels, setDimmerLevels] = useState<Map<number, number>>(new Map());
+  const [turningOff, setTurningOff] = useState(false);
 
   // Beim Mount immer frische Gerätedaten laden (wichtig nach Navigation)
   useEffect(() => {
@@ -258,31 +269,69 @@ export default function RoomClient({ room, initialDevices }: Props) {
     }
   };
 
-  const activeCount = devices.filter((d) => d.status === 'on' && isToggleable(d.type as DeviceType)).length;
+  const activeCount    = devices.filter((d) => d.status === 'on' && isToggleable(d.type as DeviceType)).length;
   const toggleableCount = devices.filter((d) => isToggleable(d.type as DeviceType)).length;
+
+  const turnRoomOff = async () => {
+    if (turningOff) return;
+    const active = devices.filter(d => d.status === 'on' && isToggleable(d.type as DeviceType));
+    if (active.length === 0) return;
+    setTurningOff(true);
+    await Promise.allSettled(
+      active.map(d =>
+        api.setDeviceStatus(d.id, 'off')
+          .then(() => { setDevices(prev => prev.map(x => x.id === d.id ? { ...x, status: 'off' } : x)); emitDeviceUpdate(d.id, 'off'); })
+          .catch(() => {})
+      )
+    );
+    setTurningOff(false);
+  };
 
   return (
     <div className="space-y-5 animate-page-in">
 
       {/* ── Header ────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3">
+        {/* Zurück */}
         <button
           onClick={() => router.back()}
-          className="cursor-pointer h-10 w-10 rounded-full flex items-center justify-center bg-muted hover:bg-accent transition-colors shrink-0 active:scale-95"
+          className="cursor-pointer h-14 w-14 rounded-full flex items-center justify-center bg-muted hover:bg-accent transition-colors shrink-0 active:scale-90"
           aria-label="Zurück"
         >
-          <ArrowLeft className="h-5 w-5" />
+          <ArrowLeft className="h-6 w-6" />
         </button>
-        <div>
-          <h1 className="text-xl font-bold leading-tight">
-            {room.icon} {room.name}
-          </h1>
+
+        {/* Raum-Icon */}
+        <div className="h-14 w-14 rounded-2xl bg-muted flex items-center justify-center text-3xl select-none shrink-0">
+          {room.icon ?? '🏠'}
+        </div>
+
+        {/* Name + Status */}
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl font-bold leading-tight truncate">{room.name}</h1>
           <p className="text-sm text-muted-foreground">
             {activeCount > 0
               ? `${activeCount} von ${toggleableCount} aktiv`
               : `${devices.length} Gerät${devices.length !== 1 ? 'e' : ''}`}
           </p>
         </div>
+
+        {/* Alles aus */}
+        <button
+          onClick={turnRoomOff}
+          disabled={activeCount === 0 || turningOff}
+          className={cn(
+            'cursor-pointer h-14 w-14 rounded-full flex items-center justify-center shrink-0 transition-all active:scale-90',
+            activeCount > 0
+              ? 'bg-destructive/10 text-destructive hover:bg-destructive/20'
+              : 'bg-muted text-muted-foreground opacity-40 cursor-not-allowed'
+          )}
+          aria-label="Alles ausschalten"
+        >
+          {turningOff
+            ? <Loader2 className="h-5 w-5 animate-spin" />
+            : <PowerOff className="h-5 w-5" />}
+        </button>
       </div>
 
       {/* ── BLE-Fehler ────────────────────────────────────────────── */}
@@ -300,8 +349,11 @@ export default function RoomClient({ room, initialDevices }: Props) {
       )}
 
       {/* ── Geräte-Grid ───────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {devices.map((device) => {
+      {(() => {
+        const controlDevices = devices.filter(d => !isSensor(d.type as DeviceType));
+        const sensorDevices  = devices.filter(d => isSensor(d.type as DeviceType));
+
+        const renderTile = (device: Device) => {
           const Icon       = deviceIcons[device.type as DeviceType] ?? deviceIcons.other;
           const typeColor  = getDeviceColors(device);
           const emoji      = getDeviceEmoji(device);
@@ -592,16 +644,45 @@ export default function RoomClient({ room, initialDevices }: Props) {
                 {isButton && <p className="mt-3 text-sm text-muted-foreground">Eingang – kein Ausgang</p>}
 
               </div>{/* end controls isolation */}
+
+              {/* last_seen Zeitstempel */}
+              {device.last_seen && (
+                <p className="text-xs text-muted-foreground/50 mt-2 select-none">
+                  {formatLastSeen(device.last_seen)}
+                </p>
+              )}
+
             </div>
           );
-        })}
+        };
 
-        {devices.length === 0 && (
-          <p className="text-muted-foreground text-sm col-span-full py-10 text-center">
-            Keine Geräte in diesem Raum.
-          </p>
-        )}
-      </div>
+        return (
+          <div className="space-y-5">
+            {/* Steuergeräte */}
+            {controlDevices.length > 0 && (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {controlDevices.map(renderTile)}
+              </div>
+            )}
+
+            {/* Sensoren — eigene Sektion darunter */}
+            {sensorDevices.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-muted-foreground mb-3">Sensoren</p>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {sensorDevices.map(renderTile)}
+                </div>
+              </div>
+            )}
+
+            {devices.length === 0 && (
+              <p className="text-muted-foreground text-sm py-10 text-center">
+                Keine Geräte in diesem Raum.
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       {/* BLE-Scan-Dialog */}
       {scanDevice && (

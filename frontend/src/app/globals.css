@@ -29,7 +29,10 @@ summary {
   animation: shake 0.5s ease-in-out;
 }
 
-/* ─── Seitenübergang ─────────────────────────────────────────────── */
+/* ─── Kiosk-Modus: Content-Padding für KioskBar (h-20 = 80px) ───── */
+body.kiosk-active main {
+  padding-bottom: 88px !important;
+}
 .animate-page-in {
   animation: page-in 0.25s ease-out both;
 }

@@ -17,6 +17,7 @@ import {
   ChevronUp, X,
 } from 'lucide-react';
 import { usePinLockContext } from '@/components/PinLockProvider';
+import { useKiosk } from '@/components/KioskProvider';
 import EmojiPicker from '@/components/EmojiPicker';
 import { cn } from '@/lib/utils';
 
@@ -394,6 +395,35 @@ function WeatherSection() {
   );
 }
 
+function KioskSection() {
+  const { kioskMode, setKioskMode } = useKiosk();
+  return (
+    <Section title="Kiosk-Modus" icon={LockKeyhole}>
+      <div className="px-4 py-3 space-y-3">
+        <p className="text-xs text-muted-foreground">
+          Vollbild-Modus für Wandbildschirme. Versteckt die Navigationsleiste und
+          zeigt stattdessen eine Room-Schnellleiste unten. Nach 5 Min. Inaktivität
+          erscheint ein Bildschirmschoner mit großer Uhr.
+        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">Kiosk-Modus aktiv</p>
+            <p className="text-xs text-muted-foreground">
+              {kioskMode ? 'Aktiv — Bottom-Bar sichtbar' : 'Deaktiviert'}
+            </p>
+          </div>
+          <input
+            type="checkbox"
+            checked={kioskMode}
+            onChange={e => setKioskMode(e.target.checked)}
+            className="h-5 w-5 rounded accent-primary cursor-pointer"
+          />
+        </div>
+      </div>
+    </Section>
+  );
+}
+
 export default function SettingsClient({ initialRooms, initialDevices }: Props) {
   const [rooms, setRooms]     = useState(initialRooms);
   const [devices, setDevices] = useState(initialDevices);
@@ -747,6 +777,9 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
       </Section>
 
       {/* ── Wetter-Widget ──────────────────────────────────────────── */}      <DashboardWidgetsSection devices={devices} />      <WeatherSection />
+
+      {/* ── Kiosk-Modus ──────────────────────────────────────────── */}
+      <KioskSection />
 
       {/* ═══════════════════════════════════════════════════════════
           Dialoge
