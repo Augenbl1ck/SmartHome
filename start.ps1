@@ -45,21 +45,31 @@ Start-Window "MQTT Subscriber" "$root\backend" "C:\php82\php.exe artisan mqtt:su
 Write-Host "        lauscht auf alle Topics" -ForegroundColor Green
 
 # 4. Reverb WebSocket
-Write-Host "  [4/6] Reverb WebSocket-Server..." -ForegroundColor Yellow
+Write-Host "  [4/8] Reverb WebSocket-Server..." -ForegroundColor Yellow
 Start-Window "Reverb" "$root\backend" "C:\php82\php.exe artisan reverb:start"
 Write-Host "        ws://localhost:8080" -ForegroundColor Green
 
-# 5. BLE Bridge
+# 5. Queue Worker (für delayed_on/delayed_off Automationen)
+Write-Host "  [5/8] Queue Worker..." -ForegroundColor Yellow
+Start-Window "Queue Worker" "$root\backend" "C:\php82\php.exe artisan queue:work --sleep=3 --tries=3"
+Write-Host "        verarbeitet verzögerte Aktionen" -ForegroundColor Green
+
+# 6. Scheduler (Zeitautomationen jede Minute)
+Write-Host "  [6/8] Scheduler..." -ForegroundColor Yellow
+Start-Window "Scheduler" "$root\backend" "C:\php82\php.exe artisan schedule:work"
+Write-Host "        Automationen & Zeitpläne" -ForegroundColor Green
+
+# 7. BLE Bridge
 if (-not $NoBle) {
-    Write-Host "  [5/6] BLE Bridge..." -ForegroundColor Yellow
+    Write-Host "  [7/8] BLE Bridge..." -ForegroundColor Yellow
     Start-Window "BLE Bridge" "$root\ble-bridge" "node index.js"
     Write-Host "        http://localhost:3001" -ForegroundColor Green
 } else {
-    Write-Host "  [5/6] BLE Bridge übersprungen (-NoBle)" -ForegroundColor DarkGray
+    Write-Host "  [7/8] BLE Bridge übersprungen (-NoBle)" -ForegroundColor DarkGray
 }
 
-# 6. Frontend
-Write-Host "  [6/6] Next.js Frontend..." -ForegroundColor Yellow
+# 8. Frontend
+Write-Host "  [8/8] Next.js Frontend..." -ForegroundColor Yellow
 Start-Window "Frontend" "$root\frontend" "npm run dev -- --hostname 0.0.0.0"
 Write-Host "        http://localhost:3000  (bereit in ~10s)" -ForegroundColor Green
 

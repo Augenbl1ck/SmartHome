@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Events\DeviceStatusUpdated;
 use App\Models\Device;
 use App\Models\DeviceLog;
+use App\Services\AutomationEngine;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use PhpMqtt\Client\ConnectionSettings;
@@ -127,6 +128,7 @@ class MqttSubscribe extends Command
         }
 
         $status = $on ? 'on' : 'off';
+        $previousStatus = $device->status;
 
         $attrs = $device->attributes ?? [];
         if ($power !== null) {
@@ -142,7 +144,9 @@ class MqttSubscribe extends Command
             'last_seen' => now(),
         ]);
 
-        DeviceStatusUpdated::dispatch($device->fresh());
+        $fresh = $device->fresh();
+        DeviceStatusUpdated::dispatch($fresh);
+        app(AutomationEngine::class)->onDeviceUpdated($fresh, $previousStatus);
 
         DeviceLog::create([
             'device_id'   => $device->id,
@@ -243,9 +247,12 @@ class MqttSubscribe extends Command
         }
 
         $updates['attributes'] = $attrs;
+        $previousStatus = $device->status;
         $device->update($updates);
 
-        DeviceStatusUpdated::dispatch($device->fresh());
+        $fresh = $device->fresh();
+        DeviceStatusUpdated::dispatch($fresh);
+        app(AutomationEngine::class)->onDeviceUpdated($fresh, $previousStatus);
 
         if ($logStatus) {
             DeviceLog::create([
@@ -276,8 +283,11 @@ class MqttSubscribe extends Command
         // Boolean
         if (in_array($status, ['on', 'off', 'true', 'false', '1', '0'])) {
             $normalized = in_array($status, ['on', 'true', '1']) ? 'on' : 'off';
+            $previousStatus = $device->status;
             $device->update(['status' => $normalized, 'last_seen' => now()]);
-            DeviceStatusUpdated::dispatch($device->fresh());
+            $fresh = $device->fresh();
+            DeviceStatusUpdated::dispatch($fresh);
+            app(AutomationEngine::class)->onDeviceUpdated($fresh, $previousStatus);
             DeviceLog::create(['device_id' => $device->id, 'status' => $normalized, 'recorded_at' => now()]);
             $this->line("[Simple] {$device->name}: {$normalized}");
             return;
@@ -285,8 +295,11 @@ class MqttSubscribe extends Command
 
         // Numerischer Wert (Temperatur, Sensor etc.)
         if (is_numeric($value)) {
+            $previousStatus = $device->status;
             $device->update(['status' => $value, 'last_seen' => now()]);
-            DeviceStatusUpdated::dispatch($device->fresh());
+            $fresh = $device->fresh();
+            DeviceStatusUpdated::dispatch($fresh);
+            app(AutomationEngine::class)->onDeviceUpdated($fresh, $previousStatus);
             DeviceLog::create(['device_id' => $device->id, 'status' => 'value', 'value' => $value, 'recorded_at' => now()]);
             $this->line("[Simple] {$device->name}: {$value}");
         }
