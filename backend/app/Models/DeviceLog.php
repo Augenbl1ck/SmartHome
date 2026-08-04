@@ -9,7 +9,7 @@ class DeviceLog extends Model
 {
     public $timestamps = false;
 
-    protected $fillable = ['device_id', 'status', 'attributes', 'recorded_at'];
+    protected $fillable = ['device_id', 'status', 'value', 'attributes', 'recorded_at'];
 
     protected $casts = [
         'attributes'  => 'array',

@@ -1,19 +1,45 @@
 # SmartHome
 
-Selbst gehostetes Smart-Home-System mit Next.js Frontend, Laravel Backend und MQTT für die Gerätekommunikation. Deployment-Ziel: Raspberry Pi.
+Selbst gehostetes Smart-Home-System — kein Home Assistant, keine Hersteller-Cloud.
 
 ---
 
-## Technologie-Stack
+## Architektur
+
+```
+Next.js Frontend
+      │  REST API / WebSocket
+Laravel Backend
+      │  MQTT
+   Mosquitto
+      │
+ ┌────┴────┐
+Zigbee2MQTT  Shelly / ESP32
+      │
+  Zigbee USB
+      │
+  Zigbee-Geräte
+(Steckdosen, Thermostate, Sensoren)
+```
+
+**Prinzip:**
+- Geräte kommunizieren ausschließlich über MQTT
+- Laravel enthält die gesamte Logik
+- Das Frontend kommuniziert nur mit Laravel, nie direkt mit Geräten
+- Alle Daten bleiben lokal auf dem Raspberry Pi
+
+---
+
+## Stack
 
 | Schicht | Technologie |
 |---|---|
-| Frontend | Next.js 15 (App Router, Server Components, TypeScript, Tailwind v4, shadcn/ui) |
-| Backend | Laravel 11 (PHP 8.5, REST API, php-mqtt/client) |
-| Broker | Mosquitto MQTT |
-| Datenbank | SQLite (lokal) → PostgreSQL (Raspberry Pi) |
-| Deployment | Docker Compose |
-| Geräte | Shelly Gen1/Gen2/Gen3, generische MQTT-Geräte |
+| Frontend | Next.js (App Router, TypeScript, Tailwind v4, shadcn/ui) |
+| Backend | Laravel 11 (PHP 8.2, REST API, MQTT) |
+| Datenbank | SQLite (Entwicklung) → PostgreSQL (Pi) |
+| Broker | Mosquitto |
+| Zigbee | Zigbee2MQTT + SONOFF ZBDongle-P |
+| Hub | Raspberry Pi |
 
 ---
 
@@ -21,313 +47,229 @@ Selbst gehostetes Smart-Home-System mit Next.js Frontend, Laravel Backend und MQ
 
 ```
 SmartHome/
-├── frontend/          # Next.js App
-├── backend/           # Laravel API
-└── docker/            # Docker Compose (Mosquitto + PostgreSQL)
-    └── mosquitto/
-        └── config/
+├── frontend/       Next.js App
+├── backend/        Laravel API
+├── ble-bridge/     Node.js Daemon für Bluetooth-Shellys
+└── tools/          Hilfsskripte (sensor-sim etc.)
 ```
 
 ---
 
-## Lokale Entwicklung starten
+## Lokale Entwicklung
 
-```bash
-# Backend
-cd backend
-php artisan serve                     # läuft auf http://localhost:8000
-# Falls php nicht im PATH: %LOCALAPPDATA%\Microsoft\WinGet\Packages\PHP.PHP.8.4_Microsoft.Winget.Source_8wekyb3d8bbwe\php.exe artisan serve
+### Voraussetzungen
 
-# Frontend
-cd frontend
-npm run dev                           # läuft auf http://localhost:3000
+- PHP 8.2 (`C:\php82\php.exe`)
+- Node.js 20+
+- Mosquitto (installiert via winget: `winget install EclipseFoundation.Mosquitto`)
+
+### Starten – VS Code (empfohlen)
+
+`Ctrl+Shift+B` startet alle Dienste gleichzeitig als separate Terminal-Tabs in VS Code.
+
+Alternativ über `Ctrl+Shift+P` → **Tasks: Run Task**:
+
+| Task | Startet |
+|---|---|
+| `SmartHome: Alles starten` | Alle Dienste |
+| `SmartHome: Ohne BLE & Sim` | Nur Mosquitto, Backend, MQTT Subscriber, Frontend |
+| `Mosquitto` | Nur MQTT-Broker |
+| `Backend` | Nur Laravel |
+| `MQTT Subscriber` | Nur Subscriber-Daemon |
+| `BLE Bridge` | Nur BLE-Bridge |
+| `Frontend` | Nur Next.js |
+| `Sensor Sim` | Nur Sensor-Simulation |
+
+### Starten – manuell (PowerShell)
+
+```powershell
+.\start.ps1              # Alles
+.\start.ps1 -NoBle       # ohne BLE Bridge
+.\start.ps1 -NoSim       # ohne Sensor-Simulation
 ```
 
----
+### Dienste & URLs
 
-## Roadmap
-
-### ✅ Phase 1 – Grundstruktur (abgeschlossen)
-
-- [x] Projektstruktur anlegen (Frontend / Backend / Docker)
-- [x] Next.js 15 mit App Router, TypeScript, Tailwind v4, Turbopack
-- [x] shadcn/ui einrichten (Radix/Nova, Komponenten)
-- [x] Laravel 11 Backend mit PHP 8.5
-- [x] php-mqtt/client installiert
-- [x] Datenbankmigrationen (rooms, devices, automations, device_logs)
-- [x] Eloquent-Models mit Beziehungen (Room → Device, Device → DeviceLog)
-- [x] REST-API unter `/api/v1` (CRUD für Rooms, Devices, Automations)
-- [x] CORS für Frontend konfiguriert
-- [x] Demo-Seeder (3 Räume, 6 Geräte, 2 Automationen)
-- [x] Zustand-Store + typisierter API-Client (`api.ts`)
-- [x] Geräte-Hilfsfunktionen (`deviceIcons`, `deviceLabels`, `isToggleable`)
-- [x] Dashboard (Räume-Übersicht, aktive Geräte, Temperatursensoren)
-- [x] Raum-Detailseite mit Geräte-Karten
-- [x] Automationen-Seite (Liste, Toggle aktiv/inaktiv)
-- [x] Einstellungen (Geräte & Räume erstellen, bearbeiten, löschen)
-- [x] Server Components: Daten werden serverseitig geladen (kein Lade-Flicker)
-- [x] Optimistisches Toggle (Switch reagiert sofort, kein Warten auf API)
-- [x] Race-Condition-Fix (kein Doppel-Toggle-Echo bei schnellen Klicks)
-- [x] MQTT-Protokoll-Unterstützung: Einfach / Shelly Gen3 (RPC) / Shelly Gen1
-- [x] Docker Compose für Mosquitto + PostgreSQL (Raspberry Pi)
-- [x] Git-Repository auf GitHub gepusht
+| Dienst | URL / Port |
+|---|---|
+| Frontend | http://localhost:3000 |
+| Backend | http://localhost:8000 |
+| BLE Bridge | http://localhost:3001 |
+| Mosquitto | Port 1883 |
 
 ---
 
-### 🔲 Phase 2 – Echte Geräte-Kommunikation
+## Raspberry Pi Setup
 
-- [ ] **Mosquitto-Broker lokal starten**
-  ```bash
-  cd docker
-  docker compose up -d mosquitto
-  ```
-- [ ] Shelly-Gerät in der Shelly App auf MQTT zeigen lassen (IP des Rechners, Port 1883)
-- [ ] Verbindung testen: Toggle im Dashboard → Steckdose schaltet sich wirklich
-- [ ] **MQTT-Subscriber im Backend** (Laravel Command / Daemon)
-  - Lauscht auf `shellygen3/+/status/switch:0` und ähnliche Topics
-  - Schreibt empfangenen Status in die Datenbank (`device_logs`, `devices.status`)
-  - Damit wird auch erkannt, wenn jemand den physischen Schalter drückt
-- [ ] Basis-Topic und Status-Topic pro Gerät konfigurierbar machen
+### 1. Grundpakete
 
----
-
-### 🔲 Phase 3 – Echtzeit-Updates im Dashboard
-
-- [ ] **Server-Sent Events (SSE) oder WebSocket** im Laravel Backend einrichten
-  - Option A: Laravel Reverb (nativer WebSocket-Server)
-  - Option B: SSE-Endpoint der gepollten Status-Änderungen schickt
-- [ ] Frontend lauscht auf Events und aktualisiert die Gerätekarten live
-  - Wenn jemand eine Lampe manuell schaltet → Dashboard aktualisiert sich automatisch
-- [ ] Verbindungsstatus-Anzeige im Header (online / offline / reconnecting)
-
----
-
-### 🔲 Phase 4 – Automationen
-
-- [ ] Automations-Engine im Backend
-  - **Zeitbasiert** (z.B. „Licht um 22:00 ausschalten")
-  - **Sensorbasiert** (z.B. „Wenn Bewegungsmelder aktiv → Flurlampe an")
-  - **Statusbasiert** (z.B. „Wenn Steckdose an > 2h → Benachrichtigung")
-- [ ] Laravel Scheduler konfigurieren (`artisan schedule:run`)
-- [ ] Automationen-UI erweitern: Trigger und Aktion visuell erstellen (kein JSON-Editor)
-- [ ] Ausführungslog anzeigen (wann wurde welche Automation ausgelöst)
-
----
-
-### 🔲 Phase 5 – Sensor-Daten & Verlauf
-
-- [ ] Temperatur- / Feuchtigkeitssensor-Daten automatisch in `device_logs` speichern
-- [ ] Verlaufsdiagramme auf der Geräte-Detailseite (z.B. Temperaturkurve der letzten 24h)
-- [ ] Bibliothek: Recharts oder Chart.js
-- [ ] Alte Logs automatisch bereinigen (Einstellung: Aufbewahrungsdauer)
-
----
-
-### 🔲 Phase 6 – Raspberry Pi Deployment
-
-- [ ] **Raspberry Pi einrichten**
-  - Raspberry Pi OS Lite (64-bit) installieren
-  - SSH aktivieren, feste IP-Adresse vergeben
-- [ ] **Docker & Docker Compose auf Pi installieren**
-  ```bash
-  curl -fsSL https://get.docker.com | sh
-  sudo usermod -aG docker pi
-  ```
-- [ ] **Datenbank von SQLite auf PostgreSQL umstellen**
-  - `.env` auf Pi anpassen (`DB_CONNECTION=pgsql`, Zugangsdaten aus docker-compose.yml)
-  - Migration + Seeder auf PostgreSQL ausführen
-- [ ] **Docker Stack auf Pi deployen**
-  ```bash
-  docker compose up -d        # Mosquitto + PostgreSQL
-  ```
-- [ ] **Laravel auf Pi deployen**
-  - PHP 8.3 + Composer auf Pi installieren oder per Docker
-  - `.env` anpassen (APP_URL, DB, MQTT)
-- [ ] **Next.js auf Pi deployen**
-  - `npm run build` → `npm start` (oder per PM2)
-  - Alternativ: Docker-Image für Frontend
-- [ ] **Nginx als Reverse Proxy**
-  - Frontend: Port 80 → Next.js (3000)
-  - Backend: `/api` → Laravel (8000)
-- [ ] **SSL-Zertifikat** (optional, für Zugriff von außen)
-  - Certbot + Let's Encrypt (braucht Domain oder DynDNS)
-  - Oder: selbstsigniertes Zertifikat für Heimnetz
-- [ ] **Autostart** beim Pi-Neustart sicherstellen
-  - Docker-Dienste: `restart: unless-stopped` (bereits gesetzt)
-  - Laravel + Next.js: PM2 oder systemd-Service
-
----
-
-### 🔲 Phase 7 – Sicherheit & Authentifizierung
-
-- [ ] Login-Seite (E-Mail + Passwort)
-- [ ] Laravel Sanctum für API-Authentifizierung
-- [ ] Geschützte API-Endpunkte (kein öffentlicher Zugriff)
-- [ ] MQTT-Broker absichern (Benutzername + Passwort in `mosquitto.conf`)
-- [ ] Umgebungsvariablen aus dem Repository heraushalten (`.env` in `.gitignore`)
-
----
-
-### 🔲 Phase 8 – Feinschliff & Mobile
-
-- [ ] PWA-Manifest (auf Handy installierbar wie eine native App)
-- [ ] Dark/Light Mode Umschalter
-- [ ] Push-Benachrichtigungen (z.B. „Bewegung erkannt")
-- [ ] Geräte-Gruppen oder Szenen (mehrere Geräte mit einem Klick schalten)
-- [ ] Favoriten / Schnellzugriff auf häufig genutzte Geräte
-
----
-
-## Raspberry Pi Ersteinrichtung
-
-### 1. Grundpakete installieren
-
-**System aktualisieren:**
 ```bash
 sudo apt update && sudo apt upgrade -y
-```
+sudo apt install -y git mosquitto mosquitto-clients
 
-**PHP 8.2+ Repository hinzufügen** (Standard-Repos haben nur PHP 7.4/8.0):
-```bash
-# Abhängigkeiten für Repo-Verwaltung
-sudo apt install -y lsb-release ca-certificates apt-transport-https curl
-
-# Sury PHP-Repository hinzufügen
+# PHP 8.2 (nicht im Standard-Repo)
+sudo apt install -y lsb-release ca-certificates curl
 sudo curl -sSLo /usr/share/keyrings/deb.sury.org-php.gpg https://packages.sury.org/php/apt.gpg
-sudo sh -c 'echo "deb [signed-by=/usr/share/keyrings/deb.sury.org-php.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/php.list'
-
-# Paketliste aktualisieren
+echo "deb [signed-by=/usr/share/keyrings/deb.sury.org-php.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main" \
+  | sudo tee /etc/apt/sources.list.d/php.list
 sudo apt update
-```
+sudo apt install -y php8.2 php8.2-sqlite3 php8.2-mbstring php8.2-xml php8.2-curl
 
-**Alle Pakete installieren:**
-```bash
-sudo apt install -y git nodejs npm php8.2 php8.2-sqlite3 php8.2-mbstring php8.2-xml php8.2-curl mosquitto mosquitto-clients
-```
+# Node.js 20
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
 
-**Composer installieren:**
-```bash
+# Composer
 curl -sS https://getcomposer.org/installer | php
 sudo mv composer.phar /usr/local/bin/composer
 ```
 
-### 2. Repo klonen
+### 2. Repository klonen
 
 ```bash
-cd ~
 git clone git@github.com:Augenbl1ck/SmartHome.git
 cd SmartHome
 ```
 
-### 3. Was nach dem Clone fehlt (gitignored)
+### 3. Fehlende Dateien anlegen (gitignored)
 
-| Was | Wo | Befehl |
-|---|---|---|
-| `vendor/` | `backend/` | `composer install` |
-| `node_modules/` | `frontend/` | `npm install` |
-| `node_modules/` | `ble-bridge/` | `npm install` |
-| `*.sqlite` | `backend/database/` | `php artisan migrate --seed` |
-| `.env` | `backend/` | manuell anlegen (siehe unten) |
-| `.env.local` | `frontend/` | manuell anlegen (siehe unten) |
-
-### 4. Backend einrichten
-
-```bash
-cd ~/SmartHome/backend
-cp .env.example .env
-php artisan key:generate
-php artisan migrate --seed
-```
-
-**`backend/.env` wichtige Werte:**
+**`backend/.env`**
 ```env
+APP_KEY=           # wird durch key:generate gesetzt
 APP_URL=http://localhost:8000
 DB_CONNECTION=sqlite
 MQTT_HOST=127.0.0.1
 MQTT_PORT=1883
 ```
 
-### 5. Frontend einrichten
-
-```bash
-cd ~/SmartHome/frontend
-npm install
-```
-
-**`frontend/.env.local` anlegen:**
+**`frontend/.env.local`**
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
-OPENWEATHERMAP_API_KEY=<dein-key>
+OPENWEATHERMAP_API_KEY=<key>
 ```
 
-### 6. BLE Bridge einrichten
+### 4. Dependencies installieren
 
 ```bash
-cd ~/SmartHome/ble-bridge
-npm install
+cd backend   && composer install && php artisan key:generate && php artisan migrate --seed
+cd ../frontend   && npm install
+cd ../ble-bridge && npm install
 ```
 
-### 7. Mosquitto konfigurieren
-
-```bash
-sudo nano /etc/mosquitto/mosquitto.conf
-```
-
-Folgendes am Ende der Datei hinzufügen:
-```
-listener 1883 0.0.0.0
-allow_anonymous true
-```
+### 5. Mosquitto konfigurieren
 
 ```bash
+echo -e "listener 1883 0.0.0.0\nallow_anonymous true" | sudo tee -a /etc/mosquitto/mosquitto.conf
+sudo systemctl enable mosquitto
 sudo systemctl restart mosquitto
-sudo systemctl enable mosquitto   # Autostart beim Booten
 ```
 
-### 8. Shelly MQTT-Server anpassen
-
-Da der Pi eine andere IP hat als Windows, muss im Shelly die MQTT-Server-IP auf die Pi-IP gesetzt werden:
-- Shelly App → Einstellungen → MQTT → Server: `<Pi-IP>` (z.B. `192.168.178.x`)
-
-### 9. Alles starten
+### 6. Zigbee2MQTT installieren
 
 ```bash
-# Backend
-cd ~/SmartHome/backend
-php artisan serve &
+sudo npm install -g zigbee2mqtt
 
-# BLE Bridge (falls Bluetooth-Geräte)
-cd ~/SmartHome/ble-bridge
-node index.js &
+mkdir -p ~/.config/zigbee2mqtt
+cat > ~/.config/zigbee2mqtt/configuration.yaml << 'EOF'
+homeassistant: false
+permit_join: true
+mqtt:
+  base_topic: zigbee2mqtt
+  server: mqtt://localhost:1883
+serial:
+  port: /dev/ttyUSB0
+EOF
 
-# Frontend
-cd ~/SmartHome/frontend
-npm run dev -- --hostname 0.0.0.0
+zigbee2mqtt
 ```
 
-> Für dauerhaften Betrieb empfiehlt sich PM2 (`npm install -g pm2`).
+### 7. Autostart (systemd)
+
+Beispiel für das Backend — analog für `mqtt:subscribe`, Frontend und BLE Bridge anlegen:
+
+```bash
+sudo nano /etc/systemd/system/smarthome-backend.service
+```
+
+```ini
+[Unit]
+Description=SmartHome Laravel Backend
+After=network.target
+
+[Service]
+WorkingDirectory=/home/pi/SmartHome/backend
+ExecStart=/usr/bin/php artisan serve --host=0.0.0.0 --port=8000
+Restart=always
+User=pi
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable smarthome-backend
+sudo systemctl start smarthome-backend
+```
 
 ---
 
-## Gerät hinzufügen (Shelly Plug S Gen3)
+## Gerät hinzufügen
 
-1. Shelly mit WLAN verbinden → Shelly App öffnen
-2. *Einstellungen → MQTT → aktivieren*
-   - Server: IP des Raspberry Pi (z.B. `192.168.1.100`)
-   - Port: `1883`
-3. Geräte-ID notieren (Einstellungen → Geräteinformationen → Device ID)  
-   Beispiel: `shellyplugsg3-A1B2C3`
-4. Im Dashboard → Einstellungen → Neues Gerät:
-   - Typ: Steckdose
-   - Protokoll: **Shelly Gen3 (RPC)**
-   - MQTT Topic: `shellygen3/shellyplugsg3-A1B2C3`
+### Zigbee-Gerät (Zigbee2MQTT)
+
+1. Zigbee2MQTT starten und `permit_join: true` setzen
+2. Gerät anlernen (Knopf drücken)
+3. Friendly Name notieren (z. B. `Wohnzimmer Steckdose`)
+4. In Settings → Gerät anlegen:
+   - **Protokoll**: `zigbee2mqtt`
+   - **MQTT Topic**: `zigbee2mqtt/Wohnzimmer Steckdose`
+
+### Shelly Gen3 (MQTT)
+
+1. Shelly App → Einstellungen → MQTT aktivieren
+   - Server: Pi-IP, Port: `1883`
+2. Device-ID notieren (z. B. `shellyplugsg3-A1B2C3`)
+3. In Settings → Gerät anlegen:
+   - **Protokoll**: `shelly_gen3`
+   - **MQTT Topic**: `shellyplugsg3-A1B2C3`
+
+### ESP32 / Eigene Geräte
+
+Topic frei wählbar, z. B. `home/wohnzimmer/licht`.
+- **Protokoll**: `simple`
+- **MQTT Topic**: `home/wohnzimmer/licht`
 
 ---
 
-## MQTT Topic-Schema
+## MQTT-Topics
 
-| Protokoll | Basis-Topic | Befehl geht an | Status kommt von |
-|---|---|---|---|
-| Shelly Gen3 | `shellygen3/<id>` | `<topic>/rpc` (JSON-RPC) | `<topic>/status/switch:0` |
-| Shelly Gen1/2 | `shellies/<id>` | `<topic>/relay/0/command` | `<topic>/relay/0` |
-| Einfach | `home/<raum>/<gerät>` | Topic direkt (`on`/`off`) | — |
+| Protokoll | Subscriber hört auf | Backend sendet an |
+|---|---|---|
+| `shelly_gen3` | `<topic>/status/switch:0` | `<topic>/rpc` (JSON-RPC) |
+| `zigbee2mqtt` | `zigbee2mqtt/<name>` | `zigbee2mqtt/<name>/set` |
+| `simple` | `<topic>` | `<topic>` |
+
+---
+
+## MQTT-Subscriber
+
+Empfängt Status-Updates aller Geräte und schreibt sie in die Datenbank:
+
+```bash
+php artisan mqtt:subscribe
+```
+
+Muss dauerhaft laufen (systemd-Service oder separates Terminal).
+
+---
+
+## Hardware-Empfehlungen
+
+| Kategorie | Empfehlung |
+|---|---|
+| Zigbee Coordinator | SONOFF ZBDongle-P + 50 cm USB-Verlängerung |
+| Steckdosen | NOUS A1Z oder SONOFF S60 Zigbee |
+| Thermostat | SONOFF TRVZB |
+| Temperatursensor | SONOFF SNZB-02P |
+| Tür/Fensterkontakt | SONOFF SNZB-04P |
+| Eigene Geräte | ESP32 mit MQTT |

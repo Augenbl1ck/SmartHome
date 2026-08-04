@@ -25,8 +25,17 @@ import { cn } from '@/lib/utils';
 interface Props { initialRooms: Room[]; initialDevices: Device[] }
 
 const DEVICE_TYPES: DeviceType[] = [
-  'light', 'plug', 'led', 'fan',
-  'sensor_temperature', 'sensor_humidity', 'sensor_motion', 'sensor_door', 'other',
+  // Licht & Schalten
+  'light', 'plug', 'switch', 'dimmer', 'rgb', 'led',
+  // Steuerung
+  'fan', 'cover', 'thermostat', 'valve', 'button',
+  // Energie
+  'energy_meter',
+  // Sensoren
+  'sensor_temperature', 'sensor_humidity', 'sensor_motion',
+  'sensor_door', 'sensor_flood', 'sensor_smoke', 'sensor_lux', 'sensor_vibration',
+  // Sonstiges
+  'other',
 ];
 
 const ROOM_ICONS = ['🛋️', '🛏️', '🍳', '🚿', '🏠', '💡', '📦', '🪴', '🖥️', '🎮'];

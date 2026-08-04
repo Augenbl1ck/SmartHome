@@ -76,7 +76,7 @@ class DeviceController extends Controller
 
     public function setStatus(Request $request, Device $device): JsonResponse
     {
-        $data = $request->validate(['status' => 'required|string|in:on,off']);
+        $data = $request->validate(['status' => 'required|string|max:64']);
         $this->deviceService->setStatus($device, $data['status']);
         $device->update(['status' => $data['status'], 'last_seen' => now()]);
         return response()->json($device);

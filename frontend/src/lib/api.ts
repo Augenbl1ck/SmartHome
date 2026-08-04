@@ -30,7 +30,7 @@ export const api = {
   updateDevice: (id: number, data: Partial<Device>) => request<Device>(`/devices/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteDevice: (id: number) => request<void>(`/devices/${id}`, { method: 'DELETE' }),
   toggleDevice: (id: number) => request<Device>(`/devices/${id}/toggle`, { method: 'POST' }),
-  setDeviceStatus: (id: number, status: 'on' | 'off') =>
+  setDeviceStatus: (id: number, status: string) =>
     request<Device>(`/devices/${id}/set-status`, { method: 'POST', body: JSON.stringify({ status }) }),
   getDeviceLogs: (id: number) => request<DeviceLog[]>(`/devices/${id}/logs`),
   getSensorHistory: (id: number, hours = 24) =>
@@ -88,8 +88,12 @@ export interface Device {
 }
 
 export type DeviceType =
-  | 'light' | 'plug' | 'sensor_temperature' | 'sensor_humidity'
-  | 'sensor_motion' | 'sensor_door' | 'led' | 'fan' | 'other';
+  | 'light' | 'plug' | 'switch' | 'dimmer' | 'rgb' | 'led'
+  | 'fan' | 'cover' | 'thermostat' | 'valve' | 'button'
+  | 'energy_meter'
+  | 'sensor_temperature' | 'sensor_humidity' | 'sensor_motion'
+  | 'sensor_door' | 'sensor_flood' | 'sensor_smoke' | 'sensor_lux' | 'sensor_vibration'
+  | 'other';
 
 export interface Scene {
   id: number;

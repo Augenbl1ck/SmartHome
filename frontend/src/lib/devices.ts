@@ -1,42 +1,97 @@
-import { LucideIcon, Lightbulb, Plug, Thermometer, Droplets, Activity, DoorOpen, Lamp, Wind, Cpu } from 'lucide-react';
+import {
+  LucideIcon,
+  Lightbulb, Plug, Thermometer, Droplets, Activity, DoorOpen, Lamp, Wind, Cpu,
+  ToggleLeft, SunDim, Palette, ArrowUpDown, Gauge, Droplet, Radio,
+  Zap, Waves, CloudFog, Sun, Vibrate,
+} from 'lucide-react';
 import { DeviceType } from '@/lib/api';
 
 export const deviceIcons: Record<DeviceType, LucideIcon> = {
-  light: Lightbulb,
-  plug: Plug,
+  light:              Lightbulb,
+  plug:               Plug,
+  switch:             ToggleLeft,
+  dimmer:             SunDim,
+  rgb:                Palette,
+  led:                Lamp,
+  fan:                Wind,
+  cover:              ArrowUpDown,
+  thermostat:         Gauge,
+  valve:              Droplet,
+  button:             Radio,
+  energy_meter:       Zap,
   sensor_temperature: Thermometer,
-  sensor_humidity: Droplets,
-  sensor_motion: Activity,
-  sensor_door: DoorOpen,
-  led: Lamp,
-  fan: Wind,
-  other: Cpu,
+  sensor_humidity:    Droplets,
+  sensor_motion:      Activity,
+  sensor_door:        DoorOpen,
+  sensor_flood:       Waves,
+  sensor_smoke:       CloudFog,
+  sensor_lux:         Sun,
+  sensor_vibration:   Vibrate,
+  other:              Cpu,
 };
 
 export const deviceLabels: Record<DeviceType, string> = {
-  light: 'Licht',
-  plug: 'Steckdose',
+  light:              'Licht',
+  plug:               'Steckdose',
+  switch:             'Schalter',
+  dimmer:             'Dimmer',
+  rgb:                'RGB-Licht',
+  led:                'LED-Streifen',
+  fan:                'Lüfter',
+  cover:              'Rollladen',
+  thermostat:         'Thermostat',
+  valve:              'Ventil',
+  button:             'Szenen-Taster',
+  energy_meter:       'Energiemessung',
   sensor_temperature: 'Temperatur',
-  sensor_humidity: 'Luftfeuchtigkeit',
-  sensor_motion: 'Bewegungsmelder',
-  sensor_door: 'Tür/Fenster',
-  led: 'LED',
-  fan: 'Lüfter',
-  other: 'Gerät',
+  sensor_humidity:    'Luftfeuchtigkeit',
+  sensor_motion:      'Bewegungsmelder',
+  sensor_door:        'Tür/Fenster',
+  sensor_flood:       'Wassersensor',
+  sensor_smoke:       'Rauchmelder',
+  sensor_lux:         'Helligkeitssensor',
+  sensor_vibration:   'Erschütterungssensor',
+  other:              'Gerät',
+};
+
+export interface DeviceColorSet { text: string; bg: string }
+
+export const deviceColors: Record<DeviceType, DeviceColorSet> = {
+  light:              { text: 'text-amber-500',        bg: 'bg-amber-500/10' },
+  plug:               { text: 'text-blue-500',         bg: 'bg-blue-500/10' },
+  switch:             { text: 'text-slate-400',        bg: 'bg-slate-500/10' },
+  dimmer:             { text: 'text-yellow-400',       bg: 'bg-yellow-500/10' },
+  rgb:                { text: 'text-pink-500',         bg: 'bg-pink-500/10' },
+  led:                { text: 'text-violet-400',       bg: 'bg-violet-500/10' },
+  fan:                { text: 'text-cyan-400',         bg: 'bg-cyan-500/10' },
+  cover:              { text: 'text-stone-400',        bg: 'bg-stone-500/10' },
+  thermostat:         { text: 'text-orange-400',       bg: 'bg-orange-500/10' },
+  valve:              { text: 'text-teal-400',         bg: 'bg-teal-500/10' },
+  button:             { text: 'text-indigo-400',       bg: 'bg-indigo-500/10' },
+  energy_meter:       { text: 'text-yellow-500',       bg: 'bg-yellow-500/10' },
+  sensor_temperature: { text: 'text-orange-400',       bg: 'bg-orange-500/10' },
+  sensor_humidity:    { text: 'text-sky-400',          bg: 'bg-sky-500/10' },
+  sensor_motion:      { text: 'text-emerald-400',      bg: 'bg-emerald-500/10' },
+  sensor_door:        { text: 'text-zinc-400',         bg: 'bg-zinc-500/10' },
+  sensor_flood:       { text: 'text-blue-400',         bg: 'bg-blue-500/10' },
+  sensor_smoke:       { text: 'text-red-400',          bg: 'bg-red-500/10' },
+  sensor_lux:         { text: 'text-yellow-300',       bg: 'bg-yellow-400/10' },
+  sensor_vibration:   { text: 'text-purple-400',       bg: 'bg-purple-500/10' },
+  other:              { text: 'text-muted-foreground', bg: 'bg-muted' },
 };
 
 export function getStatusColor(status: string): string {
   switch (status) {
-    case 'on': return 'text-yellow-400';
+    case 'on':  return 'text-yellow-400';
     case 'off': return 'text-slate-400';
-    default: return 'text-slate-500';
+    default:    return 'text-slate-500';
   }
 }
 
 export function isToggleable(type: DeviceType): boolean {
-  return ['light', 'plug', 'led', 'fan'].includes(type);
+  return ['light', 'plug', 'switch', 'dimmer', 'rgb', 'led', 'fan', 'cover', 'valve'].includes(type);
 }
 
 export function isSensor(type: DeviceType): boolean {
-  return type.startsWith('sensor_');
+  return type.startsWith('sensor_') || type === 'energy_meter';
 }

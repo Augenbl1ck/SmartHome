@@ -1,0 +1,74 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Mosquitto",
+      "type": "shell",
+      "command": "[System.IO.File]::WriteAllText(\"$env:TEMP\\mqtt.conf\", \"listener 1883 0.0.0.0`nallow_anonymous true`n\"); & 'C:\\Program Files\\mosquitto\\mosquitto.exe' -c \"$env:TEMP\\mqtt.conf\" -v",
+      "options": { "shell": { "executable": "powershell.exe" } },
+      "presentation": { "panel": "dedicated", "group": "smarthome", "reveal": "always" },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Backend",
+      "type": "shell",
+      "command": "C:\\php82\\php.exe artisan serve",
+      "options": { "cwd": "${workspaceFolder}/backend", "shell": { "executable": "powershell.exe" } },
+      "presentation": { "panel": "dedicated", "group": "smarthome", "reveal": "always" },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "MQTT Subscriber",
+      "type": "shell",
+      "command": "C:\\php82\\php.exe artisan mqtt:subscribe",
+      "options": { "cwd": "${workspaceFolder}/backend", "shell": { "executable": "powershell.exe" } },
+      "presentation": { "panel": "dedicated", "group": "smarthome", "reveal": "always" },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "BLE Bridge",
+      "type": "shell",
+      "command": "node index.js",
+      "options": { "cwd": "${workspaceFolder}/ble-bridge", "shell": { "executable": "powershell.exe" } },
+      "presentation": { "panel": "dedicated", "group": "smarthome", "reveal": "always" },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Frontend",
+      "type": "shell",
+      "command": "npm run dev -- --hostname 0.0.0.0",
+      "options": { "cwd": "${workspaceFolder}/frontend", "shell": { "executable": "powershell.exe" } },
+      "presentation": { "panel": "dedicated", "group": "smarthome", "reveal": "always" },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Sensor Sim",
+      "type": "shell",
+      "command": "node tools/sensor-sim.js",
+      "options": { "cwd": "${workspaceFolder}", "shell": { "executable": "powershell.exe" } },
+      "presentation": { "panel": "dedicated", "group": "smarthome", "reveal": "always" },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "SmartHome: Alles starten",
+      "dependsOn": ["Mosquitto", "Backend", "MQTT Subscriber", "BLE Bridge", "Frontend", "Sensor Sim"],
+      "dependsOrder": "parallel",
+      "presentation": { "reveal": "silent" },
+      "problemMatcher": [],
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "SmartHome: Ohne BLE & Sim",
+      "dependsOn": ["Mosquitto", "Backend", "MQTT Subscriber", "Frontend"],
+      "dependsOrder": "parallel",
+      "presentation": { "reveal": "silent" },
+      "problemMatcher": []
+    }
+  ]
+}
