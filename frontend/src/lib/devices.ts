@@ -4,7 +4,7 @@ import {
   ToggleLeft, SunDim, Palette, ArrowUpDown, Gauge, Droplet, Radio,
   Zap, Waves, CloudFog, Sun, Vibrate,
 } from 'lucide-react';
-import { DeviceType } from '@/lib/api';
+import { Device, DeviceType } from '@/lib/api';
 
 export const deviceIcons: Record<DeviceType, LucideIcon> = {
   light:              Lightbulb,
@@ -86,6 +86,40 @@ export function getStatusColor(status: string): string {
     case 'off': return 'text-slate-400';
     default:    return 'text-slate-500';
   }
+}
+
+// ── Custom Icon / Color ───────────────────────────────────────────────────────
+
+/** Vordefinierte Farb-Palette für benutzerdefinierte Geräte-Farben. */
+export const CUSTOM_COLORS: Array<{ id: string; label: string; swatch: string } & DeviceColorSet> = [
+  { id: 'amber',   label: 'Amber',   swatch: 'bg-amber-500',   text: 'text-amber-500',   bg: 'bg-amber-500/10' },
+  { id: 'blue',    label: 'Blau',    swatch: 'bg-blue-500',    text: 'text-blue-500',    bg: 'bg-blue-500/10' },
+  { id: 'green',   label: 'Grün',    swatch: 'bg-green-500',   text: 'text-green-500',   bg: 'bg-green-500/10' },
+  { id: 'red',     label: 'Rot',     swatch: 'bg-red-500',     text: 'text-red-500',     bg: 'bg-red-500/10' },
+  { id: 'violet',  label: 'Violett', swatch: 'bg-violet-500',  text: 'text-violet-400',  bg: 'bg-violet-500/10' },
+  { id: 'pink',    label: 'Pink',    swatch: 'bg-pink-500',    text: 'text-pink-500',    bg: 'bg-pink-500/10' },
+  { id: 'cyan',    label: 'Cyan',    swatch: 'bg-cyan-400',    text: 'text-cyan-400',    bg: 'bg-cyan-500/10' },
+  { id: 'orange',  label: 'Orange',  swatch: 'bg-orange-500',  text: 'text-orange-400',  bg: 'bg-orange-500/10' },
+  { id: 'teal',    label: 'Teal',    swatch: 'bg-teal-400',    text: 'text-teal-400',    bg: 'bg-teal-500/10' },
+  { id: 'sky',     label: 'Sky',     swatch: 'bg-sky-400',     text: 'text-sky-400',     bg: 'bg-sky-500/10' },
+  { id: 'emerald', label: 'Smaragd', swatch: 'bg-emerald-400', text: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+  { id: 'rose',    label: 'Rose',    swatch: 'bg-rose-400',    text: 'text-rose-400',    bg: 'bg-rose-500/10' },
+];
+
+/** Gibt die Farbe für ein Gerät zurück — respektiert `attributes.custom_color`. */
+export function getDeviceColors(device: Device): DeviceColorSet {
+  const customColor = device.attributes?.custom_color as string | undefined;
+  if (customColor) {
+    const match = CUSTOM_COLORS.find(c => c.id === customColor);
+    if (match) return { text: match.text, bg: match.bg };
+  }
+  return deviceColors[device.type as DeviceType] ?? deviceColors.other;
+}
+
+/** Gibt das Custom-Emoji zurück (oder null wenn keins gesetzt). */
+export function getDeviceEmoji(device: Device): string | null {
+  const emoji = device.attributes?.custom_emoji as string | undefined;
+  return emoji?.trim() || null;
 }
 
 export function isToggleable(type: DeviceType): boolean {

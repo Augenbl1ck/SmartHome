@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, Device, Room } from '@/lib/api';
 import { shellyBle, BleState } from '@/lib/bluetooth';
-import { deviceIcons, deviceLabels, deviceColors, isSensor, isToggleable } from '@/lib/devices';
+import { deviceIcons, deviceLabels, deviceColors, isSensor, isToggleable, getDeviceColors, getDeviceEmoji } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
 import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Power, Star, ChevronUp, ChevronDown, Square, Minus, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -273,7 +273,8 @@ export default function RoomClient({ room, initialDevices }: Props) {
         {devices.map((device) => {
           const Icon        = deviceIcons[device.type as DeviceType] ?? deviceIcons.other;
           const label       = deviceLabels[device.type as DeviceType] ?? 'Gerät';
-          const typeColor   = deviceColors[device.type as DeviceType] ?? deviceColors.other;
+          const typeColor   = getDeviceColors(device);
+          const emoji       = getDeviceEmoji(device);
           const toggleable  = isToggleable(device.type as DeviceType);
           const sensor      = isSensor(device.type as DeviceType);
           const isCover     = device.type === 'cover';
@@ -324,7 +325,10 @@ export default function RoomClient({ room, initialDevices }: Props) {
                     ? 'bg-green-500/15 text-green-600 dark:text-green-400'
                     : cn(typeColor.bg, typeColor.text)
                 )}>
-                  <Icon style={{ width: 16, height: 16 }} />
+                  {emoji
+                    ? <span className="text-base leading-none">{emoji}</span>
+                    : <Icon style={{ width: 16, height: 16 }} />
+                  }
                 </div>
                 <div className="min-w-0 flex-1 pt-0.5">
                   <p className="text-sm font-semibold leading-tight truncate">{device.name}</p>

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { api, Device, DeviceType, Room } from '@/lib/api';
-import { deviceLabels } from '@/lib/devices';
+import { deviceLabels, CUSTOM_COLORS } from '@/lib/devices';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -14,8 +14,10 @@ import {
 import {
   Pencil, Plus, Trash2, Wifi, LockKeyhole, LockKeyholeOpen, Timer,
   ChevronDown, Home, Cpu, Cloud, LayoutDashboard, Search, Loader2, Radio,
+  ChevronUp, X,
 } from 'lucide-react';
 import { usePinLockContext } from '@/components/PinLockProvider';
+import EmojiPicker from '@/components/EmojiPicker';
 import { cn } from '@/lib/utils';
 
 // ─────────────────────────────────────────────────────────────────
@@ -175,12 +177,15 @@ interface DiscoveredDevice {
 interface DeviceForm {
   name: string; type: DeviceType; room_id: string;
   mqtt_topic: string; mqtt_protocol: DeviceProtocol; ble_address: string; active: boolean;
-  vendorId: string; // 'zigbee' | 'shelly' | 'custom' | '' (bei Discovery-Import)
+  vendorId: string;
+  custom_emoji: string;
+  custom_color: string;
 }
 
 const emptyDevice = (): DeviceForm => ({
   name: '', type: 'plug', room_id: '', mqtt_topic: '',
   mqtt_protocol: 'zigbee2mqtt', ble_address: '', active: true, vendorId: 'zigbee',
+  custom_emoji: '', custom_color: '',
 });
 
 function deviceToForm(d: Device): DeviceForm {
@@ -209,6 +214,8 @@ function deviceToForm(d: Device): DeviceForm {
     ble_address: (d.attributes?.ble_address as string) ?? '',
     active: d.active,
     vendorId,
+    custom_emoji: (d.attributes?.custom_emoji as string) ?? '',
+    custom_color: (d.attributes?.custom_color as string) ?? '',
   };
 }
 
@@ -226,25 +233,35 @@ function DashboardWidgetsSection({ devices }: { devices: Device[] }) {
   const [selected, setSelected] = useState<number[]>([]);
   const [saved, setSaved] = useState(false);
 
-  // Beim Mount aus localStorage laden
-  useState(() => {
+  useEffect(() => {
     try {
       const raw = localStorage.getItem(WIDGETS_KEY);
       if (raw) setSelected(JSON.parse(raw));
     } catch { /* */ }
+  }, []);
+
+  const add = (id: number) => setSelected(prev =>
+    prev.includes(id) || prev.length >= 2 ? prev : [...prev, id]
+  );
+
+  const remove = (id: number) => setSelected(prev => prev.filter(x => x !== id));
+
+  const moveUp = (i: number) => setSelected(prev => {
+    if (i === 0) return prev;
+    const next = [...prev];
+    [next[i - 1], next[i]] = [next[i], next[i - 1]];
+    return next;
   });
 
-  const toggle = (id: number) => {
-    setSelected(prev => {
-      if (prev.includes(id)) return prev.filter(x => x !== id);
-      if (prev.length >= 2)  return prev; // max 2
-      return [...prev, id];
-    });
-  };
+  const moveDown = (i: number) => setSelected(prev => {
+    if (i >= prev.length - 1) return prev;
+    const next = [...prev];
+    [next[i], next[i + 1]] = [next[i + 1], next[i]];
+    return next;
+  });
 
   const save = () => {
     localStorage.setItem(WIDGETS_KEY, JSON.stringify(selected));
-    // Andere Tabs informieren (DashboardLive lauscht auf storage-Event)
     window.dispatchEvent(new StorageEvent('storage', { key: WIDGETS_KEY }));
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -257,44 +274,71 @@ function DashboardWidgetsSection({ devices }: { devices: Device[] }) {
     setTimeout(() => setSaved(false), 2000);
   };
 
+  const available = devices.filter(d => !selected.includes(d.id));
+
   return (
     <Section title="Dashboard-Widgets" icon={LayoutDashboard}>
-      <div className="px-4 py-3 space-y-3">
+      <div className="px-4 py-3 space-y-4">
         <p className="text-xs text-muted-foreground">
-          Wähle bis zu <strong>2 Geräte oder Sensoren</strong>, die oben auf dem Dashboard als Status-Kacheln angezeigt werden (nur lesend, kein Schalten).
+          Wähle bis zu <strong>2 Geräte</strong> als Status-Kacheln oben im Dashboard. Die Reihenfolge bestimmt die Anzeige.
         </p>
-        <div className="space-y-1 max-h-56 overflow-y-auto">
-          {devices.map(d => {
-            const checked = selected.includes(d.id);
-            const disabled = !checked && selected.length >= 2;
-            return (
-              <label key={d.id}
-                className={cn(
-                  'flex items-center gap-3 px-2 py-2 rounded-lg cursor-pointer select-none transition-colors',
-                  checked ? 'bg-primary/10 border border-primary/30' : 'border border-transparent hover:bg-accent',
-                  disabled && 'opacity-40 cursor-not-allowed'
-                )}
-              >
-                <input type="checkbox" checked={checked} disabled={disabled}
-                  onChange={() => toggle(d.id)}
-                  className="accent-primary h-4 w-4 shrink-0 cursor-pointer" />
-                <span className="text-sm font-medium flex-1 truncate">{d.name}</span>
-                <span className="text-xs text-muted-foreground shrink-0">{d.type.replace('sensor_', '')}</span>
-              </label>
-            );
-          })}
-          {devices.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">Keine Geräte vorhanden.</p>
-          )}
-        </div>
-        <p className="text-[11px] text-muted-foreground">
-          {selected.length}/2 ausgewählt
-          {selected.length === 0 && ' — Standard: erster Temp- und Feuchte-Sensor'}
-        </p>
+
+        {/* Ausgewählte (geordnet) */}
+        {selected.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Ausgewählt</p>
+            {selected.map((id, i) => {
+              const d = devices.find(x => x.id === id);
+              if (!d) return null;
+              return (
+                <div key={id} className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-2 py-1.5">
+                  <span className="text-xs font-bold text-primary w-4 shrink-0">{i + 1}</span>
+                  <span className="text-sm flex-1 truncate">{d.name}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">{d.type.replace('sensor_', '')}</span>
+                  <div className="flex gap-0.5 shrink-0">
+                    <button onClick={() => moveUp(i)} disabled={i === 0}
+                      className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
+                      <ChevronUp className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => moveDown(i)} disabled={i === selected.length - 1}
+                      className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => remove(id)}
+                      className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Verfügbare Geräte */}
+        {selected.length < 2 && available.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Hinzufügen</p>
+            <div className="max-h-44 overflow-y-auto space-y-0.5">
+              {available.map(d => (
+                <button key={d.id} onClick={() => add(d.id)}
+                  className="cursor-pointer w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-accent transition-colors">
+                  <Plus className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-sm flex-1 truncate">{d.name}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">{d.type.replace('sensor_', '')}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {devices.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-4">Keine Geräte vorhanden.</p>
+        )}
+
+        <p className="text-[11px] text-muted-foreground">{selected.length}/2 ausgewählt</p>
         <div className="flex gap-2">
-          <Button onClick={save} size="sm">
-            {saved ? '✓ Gespeichert' : 'Speichern'}
-          </Button>
+          <Button onClick={save} size="sm">{saved ? '✓ Gespeichert' : 'Speichern'}</Button>
           {selected.length > 0 && (
             <Button onClick={reset} size="sm" variant="outline">Zurücksetzen</Button>
           )}
@@ -417,8 +461,17 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     if (!form.room_id)     { setDeviceDialog(s => ({ ...s, error: 'Bitte einen Raum wählen.' })); return; }
     setDeviceDialog(s => ({ ...s, saving: true, error: '' }));
     try {
-      const attrs: Record<string, string> = { protocol: form.mqtt_protocol };
+  const attrs: Record<string, unknown> = { protocol: form.mqtt_protocol };
       if (form.ble_address.trim()) attrs.ble_address = form.ble_address.trim();
+      if (form.custom_emoji.trim()) attrs.custom_emoji = form.custom_emoji.trim();
+      if (form.custom_color) attrs.custom_color = form.custom_color;
+      // Laufzeit-Attribute (power_w, temperature usw.) erhalten
+      const existingAttrs = (deviceDialog.editing?.attributes ?? {}) as Record<string, unknown>;
+      const runtimeKeys = ['power_w', 'energy_wh', 'temperature', 'humidity', 'battery',
+        'on_since', 'on_duration_fired', 'local_temperature', 'setpoint'];
+      for (const k of runtimeKeys) {
+        if (existingAttrs[k] !== undefined) attrs[k] = existingAttrs[k];
+      }
 
       // Prefix automatisch voranstellen (z.B. "zigbee2mqtt/" für Zigbee-Geräte)
       const vendor = VENDOR_PRESETS.find(v => v.id === form.vendorId);
@@ -906,6 +959,46 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
               <input type="checkbox" className="h-5 w-5 rounded"
                 checked={deviceDialog.form.active}
                 onChange={e => patchDevice({ active: e.target.checked })} />
+            </div>
+
+            {/* ── Anzeige (Emoji + Farbe) ────────────────────────── */}
+            <div className="space-y-3 pt-2 border-t">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Anzeige (optional)</p>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Emoji-Icon</label>
+                <EmojiPicker
+                  value={deviceDialog.form.custom_emoji}
+                  onChange={v => patchDevice({ custom_emoji: v })}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Farbe</label>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <button
+                    type="button"
+                    onClick={() => patchDevice({ custom_color: '' })}
+                    className={cn(
+                      'h-6 w-6 rounded-full border-2 bg-muted flex items-center justify-center text-[10px] text-muted-foreground',
+                      !deviceDialog.form.custom_color ? 'border-primary ring-1 ring-primary' : 'border-transparent hover:border-muted-foreground'
+                    )}
+                  >✕</button>
+                  {CUSTOM_COLORS.map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      title={c.label}
+                      onClick={() => patchDevice({ custom_color: c.id })}
+                      className={cn(
+                        'h-6 w-6 rounded-full border-2 transition-all',
+                        c.swatch,
+                        deviceDialog.form.custom_color === c.id
+                          ? 'border-primary ring-1 ring-primary scale-110'
+                          : 'border-transparent hover:scale-105'
+                      )}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
 
             {deviceDialog.error && <p className="text-sm text-destructive">{deviceDialog.error}</p>}

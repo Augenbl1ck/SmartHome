@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Power, LayoutGrid } from 'lucide-react';
 import { api, Device, Room } from '@/lib/api';
 import { DeviceType } from '@/lib/api';
-import { deviceLabels, deviceIcons, deviceColors, isToggleable } from '@/lib/devices';
+import { deviceLabels, deviceIcons, deviceColors, isToggleable, getDeviceColors, getDeviceEmoji } from '@/lib/devices';
 import { DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { getEcho, disconnectEcho } from '@/lib/echo';
 import { cn } from '@/lib/utils';
@@ -210,11 +210,15 @@ export default function DashboardLive({ initialDevices, rooms }: Props) {
           ? widgetDevices.slice(0, 2).map(s => {
               const type   = s.type as DeviceType;
               const Icon   = deviceIcons[type] ?? deviceIcons.other;
-              const colors = deviceColors[type] ?? deviceColors.other;
+              const colors = getDeviceColors(s);
+              const emoji  = getDeviceEmoji(s);
               return (
                 <div key={s.id} className="rounded-2xl border bg-card p-4 flex items-center gap-3">
                   <div className={cn('rounded-xl p-2.5 shrink-0', colors.bg)}>
-                    <Icon className={cn('h-5 w-5', colors.text)} />
+                    {emoji
+                      ? <span className="text-lg leading-none">{emoji}</span>
+                      : <Icon className={cn('h-5 w-5', colors.text)} />
+                    }
                   </div>
                   <div className="min-w-0">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground truncate">
