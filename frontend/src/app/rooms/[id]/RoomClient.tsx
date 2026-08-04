@@ -85,30 +85,59 @@ export default function RoomClient({ room, initialDevices }: Props) {
   const [bleError, setBleError]   = useState<string | null>(null);
   const [favorites, setFavorites] = useState<number[]>([]);
   const [scanDevice, setScanDevice] = useState<Device | null>(null);
-  const [setpoints, setSetpoints] = useState<Map<number, number>>(new Map());
-  const [dimmerLevels, setDimmerLevels] = useState<Map<number, number>>(new Map());
   const [turningOff, setTurningOff] = useState(false);
 
-  // Beim Mount immer frische Gerätedaten laden (wichtig nach Navigation)
-  useEffect(() => {
-    api.getDevices(room.id).then(fresh => {
-      setDevices(fresh);
-      // Thermostat-Sollwerte und Dimmer-Level aus Geräte-Attributen initialisieren
-      const spMap = new Map<number, number>();
-      const dlMap = new Map<number, number>();
-      for (const d of fresh) {
-        if (d.type === 'thermostat') {
-          const sp = Number(d.attributes?.setpoint ?? d.status);
-          spMap.set(d.id, isNaN(sp) ? 20 : sp);
-        }
-        if (['dimmer', 'rgb', 'led'].includes(d.type)) {
-          const lv = Number(d.attributes?.brightness ?? (d.status !== 'on' && d.status !== 'off' ? d.status : 50));
-          dlMap.set(d.id, isNaN(lv) ? 50 : Math.min(100, Math.max(0, lv)));
-        }
+  // Setpoints + Dimmer-Level sofort aus Server-Daten (kein Flicker)
+  const [setpoints, setSetpoints] = useState<Map<number, number>>(() => {
+    const m = new Map<number, number>();
+    for (const d of initialDevices) {
+      if (d.type === 'thermostat') {
+        const sp = Number(d.attributes?.setpoint ?? d.status);
+        m.set(d.id, isNaN(sp) ? 20 : sp);
       }
-      setSetpoints(spMap);
-      setDimmerLevels(dlMap);
-    }).catch(() => {});
+    }
+    return m;
+  });
+  const [dimmerLevels, setDimmerLevels] = useState<Map<number, number>>(() => {
+    const m = new Map<number, number>();
+    for (const d of initialDevices) {
+      if (['dimmer', 'rgb', 'led'].includes(d.type)) {
+        const lv = Number(d.attributes?.brightness ?? (d.status !== 'on' && d.status !== 'off' ? d.status : 50));
+        m.set(d.id, isNaN(lv) ? 50 : Math.min(100, Math.max(0, lv)));
+      }
+    }
+    return m;
+  });
+
+  // Geräte nur bei Focus neu laden (SSR-Daten sind bereits aktuell)
+  useEffect(() => {
+    const refresh = () => {
+      api.getDevices(room.id).then(fresh => {
+        setDevices(fresh);
+        setSetpoints(prev => {
+          const m = new Map(prev);
+          for (const d of fresh) {
+            if (d.type === 'thermostat') {
+              const sp = Number(d.attributes?.setpoint ?? d.status);
+              if (!isNaN(sp)) m.set(d.id, sp);
+            }
+          }
+          return m;
+        });
+        setDimmerLevels(prev => {
+          const m = new Map(prev);
+          for (const d of fresh) {
+            if (['dimmer', 'rgb', 'led'].includes(d.type)) {
+              const lv = Number(d.attributes?.brightness ?? (d.status !== 'on' && d.status !== 'off' ? d.status : 50));
+              if (!isNaN(lv)) m.set(d.id, Math.min(100, Math.max(0, lv)));
+            }
+          }
+          return m;
+        });
+      }).catch(() => {});
+    };
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.id]);
 

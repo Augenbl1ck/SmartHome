@@ -86,16 +86,23 @@ export default function QuickAccess({ initialDevices }: Props) {
     setError(null);
     setToggling(t => new Set(t).add(device.id));
     const newStatus = device.status === 'on' ? 'off' : 'on';
+    // Optimistisch: sofort den Dashboard-Room-Tile updaten (keine API-Wartzeit)
     setDevices(prev => prev.map(d => d.id === device.id ? { ...d, status: newStatus } : d));
+    emitDeviceUpdate(device.id, newStatus);
     try {
       if (ble && !hasMac && shellyBle.isSupported()) {
         try { await shellyBle.switchSet(device.id, newStatus === 'on'); } catch { /* Bridge übernimmt */ }
       }
       const updated = await api.toggleDevice(device.id);
-      setDevices(prev => prev.map(d => d.id === device.id ? updated : d));
-      emitDeviceUpdate(device.id, updated.status);
+      // Mit bestätigtem Status überschreiben falls abweichend
+      if (updated.status !== newStatus) {
+        setDevices(prev => prev.map(d => d.id === device.id ? updated : d));
+        emitDeviceUpdate(device.id, updated.status);
+      }
     } catch (err) {
+      // Rollback bei Fehler
       setDevices(prev => prev.map(d => d.id === device.id ? { ...d, status: device.status } : d));
+      emitDeviceUpdate(device.id, device.status);
       const msg = err instanceof Error ? err.message : String(err);
       setError(`Fehler bei "${device.name}": ${msg}`);
     } finally {

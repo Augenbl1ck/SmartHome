@@ -22,7 +22,8 @@ function getFormattedDate(): string {
 }
 
 export default function DashboardLive({ initialDevices, rooms, initialScenes }: Props) {
-  const [devices,  setDevices]  = useState<Device[] | null>(null);
+  // Server-Daten sofort nutzen → keine Farbverzögerung beim ersten Render
+  const [devices,  setDevices]  = useState<Device[]>(initialDevices);
   const [mounted,  setMounted]  = useState(false);
   const [time,     setTime]     = useState('');
   const [running,  setRunning]  = useState<Set<number>>(new Set());
@@ -52,7 +53,7 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes }: 
 
     const handler = (e: Event) => {
       const { id, status } = (e as CustomEvent<{ id: number; status: string }>).detail;
-      setDevices(prev => prev ? prev.map(d => d.id === id ? { ...d, status } : d) : prev);
+      setDevices(prev => prev.map(d => d.id === id ? { ...d, status } : d));
     };
     window.addEventListener(DEVICE_UPDATE_EVENT, handler);
 
@@ -63,12 +64,10 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes }: 
       echo.channel('devices').listen('.device.updated', (data: {
         id: number; status: string; attributes: Record<string, unknown>; last_seen: string;
       }) => {
-        setDevices(prev => prev
-          ? prev.map(d => d.id === data.id
-              ? { ...d, status: data.status, attributes: data.attributes, last_seen: data.last_seen }
-              : d)
-          : prev
-        );
+        setDevices(prev => prev.map(d => d.id === data.id
+          ? { ...d, status: data.status, attributes: data.attributes, last_seen: data.last_seen }
+          : d
+        ));
       });
     } catch (err) {
       console.warn('[WebSocket] Reverb nicht erreichbar, nur Polling aktiv', err);
@@ -83,8 +82,7 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes }: 
     };
   }, [refresh]);
 
-  const loaded        = devices !== null;
-  const list          = devices ?? [];
+  const list          = devices;
   const activeDevices = list.filter(d => d.status === 'on' && isToggleable(d.type as DeviceType)).length;
 
   const activateScene = async (scene: Scene) => {
@@ -104,19 +102,14 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes }: 
 
       {/* ── Panel-Header: Uhr + Wetter + Status + Action ─────────── */}
       <div className="flex items-center gap-4 rounded-2xl border bg-card p-5">
-        {/* Uhr + Datum */}
+        {/* Uhr + Datum — suppressHydrationWarning: Server rendert leer, Client überschreibt sofort */}
         <div className="min-w-0">
-          {mounted ? (
-            <>
-              <p className="text-5xl font-bold tabular-nums leading-none tracking-tight">{time}</p>
-              <p className="text-sm text-muted-foreground mt-1">{getFormattedDate()}</p>
-            </>
-          ) : (
-            <div className="space-y-2">
-              <div className="h-12 w-28 bg-muted rounded-xl animate-pulse" />
-              <div className="h-4 w-40 bg-muted rounded animate-pulse" />
-            </div>
-          )}
+          <p className="text-5xl font-bold tabular-nums leading-none tracking-tight" suppressHydrationWarning>
+            {time || '\u00a0'}
+          </p>
+          <p className="text-sm text-muted-foreground mt-1" suppressHydrationWarning>
+            {mounted ? getFormattedDate() : '\u00a0'}
+          </p>
         </div>
 
         <div className="flex-1" />
@@ -124,9 +117,8 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes }: 
         {/* Wetter (kompakt) */}
         {mounted && <WeatherWidget compact />}
 
-        {/* Aktiv-Badge */}
-        {loaded && (
-          <div className={cn(
+        {/* Aktiv-Badge — immer sichtbar (Server-Daten vorhanden) */}
+        <div className={cn(
             'flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-xl transition-colors',
             activeDevices > 0
               ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
@@ -138,10 +130,9 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes }: 
             )} />
             {activeDevices > 0 ? `${activeDevices} aktiv` : 'Alles aus'}
           </div>
-        )}
 
         {/* Alle ausschalten */}
-        {loaded && <DashboardActions devices={list} />}
+        <DashboardActions devices={list} />
       </div>
 
       {/* ── Szenen-Leiste ────────────────────────────────────────── */}
@@ -225,7 +216,7 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes }: 
       </div>
 
       {/* ── Schnellzugriff (nur wenn Favoriten gesetzt) ──────────── */}
-      {mounted && <QuickAccess initialDevices={loaded ? list : initialDevices} />}
+      {mounted && <QuickAccess initialDevices={list} />}
 
     </div>
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useTransition } from 'react';
 import { api, Device, DeviceType, Room } from '@/lib/api';
 import { deviceLabels, CUSTOM_COLORS } from '@/lib/devices';
 import { Button } from '@/components/ui/button';
@@ -433,6 +433,10 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
   const [devices, setDevices] = useState(initialDevices);
   const pinLock = usePinLockContext();
   const [view, setView] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  const navigate = (target: string | null) =>
+    startTransition(() => setView(target));
 
   // ── Gerät-Dialog ────────────────────────────────────────────────
   const [deviceDialog, setDeviceDialog] = useState<{
@@ -631,7 +635,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
       {/* ── Header ────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 mb-5">
         {view && (
-          <button onClick={() => setView(null)}
+          <button onClick={() => navigate(null)}
             className="cursor-pointer h-12 w-12 rounded-full bg-muted flex items-center justify-center shrink-0 active:scale-90 transition-all">
             <ArrowLeft className="h-5 w-5" />
           </button>
@@ -641,7 +645,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
 
       {/* ── Kategorien-Übersicht ──────────────────────────────────── */}
       {!view && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div key="main" className="grid grid-cols-2 gap-3 sm:grid-cols-4 animate-page-in">
           {CATEGORIES.map(cat => {
             const Icon = cat.icon;
             const [textCls, bgCls] = cat.color.trim().split(/\s+/);
@@ -663,7 +667,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
               );
             }
             return (
-              <button key={cat.id} onClick={() => setView(cat.id)}
+              <button key={cat.id} onClick={() => navigate(cat.id)}
                 className="cursor-pointer flex flex-col items-center text-center rounded-2xl border bg-card p-4 transition-all active:scale-[0.97] hover:bg-accent/50">
                 {inner}
               </button>
@@ -674,6 +678,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
 
       {/* ── Geräte ────────────────────────────────────────────────── */}
       {view === 'devices' && (
+        <div key="devices" className="animate-page-in">
         <Section title="Geräte" icon={Cpu} badge={devices.length} alwaysOpen>
         <div className="p-3 space-y-2">
           <Button size="sm" className="w-full" onClick={() => openDevice()}>
@@ -715,11 +720,13 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
           })}
         </div>
       </Section>
+        </div>
       )}
 
       {/* ── Räume ─────────────────────────────────────────────────── */}
       {view === 'rooms' && (
-      <Section title="Räume" icon={Home} badge={rooms.length} alwaysOpen>
+        <div key="rooms" className="animate-page-in">
+        <Section title="Räume" icon={Home} badge={rooms.length} alwaysOpen>
         <div className="p-3 space-y-2">
           <Button size="sm" className="w-full" variant="outline" onClick={() => openRoom()}>
             <Plus className="h-4 w-4 mr-1" /> Neuer Raum
@@ -753,12 +760,14 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
           })}
         </div>
       </Section>
+        </div>
       )}
 
       {/* ── PIN & Sicherheit ──────────────────────────────────────── */}
       {view === 'security' && (
-      <Section title="PIN & Bildschirmsperre" icon={LockKeyhole} alwaysOpen>
-        <div className="divide-y">
+        <div key="security" className="animate-page-in">
+        <Section title="PIN & Bildschirmsperre" icon={LockKeyhole} alwaysOpen>
+          <div className="divide-y">
 
           {/* PIN aktivieren / ändern / entfernen */}
           <div className="flex items-center justify-between px-4 py-3 gap-3">
@@ -840,11 +849,12 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
           )}
         </div>
       </Section>
+        </div>
       )}
 
-      {view === 'dashboard' && <DashboardWidgetsSection devices={devices} />}
-      {view === 'weather'   && <WeatherSection />}
-      {view === 'kiosk'     && <KioskSection />}
+      {view === 'dashboard' && <div key="dashboard" className="animate-page-in"><DashboardWidgetsSection devices={devices} /></div>}
+      {view === 'weather'   && <div key="weather"   className="animate-page-in"><WeatherSection /></div>}
+      {view === 'kiosk'     && <div key="kiosk"     className="animate-page-in"><KioskSection /></div>}
 
       {/* ═══════════════════════════════════════════════════════════
           Dialoge
