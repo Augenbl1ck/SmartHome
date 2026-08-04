@@ -63,6 +63,7 @@ export const api = {
   createAutomation: (data: Partial<Automation>) => request<Automation>('/automations', { method: 'POST', body: JSON.stringify(data) }),
   updateAutomation: (id: number, data: Partial<Automation>) => request<Automation>(`/automations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteAutomation: (id: number) => request<void>(`/automations/${id}`, { method: 'DELETE' }),
+  getAutomationLogs: () => request<AutomationLog[]>('/automation-logs'),
 };
 
 // Types
@@ -129,4 +130,12 @@ export interface Automation {
   trigger: Record<string, unknown>;
   action: Record<string, unknown>;
   enabled: boolean;
+}
+
+export interface AutomationLog {
+  id: number;
+  automation_id: number | null;
+  automation_name: string;
+  action_summary: string;
+  fired_at: string;
 }

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { api, Automation, Device, Room } from '@/lib/api';
+import { api, Automation, AutomationLog, Device, Room } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -15,8 +15,9 @@ import {
 } from '@/components/ui/select';
 import {
   Pencil, Plus, Trash2, Clock, Zap, ChevronRight,
-  Thermometer, Droplets, Activity, DoorOpen, Timer,
+  Thermometer, Droplets, Activity, DoorOpen, Timer, History,
 } from 'lucide-react';
+import { getEcho } from '@/lib/echo';
 
 // ── Trigger-Typen ─────────────────────────────────────────────────────────────
 
@@ -336,12 +337,15 @@ interface Props {
   initialAutomations: Automation[];
   devices: Device[];
   rooms: Room[];
+  initialLogs: AutomationLog[];
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
-export default function AutomationsClient({ initialAutomations, devices, rooms }: Props) {
+export default function AutomationsClient({ initialAutomations, devices, rooms, initialLogs }: Props) {
   const [automations, setAutomations] = useState(initialAutomations);
+  const [logs, setLogs]               = useState<AutomationLog[]>(initialLogs);
+  const [activeTab, setActiveTab]     = useState<'automations' | 'history'>('automations');
 
   const [dialog, setDialog] = useState<{
     open: boolean;
@@ -359,6 +363,27 @@ export default function AutomationsClient({ initialAutomations, devices, rooms }
 
   const patchForm = (patch: Partial<FormState>) =>
     setDialog((s) => ({ ...s, form: { ...s.form, ...patch } }));
+
+  // Echtzeit-Updates: neuer Log-Eintrag wenn Automation feuert
+  useEffect(() => {
+    let echo: ReturnType<typeof getEcho> | null = null;
+    try {
+      echo = getEcho();
+      echo.channel('automations').listen('.automation.fired', (data: {
+        name: string; summary: string;
+      }) => {
+        const entry: AutomationLog = {
+          id: Date.now(),
+          automation_id: null,
+          automation_name: data.name,
+          action_summary: data.summary,
+          fired_at: new Date().toISOString(),
+        };
+        setLogs(prev => [entry, ...prev].slice(0, 200));
+      });
+    } catch { /* Reverb nicht erreichbar */ }
+    return () => { if (echo) echo.leaveChannel('automations'); };
+  }, []);
 
   const handleToggle = async (automation: Automation) => {
     const updated = await api.updateAutomation(automation.id, { enabled: !automation.enabled });
@@ -421,12 +446,86 @@ export default function AutomationsClient({ initialAutomations, devices, rooms }
 
   return (
     <div className="space-y-6 max-w-3xl">
+      {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Automationen</h1>
-        <Button size="sm" onClick={() => setDialog({ open: true, form: emptyForm(), saving: false, error: '' })}>
-          <Plus className="h-4 w-4 mr-1" /> Neue Automation
-        </Button>
+        {activeTab === 'automations' && (
+          <Button size="sm" onClick={() => setDialog({ open: true, form: emptyForm(), saving: false, error: '' })}>
+            <Plus className="h-4 w-4 mr-1" /> Neue Automation
+          </Button>
+        )}
       </div>
+
+      {/* ── Tab-Navigation ─────────────────────────────────────────────── */}
+      <div className="flex gap-1 rounded-lg border p-1 w-fit">
+        <button
+          onClick={() => setActiveTab('automations')}
+          className={cn(
+            'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+            activeTab === 'automations'
+              ? 'bg-primary text-primary-foreground'
+              : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <Zap className="h-3.5 w-3.5" />
+          Automationen
+          <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
+            {automations.length}
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveTab('history')}
+          className={cn(
+            'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+            activeTab === 'history'
+              ? 'bg-primary text-primary-foreground'
+              : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <History className="h-3.5 w-3.5" />
+          Verlauf
+          {logs.length > 0 && (
+            <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
+              {logs.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* ── Verlauf-Tab ────────────────────────────────────────────────── */}
+      {activeTab === 'history' && (
+        <div className="space-y-2">
+          {logs.length === 0 && (
+            <p className="text-sm text-muted-foreground py-8 text-center">
+              Noch keine Automationen ausgeführt.
+            </p>
+          )}
+          {logs.map((log) => (
+            <div key={log.id} className="flex items-start gap-3 rounded-xl border bg-card px-4 py-3">
+              <div className="rounded-lg bg-amber-500/10 p-1.5 shrink-0 mt-0.5">
+                <Zap className="h-3.5 w-3.5 text-amber-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium leading-tight">{log.automation_name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{log.action_summary}</p>
+              </div>
+              <time
+                className="text-xs text-muted-foreground shrink-0 tabular-nums"
+                title={new Date(log.fired_at).toLocaleString('de-DE')}
+              >
+                {new Date(log.fired_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
+                {' '}
+                <span className="hidden sm:inline">
+                  {new Date(log.fired_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}
+                </span>
+              </time>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Automationen-Tab ───────────────────────────────────────────── */}
+      {activeTab === 'automations' && (<>
 
       {automations.length === 0 && (
         <p className="text-muted-foreground text-sm">Noch keine Automationen vorhanden.</p>
@@ -802,6 +901,7 @@ export default function AutomationsClient({ initialAutomations, devices, rooms }
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </>)}
     </div>
   );
 }

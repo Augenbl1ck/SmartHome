@@ -1,4 +1,4 @@
-import { Automation, Device, Room, Scene } from './api';
+import { Automation, AutomationLog, Device, Room, Scene } from './api';
 
 const API_BASE = process.env.API_URL ?? 'http://localhost:8000/api/v1';
 
@@ -17,5 +17,6 @@ export const serverApi = {
     serverFetch<Device[]>(`/devices${roomId ? `?room_id=${roomId}` : ''}`),
   getRoom: (id: number) => serverFetch<Room>(`/rooms/${id}`),
   getAutomations: () => serverFetch<Automation[]>('/automations'),
+  getAutomationLogs: () => serverFetch<AutomationLog[]>('/automation-logs'),
   getScenes: () => serverFetch<Scene[]>('/scenes'),
 };

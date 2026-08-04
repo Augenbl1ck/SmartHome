@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Events\AutomationFired;
 use App\Jobs\DelayedDeviceAction;
 use App\Models\Automation;
+use App\Models\AutomationLog;
 use App\Models\Device;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -231,6 +232,11 @@ class AutomationEngine
         }
 
         if ($automationName) {
+            AutomationLog::create([
+                'automation_name' => $automationName,
+                'action_summary'  => $summary,
+                'fired_at'        => now(),
+            ]);
             AutomationFired::dispatch($automationName, $summary);
         }
     }
