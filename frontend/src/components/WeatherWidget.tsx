@@ -39,7 +39,7 @@ function WeatherIcon({ icon, className }: { icon: string; className?: string }) 
   return <Cloud className={cls} />;
 }
 
-export default function WeatherWidget() {
+export default function WeatherWidget({ compact = false }: { compact?: boolean }) {
   const [cfg, setCfg]     = useState<WeatherConfig | null>(null);
   const [data, setData]   = useState<WeatherData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -78,6 +78,20 @@ export default function WeatherWidget() {
   }, [cfg]);
 
   if (!mounted) return null;
+
+  const unit = cfg?.unit === 'imperial' ? '°F' : '°C';
+
+  // Kompakter Inline-Modus für Dashboard-Header
+  if (compact) {
+    if (!data) return null;
+    return (
+      <div className="flex items-center gap-2 text-sm">
+        <WeatherIcon icon={data.icon} className="h-5 w-5 text-amber-500" />
+        <span className="font-semibold tabular-nums">{data.temp}{unit}</span>
+        <span className="text-muted-foreground hidden sm:inline truncate max-w-[80px]">{data.city}</span>
+      </div>
+    );
+  }
 
   // Nicht konfiguriert
   if (!cfg?.apiKey || !cfg?.city) {
@@ -119,8 +133,7 @@ export default function WeatherWidget() {
 
   if (!data) return null;
 
-  const unit = cfg.unit === 'imperial' ? '°F' : '°C';
-  const windUnit = cfg.unit === 'imperial' ? 'mph' : 'km/h';
+  const windUnit = cfg?.unit === 'imperial' ? 'mph' : 'km/h';
 
   return (
     <div className="rounded-2xl border bg-card p-5">

@@ -6,6 +6,7 @@ import { isToggleable } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
 import { PowerOff, Loader2 } from 'lucide-react';
 import { emitDeviceUpdate } from '@/lib/device-events';
+import { cn } from '@/lib/utils';
 
 interface Props { devices: Device[] }
 
@@ -36,15 +37,21 @@ export default function DashboardActions({ devices }: Props) {
     d => d.status === 'on' && isToggleable(d.type as DeviceType)
   ).length;
 
-  if (activeCount === 0 && !done) return null;
+  if (activeCount === 0 && !done && !loading) {
+    // Immer sichtbar, nur deaktiviert
+  }
 
   return (
     <button
       onClick={turnAllOff}
       disabled={loading || activeCount === 0}
-      className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-3
-        text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors
-        disabled:opacity-50 w-full sm:w-auto active:scale-[0.97]"
+      className={cn(
+        'flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition-all active:scale-[0.97]',
+        'disabled:cursor-not-allowed',
+        activeCount > 0 || done
+          ? 'border-destructive/30 bg-destructive/5 text-destructive hover:bg-destructive/10'
+          : 'border-border bg-muted text-muted-foreground opacity-50'
+      )}
     >
       {loading
         ? <Loader2 className="h-4 w-4 animate-spin" />
