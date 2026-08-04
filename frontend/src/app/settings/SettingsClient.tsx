@@ -282,8 +282,8 @@ function DashboardWidgetsSection({ devices }: { devices: Device[] }) {
   const available = devices.filter(d => !selected.includes(d.id));
 
   return (
-    <Section title="Dashboard-Widgets" icon={LayoutDashboard}>
-      <div className="px-4 py-3 space-y-4">
+    <div className="space-y-4">
+      <div className="space-y-4">
         <p className="text-xs text-muted-foreground">
           Wähle bis zu <strong>2 Geräte</strong> als Status-Kacheln oben im Dashboard. Die Reihenfolge bestimmt die Anzeige.
         </p>
@@ -349,7 +349,7 @@ function DashboardWidgetsSection({ devices }: { devices: Device[] }) {
           )}
         </div>
       </div>
-    </Section>
+    </div>
   );
 }
 
@@ -378,10 +378,9 @@ function WeatherSection() {
   };
 
   return (
-    <Section title="Wetter-Widget" icon={Cloud}>
-      <div className="divide-y">
-        <div className="px-4 py-3 space-y-3">
-          <Field label="Stadt" value={city} onChange={setCity} placeholder="z.B. Berlin" />
+    <div className="divide-y rounded-2xl border bg-card overflow-hidden">
+      <div className="px-4 py-3 space-y-3">
+        <Field label="Stadt" value={city} onChange={setCity} placeholder="z.B. Berlin" />
           <div className="space-y-1">
             <label className="block text-sm font-medium">Einheit</label>
             <select value={unit} onChange={e => setUnit(e.target.value as 'metric' | 'imperial')}
@@ -394,16 +393,14 @@ function WeatherSection() {
             {saved ? '✓ Gespeichert' : 'Speichern'}
           </Button>
         </div>
-      </div>
-    </Section>
+    </div>
   );
 }
 
 function KioskSection() {
   const { kioskMode, setKioskMode } = useKiosk();
   return (
-    <Section title="Kiosk-Modus" icon={LockKeyhole}>
-      <div className="px-4 py-3 space-y-3">
+    <div className="rounded-2xl border bg-card px-4 py-3 space-y-3">
         <p className="text-xs text-muted-foreground">
           Vollbild-Modus für Wandbildschirme. Versteckt die Navigationsleiste und
           zeigt stattdessen eine Room-Schnellleiste unten. Nach 5 Min. Inaktivität
@@ -423,8 +420,7 @@ function KioskSection() {
             className="h-5 w-5 rounded accent-primary cursor-pointer"
           />
         </div>
-      </div>
-    </Section>
+    </div>
   );
 }
 
@@ -678,9 +674,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
 
       {/* ── Geräte ────────────────────────────────────────────────── */}
       {view === 'devices' && (
-        <div key="devices" className="animate-page-in">
-        <Section title="Geräte" icon={Cpu} badge={devices.length} alwaysOpen>
-        <div className="p-3 space-y-2">
+        <div key="devices" className="animate-page-in space-y-3">
           <Button size="sm" className="w-full" onClick={() => openDevice()}>
             <Plus className="h-4 w-4 mr-1" /> Neues Gerät
           </Button>
@@ -719,15 +713,11 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
             );
           })}
         </div>
-      </Section>
-        </div>
       )}
 
       {/* ── Räume ─────────────────────────────────────────────────── */}
       {view === 'rooms' && (
-        <div key="rooms" className="animate-page-in">
-        <Section title="Räume" icon={Home} badge={rooms.length} alwaysOpen>
-        <div className="p-3 space-y-2">
+        <div key="rooms" className="animate-page-in space-y-3">
           <Button size="sm" className="w-full" variant="outline" onClick={() => openRoom()}>
             <Plus className="h-4 w-4 mr-1" /> Neuer Raum
           </Button>
@@ -759,15 +749,11 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
             );
           })}
         </div>
-      </Section>
-        </div>
       )}
 
       {/* ── PIN & Sicherheit ──────────────────────────────────────── */}
       {view === 'security' && (
-        <div key="security" className="animate-page-in">
-        <Section title="PIN & Bildschirmsperre" icon={LockKeyhole} alwaysOpen>
-          <div className="divide-y">
+        <div key="security" className="animate-page-in divide-y rounded-2xl border bg-card overflow-hidden">
 
           {/* PIN aktivieren / ändern / entfernen */}
           <div className="flex items-center justify-between px-4 py-3 gap-3">
@@ -847,8 +833,6 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
               </Button>
             </div>
           )}
-        </div>
-      </Section>
         </div>
       )}
 
