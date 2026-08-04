@@ -6,7 +6,7 @@ import { api, Device, Room } from '@/lib/api';
 import { shellyBle, BleState } from '@/lib/bluetooth';
 import { deviceIcons, deviceLabels, deviceColors, isSensor, isToggleable, getDeviceColors, getDeviceEmoji } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
-import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Power, Star, ChevronUp, ChevronDown, Square, Minus, Plus } from 'lucide-react';
+import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Star, ChevronUp, ChevronDown, Square, Minus, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import DeviceHistory from '@/components/DeviceHistory';
 import SensorChart from '@/components/SensorChart';
@@ -14,6 +14,37 @@ import ShellyPlugPanel from '@/components/ShellyPlugPanel';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { getEcho, disconnectEcho } from '@/lib/echo';
 import BleScanDialog from '@/components/BleScanDialog';
+
+// Tile-Hintergrundfarbe wenn Gerät aktiv ist (nach Typ)
+function getActiveTileClasses(device: Device): string {
+  const type = device.type as DeviceType;
+  const customColor = device.attributes?.custom_color as string | undefined;
+  if (customColor) {
+    const colorMap: Record<string, string> = {
+      amber: 'bg-amber-500/15 border-amber-400/40', blue: 'bg-blue-500/15 border-blue-400/40',
+      green: 'bg-green-500/15 border-green-400/40', red: 'bg-red-500/15 border-red-400/40',
+      violet: 'bg-violet-500/15 border-violet-400/40', pink: 'bg-pink-500/15 border-pink-400/40',
+      cyan: 'bg-cyan-500/15 border-cyan-400/40', orange: 'bg-orange-500/15 border-orange-400/40',
+      teal: 'bg-teal-500/15 border-teal-400/40', sky: 'bg-sky-500/15 border-sky-400/40',
+      emerald: 'bg-emerald-500/15 border-emerald-400/40', rose: 'bg-rose-500/15 border-rose-400/40',
+    };
+    if (colorMap[customColor]) return colorMap[customColor];
+  }
+  switch (type) {
+    case 'light': case 'dimmer': case 'rgb': case 'led':
+      return 'bg-amber-500/15 border-amber-400/40';
+    case 'plug': case 'switch': case 'energy_meter':
+      return 'bg-blue-500/15 border-blue-400/40';
+    case 'fan':
+      return 'bg-cyan-500/15 border-cyan-400/40';
+    case 'thermostat':
+      return 'bg-orange-500/15 border-orange-400/40';
+    case 'valve':
+      return 'bg-teal-500/15 border-teal-400/40';
+    default:
+      return 'bg-primary/10 border-primary/30';
+  }
+}
 
 interface Props {
   room: Room;
@@ -269,369 +300,296 @@ export default function RoomClient({ room, initialDevices }: Props) {
       )}
 
       {/* ── Geräte-Grid ───────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {devices.map((device) => {
-          const Icon        = deviceIcons[device.type as DeviceType] ?? deviceIcons.other;
-          const label       = deviceLabels[device.type as DeviceType] ?? 'Gerät';
-          const typeColor   = getDeviceColors(device);
-          const emoji       = getDeviceEmoji(device);
-          const toggleable  = isToggleable(device.type as DeviceType);
-          const sensor      = isSensor(device.type as DeviceType);
-          const isCover     = device.type === 'cover';
-          const isButton    = device.type === 'button';
-          const isTherm     = device.type === 'thermostat';
-          const isDimmer    = device.type === 'dimmer';
-          const isRgb       = device.type === 'rgb';
-          const isLed       = device.type === 'led';
-          const isFan       = device.type === 'fan';
-          const isValve     = device.type === 'valve';
-          const ble         = isBleDevice(device);
-          const useBridge   = ble && hasMac(device);
-          const useBleWeb   = ble && !useBridge;
-          const bleState    = getBleState(device.id);
-          const bleConn     = bleState === 'connected';
-          const isOn        = device.status === 'on';
-          const isActive    = isOn
+          const Icon       = deviceIcons[device.type as DeviceType] ?? deviceIcons.other;
+          const typeColor  = getDeviceColors(device);
+          const emoji      = getDeviceEmoji(device);
+          const toggleable = isToggleable(device.type as DeviceType);
+          const sensor     = isSensor(device.type as DeviceType);
+          const isCover    = device.type === 'cover';
+          const isButton   = device.type === 'button';
+          const isTherm    = device.type === 'thermostat';
+          const isDimmer   = device.type === 'dimmer';
+          const isRgb      = device.type === 'rgb';
+          const isLed      = device.type === 'led';
+          const isFan      = device.type === 'fan';
+          const isValve    = device.type === 'valve';
+          const ble        = isBleDevice(device);
+          const useBridge  = ble && hasMac(device);
+          const useBleWeb  = ble && !useBridge;
+          const bleState   = getBleState(device.id);
+          const isOn       = device.status === 'on';
+          const isActive   = isOn
             || (isFan   && ['low', 'medium', 'high'].includes(device.status))
             || (isTherm && !['off', 'unknown', ''].includes(device.status));
-          const isPending   = pending.has(device.id);
-          const isDisabled  = isPending;
+          const isPending  = pending.has(device.id);
+          const isDisabled = isPending;
+
+          // Ganzes Tile = Tap für einfache An/Aus-Geräte
+          const isTileTap = !sensor && ['light', 'plug', 'switch', 'valve', 'fan'].includes(device.type);
+
+          // Statustext unter dem Gerätenamen
+          const statusLabel: string | null = sensor ? null
+            : isFan ? (device.status === 'low' ? 'Niedrig' : device.status === 'medium' ? 'Mittel' : device.status === 'high' ? 'Hoch' : isOn ? 'An' : 'Aus')
+            : (isTherm || isDimmer || isRgb || isLed || isCover) ? null
+            : isOn ? 'An' : 'Aus';
 
           return (
             <div
               key={device.id}
+              onClick={isTileTap && !isDisabled ? () => handleToggle(device) : undefined}
               className={cn(
-                'relative rounded-xl border p-4 transition-all min-h-[112px]',
+                'relative rounded-2xl border p-5 transition-all duration-300 min-h-[130px]',
+                isTileTap && !isDisabled && 'cursor-pointer select-none active:scale-[0.97]',
                 isActive && !sensor
-                  ? 'border-green-500/25 bg-green-500/[0.04]'
-                  : 'border-border bg-card',
-                useBridge && toggleable && !sensor && 'pb-15'
+                  ? getActiveTileClasses(device)
+                  : 'bg-card border-border',
+                isPending && 'opacity-60',
               )}
             >
-              {/* Favoriten-Stern oben links */}
+              {/* ── Favoriten-Stern ──────────────────────────────── */}
               <button
-                onClick={() => toggleFav(device.id)}
-                className="cursor-pointer absolute top-2 right-2 h-6 w-6 flex items-center justify-center rounded-full hover:bg-accent transition-colors z-10"
+                onClick={e => { e.stopPropagation(); toggleFav(device.id); }}
+                className="cursor-pointer absolute top-3 right-3 h-9 w-9 flex items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors z-10"
                 aria-label="Favorit"
               >
-                <Star className={cn('h-3.5 w-3.5', favorites.includes(device.id) ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground')} />
+                <Star className={cn('h-4 w-4', favorites.includes(device.id) ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground')} />
               </button>
 
-              {/* Icon + Name — rechts Platz für Power-Button */}
-              <div className={cn('flex items-start gap-2', toggleable && !sensor && 'pr-12')}>
+              {/* ── Icon + Name + Status ──────────────────────────── */}
+              <div className="flex items-start gap-3 pr-10">
                 <div className={cn(
-                  'h-8 w-8 rounded-xl flex items-center justify-center shrink-0',
+                  'h-12 w-12 rounded-xl flex items-center justify-center shrink-0 transition-all duration-300',
                   isActive && !sensor
-                    ? 'bg-green-500/15 text-green-600 dark:text-green-400'
-                    : cn(typeColor.bg, typeColor.text)
+                    ? cn(typeColor.bg.replace('/10', '/20'), typeColor.text)
+                    : 'bg-muted text-muted-foreground'
                 )}>
                   {emoji
-                    ? <span className="text-base leading-none">{emoji}</span>
-                    : <Icon style={{ width: 16, height: 16 }} />
+                    ? <span className="text-2xl leading-none">{emoji}</span>
+                    : <Icon className="h-6 w-6" />
                   }
                 </div>
-                <div className="min-w-0 flex-1 pt-0.5">
-                  <p className="text-sm font-semibold leading-tight truncate">{device.name}</p>
-                  <p className="text-xs text-muted-foreground">{label}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-base font-semibold leading-tight truncate">{device.name}</p>
+                  {statusLabel !== null && (
+                    <p className={cn(
+                      'text-sm mt-0.5 font-medium transition-colors duration-300',
+                      isActive ? typeColor.text : 'text-muted-foreground'
+                    )}>
+                      {statusLabel}
+                    </p>
+                  )}
                 </div>
               </div>
 
-              {/* Sensor-Wert + Verlaufsgraph */}
-              {sensor && (() => {
-                const LABELS: Partial<Record<string, [string, string]>> = {
-                  sensor_door:      ['Offen',          'Geschlossen'],
-                  sensor_motion:    ['Bewegt',         'Ruhig'],
-                  sensor_flood:     ['💧 Wasser!',     'Trocken'],
-                  sensor_vibration: ['Erschütterung',  'Ruhig'],
-                  sensor_smoke:     ['🔥 Alarm',       '✓ OK'],
-                };
-                const isBinary = device.type in LABELS;
-                const active   = device.status === 'on' || device.status === 'true';
-                const [activeLabel, inactiveLabel] = LABELS[device.type] ?? ['Aktiv', 'Ruhig'];
-                return (
-                  <>
-                    {isBinary ? (
-                      <p className={cn(
-                        'mt-2 text-xl font-bold',
-                        active ? 'text-amber-500' : 'text-muted-foreground'
-                      )}>
-                        {active ? activeLabel : inactiveLabel}
-                      </p>
-                    ) : (
-                      <p className="mt-2 text-2xl font-bold tabular-nums">
-                        {device.status !== 'unknown' ? device.status : '–'}
-                        <span className="text-sm font-medium text-muted-foreground ml-0.5">
-                          {device.type === 'sensor_temperature' && '°C'}
-                          {device.type === 'sensor_humidity' && '%'}
-                          {device.type === 'energy_meter' && 'W'}
-                          {device.type === 'sensor_lux' && 'lx'}
+              {/* ── Controls (event isolation) ────────────────────── */}
+              <div onClick={e => e.stopPropagation()}>
+
+                {/* Sensor-Wert + Verlaufsgraph */}
+                {sensor && (() => {
+                  const LABELS: Partial<Record<string, [string, string]>> = {
+                    sensor_door:      ['Offen',          'Geschlossen'],
+                    sensor_motion:    ['Bewegt',         'Ruhig'],
+                    sensor_flood:     ['💧 Wasser!',     'Trocken'],
+                    sensor_vibration: ['Erschütterung',  'Ruhig'],
+                    sensor_smoke:     ['🔥 Alarm',       '✓ OK'],
+                  };
+                  const isBinary = device.type in LABELS;
+                  const active   = device.status === 'on' || device.status === 'true';
+                  const [activeLabel, inactiveLabel] = LABELS[device.type] ?? ['Aktiv', 'Ruhig'];
+                  return (
+                    <>
+                      {isBinary ? (
+                        <p className={cn('mt-3 text-xl font-bold', active ? 'text-amber-500' : 'text-muted-foreground')}>
+                          {active ? activeLabel : inactiveLabel}
+                        </p>
+                      ) : (
+                        <p className="mt-3 text-2xl font-bold tabular-nums">
+                          {device.status !== 'unknown' ? device.status : '–'}
+                          <span className="text-sm font-medium text-muted-foreground ml-0.5">
+                            {device.type === 'sensor_temperature' && '°C'}
+                            {device.type === 'sensor_humidity' && '%'}
+                            {device.type === 'energy_meter' && 'W'}
+                            {device.type === 'sensor_lux' && 'lx'}
+                          </span>
+                        </p>
+                      )}
+                      {(device.type === 'sensor_temperature' || device.type === 'sensor_humidity') && (
+                        <SensorChart deviceId={device.id} deviceType={device.type as DeviceType} currentValue={device.status} />
+                      )}
+                    </>
+                  );
+                })()}
+
+                {/* Ventil-Status */}
+                {isValve && (
+                  <p className={cn('mt-3 text-base font-semibold', isActive ? 'text-teal-500' : 'text-muted-foreground')}>
+                    {isActive ? 'Offen' : 'Geschlossen'}
+                  </p>
+                )}
+
+                {/* BLE */}
+                {useBleWeb && (
+                  <div className="mt-3">
+                    {bleState === 'connected' ? (
+                      <div className="flex items-center gap-1.5">
+                        <span className="flex items-center gap-1 text-xs text-blue-500 font-medium py-1 px-2 rounded-full bg-blue-500/10">
+                          <BluetoothConnected className="h-3 w-3 shrink-0" />
+                          {shellyBle.getPairedName(device.id) ?? 'Verbunden'}
                         </span>
-                      </p>
+                        <button onClick={() => handleBleForget(device)}
+                          className="cursor-pointer text-xs text-muted-foreground hover:text-destructive transition-colors px-1">✕</button>
+                      </div>
+                    ) : bleState === 'connecting' ? (
+                      <span className="w-fit flex items-center gap-1 text-xs text-muted-foreground py-1 px-2 rounded-full bg-muted">
+                        <Bluetooth className="h-3 w-3 shrink-0 animate-pulse" /> Verbinde…
+                      </span>
+                    ) : (
+                      <button onClick={() => handleBlePair(device)}
+                        className={cn('cursor-pointer w-fit flex items-center gap-1 text-xs font-medium py-1 px-2 rounded-full transition-colors',
+                          bleState === 'error' ? 'text-destructive bg-destructive/10 hover:bg-destructive/20'
+                          : shellyBle.getPairedName(device.id) ? 'text-blue-500 bg-blue-500/10 hover:bg-blue-500/20'
+                          : 'text-muted-foreground bg-muted hover:bg-accent'
+                        )}>
+                        {bleState === 'error' ? <BluetoothOff className="h-3 w-3 shrink-0" /> : <Bluetooth className="h-3 w-3 shrink-0" />}
+                        {bleState === 'error' ? 'Erneut verbinden' : shellyBle.getPairedName(device.id) ? 'Neu verbinden' : 'Koppeln'}
+                      </button>
                     )}
-                    {(device.type === 'sensor_temperature' || device.type === 'sensor_humidity') && (
-                      <SensorChart
-                        deviceId={device.id}
-                        deviceType={device.type as DeviceType}
-                        currentValue={device.status}
-                      />
+                  </div>
+                )}
+
+                {useBridge && (
+                  <div className="mt-3">
+                    <span className="w-fit flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium py-1 px-2 rounded-full bg-emerald-500/10">
+                      <Bluetooth className="h-3 w-3 shrink-0" /> BLE Bridge
+                    </span>
+                  </div>
+                )}
+
+                {useBridge && toggleable && !sensor && <ShellyPlugPanel deviceId={device.id} />}
+
+                {toggleable && !sensor && !isCover && (
+                  <div className="mt-2">
+                    <DeviceHistory deviceId={device.id} deviceName={device.name} />
+                  </div>
+                )}
+
+                {/* Rollladen */}
+                {isCover && (
+                  <>
+                    <div className="mt-4 flex gap-2">
+                      <button onClick={() => handleCoverCmd(device, 'open')} disabled={isDisabled}
+                        className={cn('cursor-pointer flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-xl text-sm font-medium transition-colors',
+                          isOn ? 'bg-green-500/15 text-green-600 dark:text-green-400' : 'bg-muted hover:bg-accent',
+                          isDisabled && 'opacity-40 cursor-not-allowed')}>
+                        <ChevronUp className="h-5 w-5" /> Öffnen
+                      </button>
+                      <button onClick={() => handleCoverCmd(device, 'stop')} disabled={isDisabled}
+                        className={cn('cursor-pointer flex items-center justify-center p-3.5 rounded-xl bg-muted hover:bg-accent transition-colors',
+                          isDisabled && 'opacity-40 cursor-not-allowed')} aria-label="Stop">
+                        <Square className="h-5 w-5" />
+                      </button>
+                      <button onClick={() => handleCoverCmd(device, 'close')} disabled={isDisabled}
+                        className={cn('cursor-pointer flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-xl text-sm font-medium transition-colors bg-muted hover:bg-accent',
+                          isDisabled && 'opacity-40 cursor-not-allowed')}>
+                        <ChevronDown className="h-4 w-4" /> Schließen
+                      </button>
+                    </div>
+                    {device.status && !['on','off','open','close','stop','unknown'].includes(device.status) && (
+                      <p className="mt-1.5 text-xs text-muted-foreground">
+                        Position: <span className="font-semibold text-foreground">{device.status}%</span>
+                      </p>
                     )}
                   </>
-                );
-              })()}
+                )}
 
-              {/* Ventil-Status */}
-              {isValve && (
-                <p className={cn('mt-2 text-base font-semibold', isActive ? 'text-teal-500' : 'text-muted-foreground')}>
-                  {isActive ? 'Offen' : 'Geschlossen'}
-                </p>
-              )}
-
-              {/* BLE-Chip — nur anzeigen wenn Browser Web Bluetooth (kein MAC) */}
-              {useBleWeb && (
-                <div className="mt-2">
-                  {bleState === 'connected' ? (
-                    <div className="flex items-center gap-1.5">
-                      <span className="flex items-center gap-1 text-xs text-blue-500 font-medium py-1 px-2 rounded-full bg-blue-500/10">
-                        <BluetoothConnected className="h-3 w-3 shrink-0" />
-                        {shellyBle.getPairedName(device.id) ?? 'Verbunden'}
-                      </span>
+                {/* Thermostat */}
+                {isTherm && (
+                  <div className="mt-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-muted-foreground">Heizung</p>
                       <button
-                        onClick={() => handleBleForget(device)}
-                        className="cursor-pointer text-xs text-muted-foreground hover:text-destructive transition-colors px-1"
-                        title="Kopplung aufheben"
+                        onClick={async () => {
+                          const newStatus = isActive ? 'off' : 'auto';
+                          setDevices(prev => prev.map(d => d.id === device.id ? { ...d, status: newStatus } : d));
+                          try { await api.setDeviceStatus(device.id, newStatus); }
+                          catch { setDevices(prev => prev.map(d => d.id === device.id ? device : d)); }
+                        }}
+                        className={cn('cursor-pointer text-sm px-4 py-1.5 rounded-full font-medium transition-colors',
+                          isActive ? 'bg-orange-500/15 text-orange-500 hover:bg-orange-500/25' : 'bg-muted text-muted-foreground hover:bg-accent')}
                       >
-                        ✕
+                        {isActive ? 'Aktiv' : 'Aus'}
                       </button>
                     </div>
-                  ) : bleState === 'connecting' ? (
-                    <span className="w-fit flex items-center gap-1 text-xs text-muted-foreground py-1 px-2 rounded-full bg-muted">
-                      <Bluetooth className="h-3 w-3 shrink-0 animate-pulse" />
-                      Verbinde…
-                    </span>
-                  ) : (
-                    <button
-                      onClick={() => handleBlePair(device)}
-                      className={cn(
-                        'cursor-pointer w-fit flex items-center gap-1 text-xs font-medium py-1 px-2 rounded-full transition-colors',
-                        bleState === 'error'
-                          ? 'text-destructive bg-destructive/10 hover:bg-destructive/20'
-                          : shellyBle.getPairedName(device.id)
-                          ? 'text-blue-500 bg-blue-500/10 hover:bg-blue-500/20'
-                          : 'text-muted-foreground bg-muted hover:bg-accent'
-                      )}
-                    >
-                      {bleState === 'error'
-                        ? <BluetoothOff className="h-3 w-3 shrink-0" />
-                        : <Bluetooth className="h-3 w-3 shrink-0" />}
-                      {bleState === 'error'
-                        ? 'Erneut verbinden'
-                        : shellyBle.getPairedName(device.id)
-                        ? 'Neu verbinden'
-                        : 'Koppeln'}
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* BLE-Bridge-Badge — wenn MAC gesetzt, als Info */}
-              {useBridge && (
-                <div className="mt-2">
-                  <span className="w-fit flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium py-1 px-2 rounded-full bg-emerald-500/10">
-                    <Bluetooth className="h-3 w-3 shrink-0" />
-                    BLE Bridge
-                  </span>
-                </div>
-              )}
-
-              {/* Shelly-Konfigurationsbereich (LED, Auto-Aus, Verbrauch) */}
-              {useBridge && toggleable && !sensor && (
-                <ShellyPlugPanel deviceId={device.id} />
-              )}
-
-              {/* Geräteverlauf */}
-              {toggleable && !sensor && !isCover && (
-                <div className="mt-2">
-                  <DeviceHistory deviceId={device.id} deviceName={device.name} />
-                </div>
-              )}
-
-              {/* Rollladen-Steuerung */}
-              {isCover && (
-                <div className="mt-3 flex gap-2">
-                  <button
-                    onClick={() => handleCoverCmd(device, 'open')}
-                    disabled={isDisabled}
-                    className={cn(
-                      'cursor-pointer flex-1 flex items-center justify-center gap-1 py-2 rounded-xl text-sm font-medium transition-colors',
-                      isOn ? 'bg-green-500/15 text-green-600 dark:text-green-400' : 'bg-muted hover:bg-accent',
-                      isDisabled && 'opacity-40 cursor-not-allowed'
+                    {device.status && !['on','off','auto','unknown'].includes(device.status) && (
+                      <p className="text-sm text-muted-foreground">
+                        Aktuell: <span className="font-semibold text-foreground">{device.status}°C</span>
+                      </p>
                     )}
-                  >
-                    <ChevronUp className="h-4 w-4" /> Öffnen
-                  </button>
-                  <button
-                    onClick={() => handleCoverCmd(device, 'stop')}
-                    disabled={isDisabled}
-                    className={cn(
-                      'cursor-pointer flex items-center justify-center p-2 rounded-xl bg-muted hover:bg-accent transition-colors',
-                      isDisabled && 'opacity-40 cursor-not-allowed'
-                    )}
-                    aria-label="Stop"
-                  >
-                    <Square className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => handleCoverCmd(device, 'close')}
-                    disabled={isDisabled}
-                    className={cn(
-                      'cursor-pointer flex-1 flex items-center justify-center gap-1 py-2 rounded-xl text-sm font-medium transition-colors bg-muted hover:bg-accent',
-                      isDisabled && 'opacity-40 cursor-not-allowed'
-                    )}
-                  >
-                    <ChevronDown className="h-4 w-4" /> Schließen
-                  </button>
-                </div>
-              )}
-
-              {/* Rollladen-Position */}
-              {isCover && device.status && !['on','off','open','close','stop','unknown'].includes(device.status) && (
-                <p className="mt-1.5 text-xs text-muted-foreground">
-                  Position: <span className="font-semibold text-foreground">{device.status}%</span>
-                </p>
-              )}
-
-              {/* Thermostat-Steuerung */}
-              {isTherm && (
-                <div className="mt-3 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-muted-foreground">Heizung</p>
-                    <button
-                      onClick={async () => {
-                        const newStatus = isActive ? 'off' : 'auto';
-                        setDevices(prev => prev.map(d => d.id === device.id ? { ...d, status: newStatus } : d));
-                        try { await api.setDeviceStatus(device.id, newStatus); }
-                        catch { setDevices(prev => prev.map(d => d.id === device.id ? device : d)); }
-                      }}
-                      className={cn(
-                        'cursor-pointer text-xs px-2.5 py-1 rounded-full font-medium transition-colors',
-                        isActive
-                          ? 'bg-orange-500/15 text-orange-500 hover:bg-orange-500/25'
-                          : 'bg-muted text-muted-foreground hover:bg-accent'
-                      )}
-                    >
-                      {isActive ? 'Aktiv' : 'Aus'}
-                    </button>
-                  </div>
-                  {device.status && !['on','off','auto','unknown'].includes(device.status) && (
-                    <p className="text-xs text-muted-foreground">
-                      Aktuell: <span className="font-semibold text-foreground">{device.status}°C</span>
-                    </p>
-                  )}
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1.5">Solltemperatur</p>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleSetpointChange(device, -0.5)}
-                        className="cursor-pointer h-9 w-9 rounded-xl bg-muted hover:bg-accent flex items-center justify-center transition-colors shrink-0"
-                        aria-label="-0.5°C"
-                      >
-                        <Minus className="h-4 w-4" />
-                      </button>
-                      <div className="flex-1 text-center">
-                        <span className="text-2xl font-bold tabular-nums">
-                          {(setpoints.get(device.id) ?? 20).toFixed(1)}
-                        </span>
-                        <span className="text-sm text-muted-foreground ml-0.5">°C</span>
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-2">Solltemperatur</p>
+                      <div className="flex items-center gap-3">
+                        <button onClick={() => handleSetpointChange(device, -0.5)}
+                          className="cursor-pointer h-12 w-12 rounded-xl bg-muted hover:bg-accent flex items-center justify-center transition-colors shrink-0" aria-label="-0.5°C">
+                          <Minus className="h-5 w-5" />
+                        </button>
+                        <div className="flex-1 text-center">
+                          <span className="text-2xl font-bold tabular-nums">{(setpoints.get(device.id) ?? 20).toFixed(1)}</span>
+                          <span className="text-sm text-muted-foreground ml-0.5">°C</span>
+                        </div>
+                        <button onClick={() => handleSetpointChange(device, +0.5)}
+                          className="cursor-pointer h-12 w-12 rounded-xl bg-muted hover:bg-accent flex items-center justify-center transition-colors shrink-0" aria-label="+0.5°C">
+                          <Plus className="h-5 w-5" />
+                        </button>
                       </div>
-                      <button
-                        onClick={() => handleSetpointChange(device, +0.5)}
-                        className="cursor-pointer h-9 w-9 rounded-xl bg-muted hover:bg-accent flex items-center justify-center transition-colors shrink-0"
-                        aria-label="+0.5°C"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </button>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Helligkeit (Dimmer / LED / RGB) */}
-              {(isDimmer || isRgb || isLed) && (
-                <div className="mt-3 space-y-2 pr-14">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-muted-foreground">Helligkeit</p>
-                    <span className="text-xs font-semibold tabular-nums">{dimmerLevels.get(device.id) ?? 50}%</span>
+                {/* Dimmer / LED / RGB */}
+                {(isDimmer || isRgb || isLed) && (
+                  <div className="mt-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-muted-foreground">Helligkeit</p>
+                      <span className="text-sm font-semibold tabular-nums">{dimmerLevels.get(device.id) ?? 50}%</span>
+                    </div>
+                    <input type="range" min={0} max={100} step={5}
+                      value={dimmerLevels.get(device.id) ?? 50}
+                      onChange={e => setDimmerLevels(m => new Map(m).set(device.id, Number(e.target.value)))}
+                      onPointerUp={e => handleDimmerChange(device, Number((e.target as HTMLInputElement).value))}
+                      className="w-full h-1.5 rounded-full accent-primary cursor-pointer" />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>0%</span><span>50%</span><span>100%</span>
+                    </div>
                   </div>
-                  <input
-                    type="range"
-                    min={0} max={100} step={5}
-                    value={dimmerLevels.get(device.id) ?? 50}
-                    onChange={e => setDimmerLevels(m => new Map(m).set(device.id, Number(e.target.value)))}
-                    onPointerUp={e => handleDimmerChange(device, Number((e.target as HTMLInputElement).value))}
-                    className="w-full h-1.5 rounded-full accent-primary cursor-pointer"
-                  />
-                  <div className="flex justify-between text-[10px] text-muted-foreground">
-                    <span>0%</span><span>50%</span><span>100%</span>
+                )}
+                {isRgb && (
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    🎨 Farbe via MQTT-Attribut <code className="text-[10px] bg-muted px-1 py-0.5 rounded">color</code>
+                  </p>
+                )}
+
+                {/* Lüfter */}
+                {isFan && (
+                  <div className="mt-4">
+                    <p className="text-sm text-muted-foreground mb-2">Lüfterstufe</p>
+                    <div className="flex gap-1.5">
+                      {([['Niedrig','low'],['Mittel','medium'],['Hoch','high']] as const).map(([lbl, val]) => (
+                        <button key={val} onClick={() => handleFanSpeedSet(device, val)} disabled={isDisabled}
+                          className={cn('cursor-pointer flex-1 py-3 rounded-xl text-sm font-medium transition-colors',
+                            device.status === val ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 font-semibold' : 'bg-muted hover:bg-accent text-muted-foreground',
+                            isDisabled && 'opacity-40 cursor-not-allowed')}>
+                          {lbl}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-              {isRgb && (
-                <p className="mt-1.5 text-xs text-muted-foreground pr-14">
-                  🎨 Farbe via MQTT-Attribut <code className="text-[10px] bg-muted px-1 py-0.5 rounded">color</code>
-                </p>
-              )}
+                )}
 
-              {/* Lüfter-Stufen */}
-              {isFan && (
-                <div className="mt-3 pr-14">
-                  <p className="text-xs text-muted-foreground mb-1.5">Lüfterstufe</p>
-                  <div className="flex gap-1.5">
-                    {([['Niedrig','low'],['Mittel','medium'],['Hoch','high']] as const).map(([lbl, val]) => (
-                      <button
-                        key={val}
-                        onClick={() => handleFanSpeedSet(device, val)}
-                        disabled={isDisabled}
-                        className={cn(
-                          'cursor-pointer flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                          device.status === val
-                            ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 font-semibold'
-                            : 'bg-muted hover:bg-accent text-muted-foreground',
-                          isDisabled && 'opacity-40 cursor-not-allowed'
-                        )}
-                      >
-                        {lbl}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+                {isButton && <p className="mt-3 text-sm text-muted-foreground">Eingang – kein Ausgang</p>}
 
-              {/* Taster-Info */}
-              {isButton && (
-                <p className="mt-2 text-xs text-muted-foreground">Eingang – kein Ausgang</p>
-              )}
-
-              {/* Power-Button (absolut unten rechts) */}
-              {toggleable && !sensor && !isCover && (
-                <button
-                  onClick={() => handleToggle(device)}
-                  disabled={isDisabled}
-                  aria-label={isActive ? 'Ausschalten' : 'Einschalten'}
-                  className={cn(
-                    'absolute bottom-3 right-3 h-11 w-11 rounded-full',
-                    'flex items-center justify-center transition-all',
-                    'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background',
-                    'active:scale-90',
-                    isActive
-                      ? 'bg-green-500 text-white shadow-md shadow-green-500/30 hover:bg-green-600'
-                      : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground',
-                    isDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer',
-                    isPending && 'animate-pulse'
-                  )}
-                >
-                  <Power style={{ width: 16, height: 16 }} />
-                </button>
-              )}
+              </div>{/* end controls isolation */}
             </div>
           );
         })}

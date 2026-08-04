@@ -27,7 +27,7 @@ export default function NavBar() {
   return (
     <>
       {/* ── Desktop top bar ─────────────────────────────────────────── */}
-      <header className="hidden md:flex items-center gap-2 border-b px-6 h-14 bg-background/95 backdrop-blur sticky top-0 z-40">
+      <header className="hidden md:flex items-center gap-2 border-b px-6 h-16 bg-background/95 backdrop-blur sticky top-0 z-40">
         <span className="font-bold text-lg mr-4 tracking-tight">🏠 SmartHome</span>
         <nav className="flex gap-1 flex-1">
           {NAV.map(({ href, icon: Icon, label }) => (
@@ -35,13 +35,13 @@ export default function NavBar() {
               key={href}
               href={href}
               className={cn(
-                'flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
+                'flex items-center gap-2.5 px-4 py-3 rounded-xl text-base font-medium transition-colors',
                 isActive(href)
                   ? 'bg-primary text-primary-foreground'
                   : 'text-muted-foreground hover:text-foreground hover:bg-accent'
               )}
             >
-              <Icon className="h-4 w-4" />
+              <Icon className="h-5 w-5" />
               {label}
             </Link>
           ))}
@@ -50,9 +50,9 @@ export default function NavBar() {
           <button
             onClick={lock}
             title="Sperren"
-            className="cursor-pointer ml-1 h-8 w-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            className="cursor-pointer ml-1 h-12 w-12 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
           >
-            <LockKeyhole className="h-4 w-4" />
+            <LockKeyhole className="h-5 w-5" />
           </button>
         )}
         <ThemeToggle />

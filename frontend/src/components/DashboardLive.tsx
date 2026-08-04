@@ -260,33 +260,33 @@ export default function DashboardLive({ initialDevices, rooms }: Props) {
       {/* ── Räume ────────────────────────────────────────────────── */}
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Räume</p>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-3">
           {rooms.map(room => {
             const roomDevices = list.filter(d => d.room_id === room.id);
             const active      = roomDevices.filter(d => d.status === 'on' && isToggleable(d.type as DeviceType)).length;
             return (
-              <Link key={room.id} href={`/rooms/${room.id}`}>
+                <Link key={room.id} href={`/rooms/${room.id}`}>
                 <div className={cn(
-                  'rounded-2xl border p-4 flex flex-col gap-3 min-h-[130px] cursor-pointer',
-                  'transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.97]',
+                  'rounded-2xl border p-5 flex flex-col gap-3 min-h-[150px] cursor-pointer',
+                  'transition-all duration-200 active:scale-[0.97]',
                   active > 0
                     ? 'border-amber-500/30 bg-gradient-to-br from-amber-500/[0.07] to-card'
                     : 'bg-card hover:bg-accent/40'
                 )}>
                   <div className={cn(
-                    'w-11 h-11 rounded-xl flex items-center justify-center text-2xl select-none',
+                    'w-14 h-14 rounded-xl flex items-center justify-center text-3xl select-none',
                     active > 0 ? 'bg-amber-500/15' : 'bg-muted'
                   )}>
                     {room.icon ?? '🏠'}
                   </div>
                   <div className="mt-auto">
-                    <p className="font-semibold text-sm leading-tight">{room.name}</p>
+                    <p className="font-semibold text-base leading-tight">{room.name}</p>
                     <div className="flex items-center gap-1.5 mt-1">
                       <span className={cn(
-                        'h-1.5 w-1.5 rounded-full transition-colors',
+                        'h-2 w-2 rounded-full transition-colors',
                         active > 0 ? 'bg-amber-500' : 'bg-muted-foreground/30'
                       )} />
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-sm text-muted-foreground">
                         {active > 0
                           ? `${active} aktiv`
                           : roomDevices.length > 0

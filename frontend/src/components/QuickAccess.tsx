@@ -152,10 +152,10 @@ export default function QuickAccess({ initialDevices }: Props) {
                 )}
               >
                 <div className={cn(
-                  'h-9 w-9 rounded-full flex items-center justify-center shrink-0 transition-colors',
+                  'h-11 w-11 rounded-full flex items-center justify-center shrink-0 transition-colors',
                   isOn && connected ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'
                 )}>
-                  {Icon && <Icon className="h-4 w-4" />}
+                  {Icon && <Icon className="h-5 w-5" />}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">{device.name}</p>
