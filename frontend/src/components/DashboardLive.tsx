@@ -173,7 +173,7 @@ export default function DashboardLive({ initialDevices, rooms }: Props) {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
 
         {/* Aktiv-Kachel */}
-        <div className="rounded-2xl border bg-card p-4 flex items-center gap-3">
+        <div className="rounded-2xl border bg-card p-5 flex items-center gap-3">
           <div className="rounded-xl bg-blue-500/10 p-2.5 shrink-0">
             <Power className="h-5 w-5 text-blue-500" />
           </div>
@@ -194,7 +194,7 @@ export default function DashboardLive({ initialDevices, rooms }: Props) {
         </div>
 
         {/* Räume-Kachel */}
-        <div className="rounded-2xl border bg-card p-4 flex items-center gap-3">
+        <div className="rounded-2xl border bg-card p-5 flex items-center gap-3">
           <div className="rounded-xl bg-violet-500/10 p-2.5 shrink-0">
             <LayoutGrid className="h-5 w-5 text-violet-500" />
           </div>
@@ -213,7 +213,7 @@ export default function DashboardLive({ initialDevices, rooms }: Props) {
               const colors = getDeviceColors(s);
               const emoji  = getDeviceEmoji(s);
               return (
-                <div key={s.id} className="rounded-2xl border bg-card p-4 flex items-center gap-3">
+                <div key={s.id} className="rounded-2xl border bg-card p-5 flex items-center gap-3">
                   <div className={cn('rounded-xl p-2.5 shrink-0', colors.bg)}>
                     {emoji
                       ? <span className="text-lg leading-none">{emoji}</span>
@@ -234,7 +234,7 @@ export default function DashboardLive({ initialDevices, rooms }: Props) {
             })
           : widgetIds.length > 0
           ? widgetIds.slice(0, 2).map(i => (
-              <div key={i} className="rounded-2xl border bg-card p-4 animate-pulse">
+              <div key={i} className="rounded-2xl border bg-card p-5 animate-pulse">
                 <div className="flex gap-3">
                   <div className="h-10 w-10 bg-muted rounded-xl shrink-0" />
                   <div className="flex-1 space-y-2 pt-1">
@@ -259,7 +259,7 @@ export default function DashboardLive({ initialDevices, rooms }: Props) {
 
       {/* ── Räume ────────────────────────────────────────────────── */}
       <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Räume</p>
+        <p className="text-sm font-medium text-muted-foreground mb-3">Räume</p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-3">
           {rooms.map(room => {
             const roomDevices = list.filter(d => d.room_id === room.id);
@@ -270,8 +270,8 @@ export default function DashboardLive({ initialDevices, rooms }: Props) {
                   'rounded-2xl border p-5 flex flex-col gap-3 min-h-[150px] cursor-pointer',
                   'transition-all duration-200 active:scale-[0.97]',
                   active > 0
-                    ? 'border-amber-500/30 bg-gradient-to-br from-amber-500/[0.07] to-card'
-                    : 'bg-card hover:bg-accent/40'
+                    ? 'bg-amber-500/15 border-amber-400/40 shadow-sm'
+                    : 'bg-card border-border hover:bg-accent/40'
                 )}>
                   <div className={cn(
                     'w-14 h-14 rounded-xl flex items-center justify-center text-3xl select-none',

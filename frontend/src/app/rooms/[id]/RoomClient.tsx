@@ -32,17 +32,17 @@ function getActiveTileClasses(device: Device): string {
   }
   switch (type) {
     case 'light': case 'dimmer': case 'rgb': case 'led':
-      return 'bg-amber-500/15 border-amber-400/40';
+      return 'bg-amber-500/15 border-amber-400/40 shadow-sm';
     case 'plug': case 'switch': case 'energy_meter':
-      return 'bg-blue-500/15 border-blue-400/40';
+      return 'bg-blue-500/15 border-blue-400/40 shadow-sm';
     case 'fan':
-      return 'bg-cyan-500/15 border-cyan-400/40';
+      return 'bg-cyan-500/15 border-cyan-400/40 shadow-sm';
     case 'thermostat':
-      return 'bg-orange-500/15 border-orange-400/40';
+      return 'bg-orange-500/15 border-orange-400/40 shadow-sm';
     case 'valve':
-      return 'bg-teal-500/15 border-teal-400/40';
+      return 'bg-teal-500/15 border-teal-400/40 shadow-sm';
     default:
-      return 'bg-primary/10 border-primary/30';
+      return 'bg-primary/10 border-primary/30 shadow-sm';
   }
 }
 

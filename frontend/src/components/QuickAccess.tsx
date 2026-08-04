@@ -112,7 +112,7 @@ export default function QuickAccess({ initialDevices }: Props) {
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <p className="text-sm font-medium text-muted-foreground">
           Schnellzugriff
         </p>
       </div>
@@ -126,7 +126,7 @@ export default function QuickAccess({ initialDevices }: Props) {
       )}
 
       {favoriteDevices.length === 0 ? (
-        <div className="rounded-xl border border-dashed p-5 text-center text-muted-foreground">
+        <div className="rounded-2xl border border-dashed p-5 text-center text-muted-foreground">
           <Star className="h-5 w-5 mx-auto mb-1 opacity-40" />
           <p className="text-xs">Noch keine Favoriten. Tippe in einem Raum auf ⭐, um Geräte hier anzuheften.</p>
         </div>
@@ -146,8 +146,8 @@ export default function QuickAccess({ initialDevices }: Props) {
                 onClick={() => toggle(device)}
                 disabled={isRunning}
                 className={cn(
-                  'cursor-pointer rounded-xl border p-3 flex items-center gap-2 text-left transition-all active:scale-95',
-                  isOn && connected ? 'bg-green-500/10 border-green-500/30' : 'bg-card',
+                  'cursor-pointer rounded-2xl border p-4 flex items-center gap-3 text-left transition-all active:scale-95',
+                  isOn && connected ? 'bg-amber-500/15 border-amber-400/40 shadow-sm' : 'bg-card border-border',
                   isRunning && 'opacity-50'
                 )}
               >

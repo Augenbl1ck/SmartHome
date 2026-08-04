@@ -42,9 +42,9 @@ export default function DashboardActions({ devices }: Props) {
     <button
       onClick={turnAllOff}
       disabled={loading || activeCount === 0}
-      className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-2.5
+      className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-3
         text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors
-        disabled:opacity-50 w-full sm:w-auto"
+        disabled:opacity-50 w-full sm:w-auto active:scale-[0.97]"
     >
       {loading
         ? <Loader2 className="h-4 w-4 animate-spin" />
