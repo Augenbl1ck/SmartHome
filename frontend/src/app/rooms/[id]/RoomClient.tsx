@@ -262,7 +262,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
   const toggleableCount = devices.filter((d) => isToggleable(d.type as DeviceType)).length;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 animate-page-in">
 
       {/* ── Header ────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3">
@@ -340,7 +340,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
               key={device.id}
               onClick={isTileTap && !isDisabled ? () => handleToggle(device) : undefined}
               className={cn(
-                'relative rounded-2xl border p-5 transition-all duration-300 min-h-[130px]',
+                'relative rounded-2xl border p-5 transition-all duration-300 ease-in-out min-h-[130px]',
                 isTileTap && !isDisabled && 'cursor-pointer select-none active:scale-[0.97]',
                 isActive && !sensor
                   ? getActiveTileClasses(device)
@@ -360,10 +360,10 @@ export default function RoomClient({ room, initialDevices }: Props) {
               {/* ── Icon + Name + Status ──────────────────────────── */}
               <div className="flex items-start gap-3 pr-10">
                 <div className={cn(
-                  'h-12 w-12 rounded-xl flex items-center justify-center shrink-0 transition-all duration-300',
+                  'h-12 w-12 rounded-xl flex items-center justify-center shrink-0 transition-all duration-300 ease-in-out',
                   isActive && !sensor
-                    ? cn(typeColor.bg.replace('/10', '/20'), typeColor.text)
-                    : 'bg-muted text-muted-foreground'
+                    ? cn(typeColor.bg.replace('/10', '/20'), typeColor.text, 'scale-110')
+                    : 'bg-muted text-muted-foreground scale-100'
                 )}>
                   {emoji
                     ? <span className="text-2xl leading-none">{emoji}</span>
@@ -558,7 +558,9 @@ export default function RoomClient({ room, initialDevices }: Props) {
                       value={dimmerLevels.get(device.id) ?? 50}
                       onChange={e => setDimmerLevels(m => new Map(m).set(device.id, Number(e.target.value)))}
                       onPointerUp={e => handleDimmerChange(device, Number((e.target as HTMLInputElement).value))}
-                      className="w-full h-1.5 rounded-full accent-primary cursor-pointer" />
+                      className="w-full range-slider"
+                      style={{ '--val': `${dimmerLevels.get(device.id) ?? 50}%` } as React.CSSProperties}
+                    />
                     <div className="flex justify-between text-xs text-muted-foreground">
                       <span>0%</span><span>50%</span><span>100%</span>
                     </div>

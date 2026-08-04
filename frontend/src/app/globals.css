@@ -29,6 +29,90 @@ summary {
   animation: shake 0.5s ease-in-out;
 }
 
+/* ─── Seitenübergang ─────────────────────────────────────────────── */
+.animate-page-in {
+  animation: page-in 0.25s ease-out both;
+}
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Tile-Aktivierung (leichter Pop wenn Gerät einschaltet) ─────── */
+@keyframes tile-activate {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.04); }
+  65%  { transform: scale(0.98); }
+  100% { transform: scale(1); }
+}
+.animate-tile-activate {
+  animation: tile-activate 0.35s ease-out;
+}
+
+/* ─── Scrollbar verstecken (Szenen-Leiste) ───────────────────────── */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── Custom Range Slider (Dimmer) ───────────────────────────────── */
+input[type="range"].range-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+  /* Filled-Track via CSS-Variable */
+  background: linear-gradient(
+    to right,
+    hsl(var(--primary) / 1) 0%,
+    hsl(var(--primary) / 1) var(--val, 50%),
+    hsl(var(--muted) / 1) var(--val, 50%),
+    hsl(var(--muted) / 1) 100%
+  );
+}
+input[type="range"].range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--background);
+  border: 2.5px solid hsl(var(--primary) / 1);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+input[type="range"].range-slider::-webkit-slider-thumb:active {
+  transform: scale(1.25);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+input[type="range"].range-slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--background);
+  border: 2.5px solid hsl(var(--primary) / 1);
+  cursor: pointer;
+}
+/* Dark mode: Primärfarbe für Range-Track anpassen */
+.dark input[type="range"].range-slider {
+  background: linear-gradient(
+    to right,
+    oklch(0.922 0 0) 0%,
+    oklch(0.922 0 0) var(--val, 50%),
+    oklch(0.269 0 0) var(--val, 50%),
+    oklch(0.269 0 0) 100%
+  );
+}
+.dark input[type="range"].range-slider::-webkit-slider-thumb {
+  background: oklch(0.145 0 0);
+  border-color: oklch(0.922 0 0);
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
