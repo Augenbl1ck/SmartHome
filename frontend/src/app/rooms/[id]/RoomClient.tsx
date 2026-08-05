@@ -413,7 +413,8 @@ export default function RoomClient({ room, initialDevices }: Props) {
           // Statustext unter dem Gerätenamen
           const statusLabel: string | null = sensor ? null
             : isFan ? (device.status === 'low' ? 'Niedrig' : device.status === 'medium' ? 'Mittel' : device.status === 'high' ? 'Hoch' : isOn ? 'An' : 'Aus')
-            : (isTherm || isDimmer || isRgb || isLed || isCover) ? null
+            : isTherm ? (isActive ? 'Aktiv' : 'Aus')
+            : (isDimmer || isRgb || isLed || isCover) ? null
             : isOn ? 'An' : 'Aus';
 
           return (
@@ -421,7 +422,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
               key={device.id}
               onClick={isTileTap && !isDisabled ? () => handleToggle(device) : undefined}
               className={cn(
-                'relative rounded-2xl border p-5 transition-all duration-300 ease-in-out min-h-[130px]',
+                'relative rounded-2xl border p-5 transition-all duration-300 ease-in-out min-h-[130px] flex flex-col',
                 isTileTap && !isDisabled && 'cursor-pointer select-none active:scale-[0.97]',
                 isActive && !sensor
                   ? getActiveTileClasses(device)
@@ -429,16 +430,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
                 isPending && 'opacity-60',
               )}
             >
-              {/* ── Favoriten-Stern (klein, oben links) ──────────── */}
-              <button
-                onClick={e => { e.stopPropagation(); toggleFav(device.id); }}
-                className="cursor-pointer absolute top-2 left-2 h-7 w-7 flex items-center justify-center rounded-full z-10"
-                aria-label="Favorit"
-              >
-                <Star className={cn('h-3.5 w-3.5', favorites.includes(device.id) ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground/30')} />
-              </button>
-
-              {/* ── Icon + Name + Status ──────────────────────────── */}
+              {/* ── Icon + Name + Power-Button + Favoriten-Stern ── */}
               <div className="flex items-start gap-3">
                 <div className={cn(
                   'h-12 w-12 rounded-xl flex items-center justify-center shrink-0 transition-all duration-300 ease-in-out',
@@ -463,10 +455,21 @@ export default function RoomClient({ room, initialDevices }: Props) {
                   )}
                 </div>
 
-                {/* Power-Button für alle schaltbaren Nicht-Sensor-Geräte */}
-                {toggleable && !sensor && !isCover && (
+                {/* Power-Button für alle schaltbaren Nicht-Sensor-Geräte + Thermostat */}
+                {(toggleable || isTherm) && !sensor && !isCover && (
                   <button
-                    onClick={e => { e.stopPropagation(); handleToggle(device); }}
+                    onClick={e => {
+                      e.stopPropagation();
+                      if (isTherm) {
+                        // Thermostat: 'auto' ↔ 'off'
+                        const newStatus = isActive ? 'off' : 'auto';
+                        setDevices(prev => prev.map(d => d.id === device.id ? { ...d, status: newStatus } : d));
+                        api.setDeviceStatus(device.id, newStatus)
+                          .catch(() => setDevices(prev => prev.map(d => d.id === device.id ? device : d)));
+                      } else {
+                        handleToggle(device);
+                      }
+                    }}
                     disabled={isDisabled}
                     aria-label={isActive ? 'Ausschalten' : 'Einschalten'}
                     className={cn(
@@ -482,10 +485,19 @@ export default function RoomClient({ room, initialDevices }: Props) {
                     <Power className="h-5 w-5" />
                   </button>
                 )}
+
+                {/* Favoriten-Stern */}
+                <button
+                  onClick={e => { e.stopPropagation(); toggleFav(device.id); }}
+                  className="cursor-pointer h-9 w-9 flex items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0"
+                  aria-label="Favorit"
+                >
+                  <Star className={cn('h-4 w-4', favorites.includes(device.id) ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground/30')} />
+                </button>
               </div>
 
-              {/* ── Controls (event isolation) ────────────────────── */}
-              <div onClick={e => e.stopPropagation()}>
+              {/* ── Controls (event isolation, flex-1) ──────────────── */}
+              <div className="flex-1" onClick={e => e.stopPropagation()}>
 
                 {/* Sensor-Wert + Verlaufsgraph */}
                 {sensor && (() => {
@@ -570,11 +582,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
 
                 {useBridge && toggleable && !sensor && <ShellyPlugPanel deviceId={device.id} />}
 
-                {toggleable && !sensor && !isCover && (
-                  <div className="mt-2">
-                    <DeviceHistory deviceId={device.id} deviceName={device.name} />
-                  </div>
-                )}
+                {/* DeviceHistory und last_seen kommen in die Bottom-Section */}
 
                 {/* Rollladen */}
                 {isCover && (
@@ -605,24 +613,9 @@ export default function RoomClient({ room, initialDevices }: Props) {
                   </>
                 )}
 
-                {/* Thermostat */}
+                {/* Thermostat: nur Solltemperatur, An/Aus über Header-Button */}
                 {isTherm && (
                   <div className="mt-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm text-muted-foreground">Heizung</p>
-                      <button
-                        onClick={async () => {
-                          const newStatus = isActive ? 'off' : 'auto';
-                          setDevices(prev => prev.map(d => d.id === device.id ? { ...d, status: newStatus } : d));
-                          try { await api.setDeviceStatus(device.id, newStatus); }
-                          catch { setDevices(prev => prev.map(d => d.id === device.id ? device : d)); }
-                        }}
-                        className={cn('cursor-pointer text-sm px-4 py-1.5 rounded-full font-medium transition-colors',
-                          isActive ? 'bg-orange-500/15 text-orange-500 hover:bg-orange-500/25' : 'bg-muted text-muted-foreground hover:bg-accent')}
-                      >
-                        {isActive ? 'Aktiv' : 'Aus'}
-                      </button>
-                    </div>
                     {device.status && !['on','off','auto','unknown'].includes(device.status) && (
                       <p className="text-sm text-muted-foreground">
                         Aktuell: <span className="font-semibold text-foreground">{device.status}°C</span>
@@ -692,13 +685,20 @@ export default function RoomClient({ room, initialDevices }: Props) {
 
                 {isButton && <p className="mt-3 text-sm text-muted-foreground">Eingang – kein Ausgang</p>}
 
-              </div>{/* end controls isolation */}
+              </div>{/* end controls */}
 
-              {/* last_seen Zeitstempel */}
-              {device.last_seen && (
-                <p className="text-xs text-muted-foreground/50 mt-2 select-none">
-                  {formatLastSeen(device.last_seen)}
-                </p>
+              {/* ── Bottom: History + Timestamp (immer unten) ──── */}
+              {(toggleable && !sensor && !isCover || !!device.last_seen) && (
+                <div className="mt-auto pt-2" onClick={e => e.stopPropagation()}>
+                  {toggleable && !sensor && !isCover && (
+                    <DeviceHistory deviceId={device.id} deviceName={device.name} />
+                  )}
+                  {device.last_seen && (
+                    <p className="text-xs text-muted-foreground/50 mt-1 select-none">
+                      {formatLastSeen(device.last_seen)}
+                    </p>
+                  )}
+                </div>
               )}
 
             </div>

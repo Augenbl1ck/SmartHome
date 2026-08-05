@@ -28,22 +28,6 @@ export default function KioskBar() {
         <span>Home</span>
       </Link>
 
-      {/* Szenen */}
-      <Link href="/scenes" className={cn('flex flex-col items-center justify-center gap-1 min-w-[72px] px-3 text-xs font-medium transition-colors', isActive('/scenes') ? 'text-primary' : 'text-muted-foreground')}>
-        <div className={cn('h-9 w-9 rounded-xl flex items-center justify-center', isActive('/scenes') ? 'bg-primary/10' : 'hover:bg-accent')}>
-          <Clapperboard className="h-5 w-5" />
-        </div>
-        <span>Szenen</span>
-      </Link>
-
-      {/* Automationen */}
-      <Link href="/automations" className={cn('flex flex-col items-center justify-center gap-1 min-w-[72px] px-3 text-xs font-medium transition-colors', isActive('/automations') ? 'text-primary' : 'text-muted-foreground')}>
-        <div className={cn('h-9 w-9 rounded-xl flex items-center justify-center', isActive('/automations') ? 'bg-primary/10' : 'hover:bg-accent')}>
-          <Zap className="h-5 w-5" />
-        </div>
-        <span>Automation</span>
-      </Link>
-
       {/* Räume (scrollbar) */}
       <div className="flex-1 flex items-stretch overflow-x-auto scrollbar-none">
         {rooms.map(room => (

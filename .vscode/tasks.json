@@ -83,6 +83,14 @@
       "problemMatcher": []
     },
     {
+      "label": "SmartHome: Alles stoppen",
+      "type": "shell",
+      "command": "${workspaceFolder}\\stop.ps1",
+      "options": { "shell": { "executable": "powershell.exe" } },
+      "presentation": { "panel": "shared", "reveal": "always" },
+      "problemMatcher": []
+    },
+    {
       "label": "SmartHome: Alles starten",
       "dependsOn": ["Mosquitto", "Backend", "MQTT Subscriber", "Reverb WebSocket", "Queue Worker", "Scheduler", "BLE Bridge", "Frontend", "Sensor Sim"],
       "dependsOrder": "parallel",
