@@ -4,6 +4,23 @@ Selbst gehostetes Smart-Home-System — kein Home Assistant, keine Hersteller-Cl
 
 ---
 
+## Todo
+
+### 🔴 Dringend (fehlt noch / nicht deployed)
+- [ ] Zigbee-Sektion + ZigbeeController auf Pi deployen (Frontend neu bauen nach letztem Push)
+- [ ] Reverb WebSocket konfigurieren — App Key in `backend/.env` + `frontend/.env.local` setzen, damit Live-Updates funktionieren
+
+### 🟡 Sicherheit
+- [ ] `permit_join: false` als Standard in `/opt/zigbee2mqtt/data/configuration.yaml` (Pairing nur manuell über UI)
+- [ ] Reverb App Secret absichern (zufälligen Key generieren statt leerem Wert)
+
+### 🟢 Komfort
+- [ ] Update-Script (`deploy/update.sh`) — ein Befehl: git pull + composer + frontend build + services restart
+- [ ] Automatisches SQLite-Backup per Cron (täglich nach `/home/pi/backups/`)
+- [ ] Externer Zugriff via Tailscale (VPN, kein Port-Forwarding nötig)
+
+---
+
 ## Architektur
 
 ```
