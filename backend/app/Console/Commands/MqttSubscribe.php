@@ -6,6 +6,7 @@ use App\Events\DeviceStatusUpdated;
 use App\Models\Device;
 use App\Models\DeviceLog;
 use App\Services\AutomationEngine;
+use App\Services\MqttHelper;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use PhpMqtt\Client\ConnectionSettings;
