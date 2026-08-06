@@ -29,15 +29,6 @@
       "problemMatcher": []
     },
     {
-      "label": "BLE Bridge",
-      "type": "shell",
-      "command": "node index.js",
-      "options": { "cwd": "${workspaceFolder}/ble-bridge", "shell": { "executable": "powershell.exe" } },
-      "presentation": { "panel": "dedicated", "group": "smarthome", "reveal": "always" },
-      "isBackground": true,
-      "problemMatcher": []
-    },
-    {
       "label": "Frontend",
       "type": "shell",
       "command": "npm run dev -- --hostname 0.0.0.0",
@@ -92,14 +83,14 @@
     },
     {
       "label": "SmartHome: Alles starten",
-      "dependsOn": ["Mosquitto", "Backend", "MQTT Subscriber", "Reverb WebSocket", "Queue Worker", "Scheduler", "BLE Bridge", "Frontend", "Sensor Sim"],
+      "dependsOn": ["Mosquitto", "Backend", "MQTT Subscriber", "Reverb WebSocket", "Queue Worker", "Scheduler", "Frontend", "Sensor Sim"],
       "dependsOrder": "parallel",
       "presentation": { "reveal": "silent" },
       "problemMatcher": [],
       "group": { "kind": "build", "isDefault": true }
     },
     {
-      "label": "SmartHome: Ohne BLE & Sim",
+      "label": "SmartHome: Ohne Sim",
       "dependsOn": ["Mosquitto", "Backend", "MQTT Subscriber", "Reverb WebSocket", "Queue Worker", "Scheduler", "Frontend"],
       "dependsOrder": "parallel",
       "presentation": { "reveal": "silent" },

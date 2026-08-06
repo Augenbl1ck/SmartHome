@@ -3,7 +3,6 @@
 # Optional: .\start.ps1 -NoBle -NoSim
 
 param(
-    [switch]$NoBle,   # BLE Bridge nicht starten
     [switch]$NoSim    # Sensor-Simulation nicht starten
 )
 
@@ -55,21 +54,12 @@ Start-Window "Queue Worker" "$root\backend" "C:\php82\php.exe artisan queue:work
 Write-Host "        verarbeitet verzögerte Aktionen" -ForegroundColor Green
 
 # 6. Scheduler (Zeitautomationen jede Minute)
-Write-Host "  [6/8] Scheduler..." -ForegroundColor Yellow
+Write-Host "  [6/7] Scheduler..." -ForegroundColor Yellow
 Start-Window "Scheduler" "$root\backend" "C:\php82\php.exe artisan schedule:work"
 Write-Host "        Automationen & Zeitpläne" -ForegroundColor Green
 
-# 7. BLE Bridge
-if (-not $NoBle) {
-    Write-Host "  [7/8] BLE Bridge..." -ForegroundColor Yellow
-    Start-Window "BLE Bridge" "$root\ble-bridge" "node index.js"
-    Write-Host "        http://localhost:3001" -ForegroundColor Green
-} else {
-    Write-Host "  [7/8] BLE Bridge übersprungen (-NoBle)" -ForegroundColor DarkGray
-}
-
-# 8. Frontend
-Write-Host "  [8/8] Next.js Frontend..." -ForegroundColor Yellow
+# 7. Frontend
+Write-Host "  [7/7] Next.js Frontend..." -ForegroundColor Yellow
 Start-Window "Frontend" "$root\frontend" "npm run dev -- --hostname 0.0.0.0"
 Write-Host "        http://localhost:3000  (bereit in ~10s)" -ForegroundColor Green
 
