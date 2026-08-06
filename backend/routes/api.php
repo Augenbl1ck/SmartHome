@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\DiscoverController;
 use App\Http\Controllers\Api\MqttController;
 use App\Http\Controllers\Api\RoomController;
 use App\Http\Controllers\Api\SceneController;
+use App\Http\Controllers\Api\ZigbeeController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
@@ -33,4 +34,11 @@ Route::prefix('v1')->group(function () {
     // Geräteerkennung
     Route::get('discover/zigbee', [DiscoverController::class, 'zigbee']);
     Route::get('discover/all', [DiscoverController::class, 'all']);
+
+    // Zigbee2MQTT Management
+    Route::get('zigbee/devices', [ZigbeeController::class, 'devices']);
+    Route::post('zigbee/permit-join', [ZigbeeController::class, 'permitJoin']);
+    Route::patch('zigbee/devices/{ieee}', [ZigbeeController::class, 'rename']);
+    Route::delete('zigbee/devices/{ieee}', [ZigbeeController::class, 'remove']);
+    Route::post('zigbee/devices/{ieee}/import', [ZigbeeController::class, 'import']);
 });

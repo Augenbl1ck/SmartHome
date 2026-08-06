@@ -64,6 +64,17 @@ export const api = {
   updateAutomation: (id: number, data: Partial<Automation>) => request<Automation>(`/automations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteAutomation: (id: number) => request<void>(`/automations/${id}`, { method: 'DELETE' }),
   getAutomationLogs: () => request<AutomationLog[]>('/automation-logs'),
+
+  // Zigbee Management
+  getZigbeeDevices: () => request<ZigbeeDevice[]>('/zigbee/devices'),
+  zigbeePermitJoin: (enable: boolean, timeout = 120) =>
+    request<{ ok: boolean }>('/zigbee/permit-join', { method: 'POST', body: JSON.stringify({ enable, timeout }) }),
+  zigbeeRename: (ieee: string, name: string) =>
+    request<{ ok: boolean }>(`/zigbee/devices/${encodeURIComponent(ieee)}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  zigbeeRemove: (ieee: string) =>
+    request<{ ok: boolean }>(`/zigbee/devices/${encodeURIComponent(ieee)}`, { method: 'DELETE' }),
+  zigbeeImport: (ieee: string, friendly_name: string, data: { name: string; type: string; room_id: number }) =>
+    request<Device>(`/zigbee/devices/${encodeURIComponent(ieee)}/import`, { method: 'POST', body: JSON.stringify({ ...data, friendly_name }) }),
 };
 
 // Types
@@ -138,4 +149,19 @@ export interface AutomationLog {
   automation_name: string;
   action_summary: string;
   fired_at: string;
+}
+
+export interface ZigbeeDevice {
+  ieee_address: string;
+  friendly_name: string;
+  type: string;
+  supported: boolean;
+  interview_completed: boolean;
+  definition?: {
+    vendor?: string;
+    model?: string;
+    description?: string;
+  };
+  last_seen?: number;
+  smarthome_device?: Device | null;
 }

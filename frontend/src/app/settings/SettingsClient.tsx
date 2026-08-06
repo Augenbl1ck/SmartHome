@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useTransition } from 'react';
-import { api, Device, DeviceType, Room } from '@/lib/api';
+import { useState, useEffect, useTransition, useCallback } from 'react';
+import { api, Device, DeviceType, Room, ZigbeeDevice } from '@/lib/api';
 import { deviceLabels, CUSTOM_COLORS } from '@/lib/devices';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,7 +14,7 @@ import {
 import {
   Pencil, Plus, Trash2, Wifi, LockKeyhole, LockKeyholeOpen, Timer,
   ChevronDown, Home, Cpu, Cloud, LayoutDashboard, Search, Loader2, Radio,
-  ChevronUp, X, ChevronRight, ArrowLeft, Clapperboard, Zap, Monitor,
+  ChevronUp, X, ChevronRight, ArrowLeft, Clapperboard, Zap, Monitor, RefreshCw, Check,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePinLockContext } from '@/components/PinLockProvider';
@@ -397,6 +397,246 @@ function WeatherSection() {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Zigbee-Verwaltung
+// ─────────────────────────────────────────────────────────────────
+
+function ZigbeeSection({ rooms, onDeviceImported }: { rooms: Room[]; onDeviceImported: (d: Device) => void }) {
+  const [zbDevices, setZbDevices] = useState<ZigbeeDevice[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [pairing, setPairing] = useState(false);
+  const [pairCountdown, setPairCountdown] = useState(0);
+
+  const [importDialog, setImportDialog] = useState<{ open: boolean; device?: ZigbeeDevice; name: string; type: DeviceType; room_id: string; saving: boolean; err: string }>({
+    open: false, name: '', type: 'plug', room_id: '', saving: false, err: '',
+  });
+  const [renameDialog, setRenameDialog] = useState<{ open: boolean; device?: ZigbeeDevice; name: string; saving: boolean; err: string }>({
+    open: false, name: '', saving: false, err: '',
+  });
+  const [removeConfirm, setRemoveConfirm] = useState<ZigbeeDevice | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      const list = await api.getZigbeeDevices();
+      setZbDevices(list);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Fehler');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!pairing || pairCountdown <= 0) return;
+    const t = setTimeout(() => setPairCountdown(c => {
+      if (c <= 1) { setPairing(false); return 0; }
+      return c - 1;
+    }), 1000);
+    return () => clearTimeout(t);
+  }, [pairing, pairCountdown]);
+
+  const togglePairing = async () => {
+    try {
+      if (pairing) {
+        await api.zigbeePermitJoin(false);
+        setPairing(false); setPairCountdown(0);
+      } else {
+        await api.zigbeePermitJoin(true, 120);
+        setPairing(true); setPairCountdown(120);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Fehler');
+    }
+  };
+
+  const doImport = async () => {
+    const { device, name, type, room_id } = importDialog;
+    if (!device) return;
+    if (!name.trim()) { setImportDialog(s => ({ ...s, err: 'Name erforderlich' })); return; }
+    if (!room_id) { setImportDialog(s => ({ ...s, err: 'Raum wählen' })); return; }
+    setImportDialog(s => ({ ...s, saving: true, err: '' }));
+    try {
+      const created = await api.zigbeeImport(device.ieee_address, device.friendly_name, { name: name.trim(), type, room_id: Number(room_id) });
+      onDeviceImported(created);
+      setZbDevices(prev => prev.map(d => d.ieee_address === device.ieee_address ? { ...d, smarthome_device: created } : d));
+      setImportDialog({ open: false, name: '', type: 'plug', room_id: '', saving: false, err: '' });
+    } catch (e) {
+      setImportDialog(s => ({ ...s, saving: false, err: e instanceof Error ? e.message : 'Fehler' }));
+    }
+  };
+
+  const doRename = async () => {
+    const { device, name } = renameDialog;
+    if (!device || !name.trim()) return;
+    setRenameDialog(s => ({ ...s, saving: true, err: '' }));
+    try {
+      await api.zigbeeRename(device.ieee_address, name.trim());
+      setZbDevices(prev => prev.map(d => d.ieee_address === device.ieee_address ? { ...d, friendly_name: name.trim() } : d));
+      setRenameDialog({ open: false, name: '', saving: false, err: '' });
+    } catch (e) {
+      setRenameDialog(s => ({ ...s, saving: false, err: e instanceof Error ? e.message : 'Fehler' }));
+    }
+  };
+
+  const doRemove = async () => {
+    if (!removeConfirm) return;
+    try {
+      await api.zigbeeRemove(removeConfirm.ieee_address);
+      setZbDevices(prev => prev.filter(d => d.ieee_address !== removeConfirm.ieee_address));
+      setRemoveConfirm(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Fehler');
+      setRemoveConfirm(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Pairing */}
+      <div className="rounded-xl border bg-card px-4 py-3 flex items-center justify-between gap-3">
+        <div>
+          <p className="font-medium text-sm">Gerät anlernen</p>
+          <p className="text-xs text-muted-foreground">
+            {pairing ? `Pairing aktiv — ${pairCountdown}s` : 'Neues Zigbee-Gerät in den Pairing-Modus versetzen'}
+          </p>
+        </div>
+        <Button size="sm" variant={pairing ? 'destructive' : 'default'} onClick={togglePairing}>
+          {pairing ? 'Stoppen' : 'Pairing starten'}
+        </Button>
+      </div>
+
+      {/* Geräteliste */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Zigbee-Geräte ({zbDevices.length})</p>
+        <button onClick={load} disabled={loading}
+          className="cursor-pointer h-7 w-7 flex items-center justify-center rounded hover:bg-accent">
+          <RefreshCw className={cn('h-3.5 w-3.5 text-muted-foreground', loading && 'animate-spin')} />
+        </button>
+      </div>
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      {loading && zbDevices.length === 0 && (
+        <p className="text-sm text-muted-foreground text-center py-4"><Loader2 className="h-4 w-4 animate-spin inline mr-1" />Lade…</p>
+      )}
+
+      {!loading && zbDevices.length === 0 && !error && (
+        <p className="text-sm text-muted-foreground text-center py-4">Keine Zigbee-Geräte gefunden.</p>
+      )}
+
+      <div className="space-y-2">
+        {zbDevices.map(dev => (
+          <div key={dev.ieee_address} className="rounded-xl border bg-card px-3 py-2.5 space-y-2">
+            <div className="flex items-start gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p className="font-medium text-sm truncate">{dev.friendly_name}</p>
+                  {!dev.supported && (
+                    <span className="text-[10px] bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 px-1.5 py-0.5 rounded">Experimentell</span>
+                  )}
+                  {dev.smarthome_device && (
+                    <span className="flex items-center gap-0.5 text-[10px] bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-1.5 py-0.5 rounded">
+                      <Check className="h-2.5 w-2.5" />Importiert
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {dev.definition?.vendor} {dev.definition?.model}
+                  {dev.definition?.description ? ` — ${dev.definition.description}` : ''}
+                </p>
+                <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{dev.ieee_address}</p>
+              </div>
+              <div className="flex gap-1 shrink-0">
+                {!dev.smarthome_device && (
+                  <Button size="sm" variant="outline" className="h-7 text-xs"
+                    onClick={() => setImportDialog({ open: true, device: dev, name: dev.friendly_name, type: 'plug', room_id: '', saving: false, err: '' })}>
+                    Importieren
+                  </Button>
+                )}
+                <button onClick={() => setRenameDialog({ open: true, device: dev, name: dev.friendly_name, saving: false, err: '' })}
+                  className="cursor-pointer h-7 w-7 flex items-center justify-center rounded hover:bg-accent">
+                  <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                </button>
+                <button onClick={() => setRemoveConfirm(dev)}
+                  className="cursor-pointer h-7 w-7 flex items-center justify-center rounded hover:bg-destructive/10">
+                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Import Dialog */}
+      <Dialog open={importDialog.open} onOpenChange={open => !open && setImportDialog(s => ({ ...s, open: false }))}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>Gerät importieren</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <Field label="Name" value={importDialog.name} onChange={v => setImportDialog(s => ({ ...s, name: v }))} placeholder="z.B. Stehlampe" />
+            <div className="space-y-1">
+              <label className="block text-sm font-medium">Typ</label>
+              <select value={importDialog.type} onChange={e => setImportDialog(s => ({ ...s, type: e.target.value as DeviceType }))}
+                className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm">
+                {DEVICE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-medium">Raum</label>
+              <select value={importDialog.room_id} onChange={e => setImportDialog(s => ({ ...s, room_id: e.target.value }))}
+                className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm">
+                <option value="">Raum wählen…</option>
+                {rooms.map(r => <option key={r.id} value={r.id}>{r.icon} {r.name}</option>)}
+              </select>
+            </div>
+            {importDialog.err && <p className="text-sm text-destructive">{importDialog.err}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setImportDialog(s => ({ ...s, open: false }))}>Abbrechen</Button>
+            <Button onClick={doImport} disabled={importDialog.saving}>
+              {importDialog.saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Importieren'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Umbenennen Dialog */}
+      <Dialog open={renameDialog.open} onOpenChange={open => !open && setRenameDialog(s => ({ ...s, open: false }))}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>Gerät umbenennen</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <Field label="Neuer Name" value={renameDialog.name} onChange={v => setRenameDialog(s => ({ ...s, name: v }))} />
+            {renameDialog.err && <p className="text-sm text-destructive">{renameDialog.err}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRenameDialog(s => ({ ...s, open: false }))}>Abbrechen</Button>
+            <Button onClick={doRename} disabled={renameDialog.saving}>
+              {renameDialog.saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Speichern'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Entfernen bestätigen */}
+      <Dialog open={!!removeConfirm} onOpenChange={open => !open && setRemoveConfirm(null)}>
+        <DialogContent className="sm:max-w-xs">
+          <DialogHeader><DialogTitle>Gerät entfernen?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground py-1">
+            <span className="font-medium">{removeConfirm?.friendly_name}</span> wird aus Zigbee2MQTT entfernt.
+          </p>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRemoveConfirm(null)}>Abbrechen</Button>
+            <Button variant="destructive" onClick={doRemove}>Entfernen</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 function KioskSection() {
   const { kioskMode, setKioskMode } = useKiosk();
   return (
@@ -622,6 +862,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     { id: 'weather',  icon: Cloud,        color: 'text-sky-500    bg-sky-500/10',    label: 'Wetter-Widget',    desc: 'Ort & Einheiten' },
     { id: 'security', icon: LockKeyhole,  color: 'text-orange-500 bg-orange-500/10', label: 'Sicherheit',       desc: 'PIN & Bildschirmsperre' },
     { id: 'kiosk',    icon: Monitor,      color: 'text-teal-500   bg-teal-500/10',   label: 'Kiosk-Modus',      desc: 'Wandbildschirm einrichten' },
+    { id: 'zigbee',   icon: Radio,        color: 'text-cyan-500   bg-cyan-500/10',   label: 'Zigbee',           desc: 'Geräte anlernen & verwalten' },
   ];
   const viewLabel = CATEGORIES.find(c => c.id === view)?.label ?? view;
 
@@ -839,6 +1080,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
       {view === 'dashboard' && <div key="dashboard" className="animate-page-in"><DashboardWidgetsSection devices={devices} /></div>}
       {view === 'weather'   && <div key="weather"   className="animate-page-in"><WeatherSection /></div>}
       {view === 'kiosk'     && <div key="kiosk"     className="animate-page-in"><KioskSection /></div>}
+      {view === 'zigbee'    && <div key="zigbee"    className="animate-page-in"><ZigbeeSection rooms={rooms} onDeviceImported={d => setDevices(prev => [...prev, d])} /></div>}
 
       {/* ═══════════════════════════════════════════════════════════
           Dialoge
