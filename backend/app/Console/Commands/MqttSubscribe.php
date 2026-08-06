@@ -45,7 +45,7 @@ class MqttSubscribe extends Command
         $this->info("Verbinde mit MQTT-Broker {$host}:{$port} ...");
 
         try {
-            $mqtt = new MqttClient($host, $port, 'laravel-subscriber');
+            $mqtt = new MqttClient($host, $port, 'laravel-subscriber-' . uniqid());
             $settings = MqttHelper::settings(5)->setKeepAliveInterval(60);
             $mqtt->connect($settings, true);
             $this->info('Verbunden. Warte auf Nachrichten...');
