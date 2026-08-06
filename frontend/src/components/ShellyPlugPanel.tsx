@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-interface Props { deviceId: number }
+interface Props { deviceId: number; mode?: 'ble' | 'http' }
 
 interface PowerStatus {
   apower: number;
@@ -75,7 +75,7 @@ const DEFAULT_CONFIG: Config = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function ShellyPlugPanel({ deviceId }: Props) {
+export default function ShellyPlugPanel({ deviceId, mode = 'ble' }: Props) {
   const [powerExpanded, setPowerExpanded] = useState(false);
   const [expanded,      setExpanded]      = useState(false);
   const [loadingPower,  setLoadingPower]  = useState(false);
@@ -101,11 +101,15 @@ export default function ShellyPlugPanel({ deviceId }: Props) {
   const isDirty = committed !== null && draft !== null &&
     JSON.stringify(committed) !== JSON.stringify(draft);
 
-  // ── BLE send helpers ──────────────────────────────────────────────────────
+  const rpc = useCallback((method: string, params: Record<string, unknown> = {}) =>
+    mode === 'http' ? api.shellyRpc(deviceId, method, params) : api.bleRpc(deviceId, method, params),
+  [deviceId, mode]);
+
+  // ── RPC send helpers ──────────────────────────────────────────────────────
 
   const sendLed = useCallback(async (cfg: Config) => {
     try {
-      await api.bleRpc(deviceId, 'PLUGS_UI.SetConfig', {
+      await rpc('PLUGS_UI.SetConfig', {
         config: {
           leds: {
             mode: cfg.ledMode,
@@ -129,11 +133,11 @@ export default function ShellyPlugPanel({ deviceId }: Props) {
         },
       });
     } catch { /* live preview */ }
-  }, [deviceId]);
+  }, [rpc]);
 
   const sendSwitch = useCallback(async (cfg: Config) => {
     try {
-      await api.bleRpc(deviceId, 'Switch.SetConfig', {
+      await rpc('Switch.SetConfig', {
         id: 0,
         config: {
           auto_off:       cfg.autoOff,
@@ -145,7 +149,7 @@ export default function ShellyPlugPanel({ deviceId }: Props) {
         },
       });
     } catch { /* live preview */ }
-  }, [deviceId]);
+  }, [rpc]);
 
   const debouncedSendLed = useCallback((cfg: Config, ms = 500) => {
     if (ledTimerRef.current) clearTimeout(ledTimerRef.current);
@@ -182,7 +186,7 @@ export default function ShellyPlugPanel({ deviceId }: Props) {
     setLoadingPower(true);
     setPowerError(null);
     try {
-      const res = await api.bleRpc(deviceId, 'Switch.GetStatus', { id: 0 });
+      const res = await rpc('Switch.GetStatus', { id: 0 });
       setPower(res.result as PowerStatus);
     } catch (e) {
       setPowerError(e instanceof Error ? e.message : 'Fehler');
@@ -202,7 +206,7 @@ export default function ShellyPlugPanel({ deviceId }: Props) {
     setLoadingConfig(true);
     setError(null);
     try {
-      const switchRes = await api.bleRpc(deviceId, 'Switch.GetConfig', { id: 0 });
+      const switchRes = await rpc('Switch.GetConfig', { id: 0 });
       const sc = switchRes.result as {
         auto_off?: boolean; auto_off_delay?: number;
         auto_on?:  boolean; auto_on_delay?:  number;
@@ -221,7 +225,7 @@ export default function ShellyPlugPanel({ deviceId }: Props) {
       if (sc.in_mode) cfg.inMode = sc.in_mode;
 
       try {
-        const ledRes = await api.bleRpc(deviceId, 'PLUGS_UI.GetConfig', {});
+        const ledRes = await rpc('PLUGS_UI.GetConfig', {});
         const leds = (ledRes.result as {
           leds?: {
             mode?: string;

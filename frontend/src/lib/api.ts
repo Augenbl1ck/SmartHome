@@ -37,6 +37,8 @@ export const api = {
     request<SensorHistory>(`/devices/${id}/sensor-history?hours=${hours}`),
   saveBleMac: (id: number, ble_address: string) =>
     request<Device>(`/devices/${id}/ble-mac`, { method: 'POST', body: JSON.stringify({ ble_address }) }),
+  shellyRpc: (id: number, method: string, params: Record<string, unknown> = {}) =>
+    request<{ result: unknown }>(`/devices/${id}/shelly-rpc`, { method: 'POST', body: JSON.stringify({ method, params }) }),
 
   // BLE Scan
   bleScan: (timeoutMs = 8000) =>

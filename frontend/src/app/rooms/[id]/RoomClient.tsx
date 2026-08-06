@@ -407,6 +407,11 @@ export default function RoomClient({ room, initialDevices }: Props) {
           const isPending  = pending.has(device.id);
           const isDisabled = isPending;
 
+          const isMqttShelly = ['shelly_gen3', 'shelly_gen1', 'shelly_gen3_http'].includes(
+            (device.attributes?.protocol as string) ?? ''
+          );
+          const powerW = typeof device.attributes?.power_w === 'number' ? device.attributes.power_w as number : null;
+
           // Ganzes Tile = Tap für einfache An/Aus-Geräte
           const isTileTap = !sensor && ['light', 'plug', 'switch', 'valve', 'fan'].includes(device.type);
 
@@ -451,7 +456,13 @@ export default function RoomClient({ room, initialDevices }: Props) {
                       isActive ? typeColor.text : 'text-muted-foreground'
                     )}>
                       {statusLabel}
+                      {powerW !== null && powerW > 0 && (
+                        <span className="ml-1.5 text-xs font-normal opacity-80">{powerW.toFixed(1)} W</span>
+                      )}
                     </p>
+                  )}
+                  {statusLabel === null && powerW !== null && powerW > 0 && (
+                    <p className="text-sm mt-0.5 text-muted-foreground">{powerW.toFixed(1)} W</p>
                   )}
                 </div>
 
@@ -580,7 +591,8 @@ export default function RoomClient({ room, initialDevices }: Props) {
                   </div>
                 )}
 
-                {useBridge && toggleable && !sensor && <ShellyPlugPanel deviceId={device.id} />}
+                {useBridge && toggleable && !sensor && <ShellyPlugPanel deviceId={device.id} mode="ble" />}
+                {isMqttShelly && toggleable && !sensor && <ShellyPlugPanel deviceId={device.id} mode="http" />}
 
                 {/* DeviceHistory und last_seen kommen in die Bottom-Section */}
 

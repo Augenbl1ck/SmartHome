@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\DiscoverController;
 use App\Http\Controllers\Api\MqttController;
 use App\Http\Controllers\Api\RoomController;
 use App\Http\Controllers\Api\SceneController;
+use App\Http\Controllers\Api\ShellyRpcController;
 use App\Http\Controllers\Api\ZigbeeController;
 use Illuminate\Support\Facades\Route;
 
@@ -30,6 +31,7 @@ Route::prefix('v1')->group(function () {
     Route::get('ble/scan', [BleController::class, 'scan']);
     Route::post('devices/{device}/ble-mac', [BleController::class, 'saveMac']);
     Route::post('devices/{device}/ble-rpc', [BleController::class, 'rpc']);
+    Route::post('devices/{device}/shelly-rpc', [ShellyRpcController::class, 'rpc']);
 
     // Geräteerkennung
     Route::get('discover/zigbee', [DiscoverController::class, 'zigbee']);

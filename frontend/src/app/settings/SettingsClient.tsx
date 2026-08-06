@@ -181,7 +181,7 @@ interface DiscoveredDevice {
 
 interface DeviceForm {
   name: string; type: DeviceType; room_id: string;
-  mqtt_topic: string; mqtt_protocol: DeviceProtocol; ble_address: string; active: boolean;
+  mqtt_topic: string; mqtt_protocol: DeviceProtocol; ble_address: string; shelly_ip: string; active: boolean;
   vendorId: string;
   custom_emoji: string;
   custom_color: string;
@@ -189,7 +189,7 @@ interface DeviceForm {
 
 const emptyDevice = (): DeviceForm => ({
   name: '', type: 'plug', room_id: '', mqtt_topic: '',
-  mqtt_protocol: 'zigbee2mqtt', ble_address: '', active: true, vendorId: 'zigbee',
+  mqtt_protocol: 'zigbee2mqtt', ble_address: '', shelly_ip: '', active: true, vendorId: 'zigbee',
   custom_emoji: '', custom_color: '',
 });
 
@@ -217,6 +217,7 @@ function deviceToForm(d: Device): DeviceForm {
     mqtt_topic: displayTopic,
     mqtt_protocol: proto,
     ble_address: (d.attributes?.ble_address as string) ?? '',
+    shelly_ip: (d.attributes?.shelly_ip as string) ?? '',
     active: d.active,
     vendorId,
     custom_emoji: (d.attributes?.custom_emoji as string) ?? '',
@@ -738,6 +739,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     try {
   const attrs: Record<string, unknown> = { protocol: form.mqtt_protocol };
       if (form.ble_address.trim()) attrs.ble_address = form.ble_address.trim();
+      if (form.shelly_ip.trim())   attrs.shelly_ip   = form.shelly_ip.trim();
       if (form.custom_emoji.trim()) attrs.custom_emoji = form.custom_emoji.trim();
       if (form.custom_color) attrs.custom_color = form.custom_color;
       // Laufzeit-Attribute (power_w, temperature usw.) erhalten
@@ -1262,6 +1264,30 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
                   placeholder="192.168.1.42"
                   hint="IP aus der Shelly-App — kein MQTT-Broker nötig."
                   type="text" inputMode="numeric" />
+              );
+              if (proto === 'shelly_gen3' || proto === 'shelly_gen1') return (
+                <>
+                  {vendor?.topicPrefix ? (
+                    <PrefixField
+                      label={vendor.topicLabel}
+                      prefix={vendor.topicPrefix}
+                      value={deviceDialog.form.mqtt_topic}
+                      onChange={v => patchDevice({ mqtt_topic: v })}
+                      placeholder={vendor.topicPlaceholder}
+                      hint="Aus der Shelly-App (Gerätename ohne Prefix)." />
+                  ) : (
+                    <Field label="Geräte-ID"
+                      value={deviceDialog.form.mqtt_topic}
+                      onChange={v => patchDevice({ mqtt_topic: v })}
+                      placeholder="shellyXXXX-XXXXXXXXXXXX" />
+                  )}
+                  <Field label="Shelly IP (für LED-Ring & Einstellungen, optional)"
+                    value={deviceDialog.form.shelly_ip}
+                    onChange={v => patchDevice({ shelly_ip: v })}
+                    placeholder="192.168.1.xx"
+                    hint="IP aus der Shelly-App. Wird für direkten Zugriff auf LED-Ring und Konfiguration benötigt."
+                    inputMode="numeric" autoComplete="off" />
+                </>
               );
               if (vendor?.topicPrefix) return (
                 <PrefixField
