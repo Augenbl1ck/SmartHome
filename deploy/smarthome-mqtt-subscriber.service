@@ -1,0 +1,14 @@
+[Unit]
+Description=SmartHome MQTT Subscriber
+After=network.target mosquitto.service smarthome-backend.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/SmartHome/backend
+ExecStart=/usr/bin/php8.4 artisan mqtt:subscribe
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

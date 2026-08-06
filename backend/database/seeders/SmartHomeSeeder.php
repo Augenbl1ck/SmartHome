@@ -11,9 +11,9 @@ class SmartHomeSeeder extends Seeder
 {
     public function run(): void
     {
-        $wohnzimmer = Room::create(['name' => 'Wohnzimmer', 'icon' => 'sofa']);
-        $schlafzimmer = Room::create(['name' => 'Schlafzimmer', 'icon' => 'bed']);
-        $kueche = Room::create(['name' => 'Küche', 'icon' => 'utensils']);
+        $wohnzimmer = Room::create(['name' => 'Wohnzimmer', 'icon' => '🛋️']);
+        $schlafzimmer = Room::create(['name' => 'Schlafzimmer', 'icon' => '🛏️']);
+        $kueche = Room::create(['name' => 'Küche', 'icon' => '🍳']);
 
         Device::create([
             'name'       => 'Stehlampe',
