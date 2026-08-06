@@ -5,8 +5,8 @@ After=network.target
 [Service]
 Type=simple
 User=pi
-WorkingDirectory=/home/pi/smarthome/backend
-ExecStart=/usr/bin/php artisan schedule:work
+WorkingDirectory=/home/pi/SmartHome/backend
+ExecStart=/usr/bin/php8.4 artisan schedule:work
 Restart=always
 RestartSec=10
 
