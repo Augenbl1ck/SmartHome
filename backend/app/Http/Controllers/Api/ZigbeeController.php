@@ -6,7 +6,7 @@ use App\Models\Device;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use PhpMqtt\Client\ConnectionSettings;
+use App\Services\MqttHelper;
 use PhpMqtt\Client\MqttClient;
 
 class ZigbeeController
@@ -17,7 +17,7 @@ class ZigbeeController
     private function publish(string $topic, string $payload): void
     {
         $mqtt = new MqttClient($this->mqttHost(), $this->mqttPort(), 'laravel-z2m-pub-' . uniqid());
-        $mqtt->connect((new ConnectionSettings())->setConnectTimeout(3), true);
+        $mqtt->connect(MqttHelper::settings(3), true);
         $mqtt->publish($topic, $payload, 0);
         $mqtt->disconnect();
     }
@@ -27,7 +27,7 @@ class ZigbeeController
         $response = null;
         try {
             $mqtt = new MqttClient($this->mqttHost(), $this->mqttPort(), 'laravel-z2m-rr-' . uniqid());
-            $mqtt->connect((new ConnectionSettings())->setConnectTimeout(3), true);
+            $mqtt->connect(MqttHelper::settings(3), true);
             $mqtt->subscribe($resTopic, function (string $t, string $p) use (&$response, $mqtt) {
                 $response = json_decode($p, true);
                 $mqtt->interrupt();
@@ -48,7 +48,7 @@ class ZigbeeController
         $received = false;
         try {
             $mqtt = new MqttClient($this->mqttHost(), $this->mqttPort(), 'laravel-z2m-dev-' . uniqid());
-            $mqtt->connect((new ConnectionSettings())->setConnectTimeout(3), true);
+            $mqtt->connect(MqttHelper::settings(3), true);
             $mqtt->subscribe('zigbee2mqtt/bridge/devices', function (string $t, string $p) use (&$devices, &$received, $mqtt) {
                 $list = json_decode($p, true);
                 if (!is_array($list)) return;

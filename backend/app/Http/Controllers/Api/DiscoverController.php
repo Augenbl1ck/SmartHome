@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
-use PhpMqtt\Client\ConnectionSettings;
+use App\Services\MqttHelper;
 use PhpMqtt\Client\MqttClient;
 
 class DiscoverController
@@ -25,8 +25,7 @@ class DiscoverController
 
         try {
             $mqtt = new MqttClient($host, $port, 'laravel-discover-' . uniqid());
-            $settings = (new ConnectionSettings())->setConnectTimeout(3);
-            $mqtt->connect($settings, true);
+            $mqtt->connect(MqttHelper::settings(3), true);
 
             $mqtt->subscribe('zigbee2mqtt/bridge/devices', function (string $topic, string $payload) use (&$devices, &$received, $mqtt) {
                 $list = json_decode($payload, true);
@@ -92,8 +91,7 @@ class DiscoverController
 
         try {
             $mqtt = new MqttClient($host, $port, 'laravel-discover-all-' . uniqid());
-            $settings = (new ConnectionSettings())->setConnectTimeout(3);
-            $mqtt->connect($settings, true);
+            $mqtt->connect(MqttHelper::settings(3), true);
 
             // Shelly: postet "<device-id>/online" als retained
             $mqtt->subscribe('+/online', function (string $topic, string $payload) use (&$devices) {

@@ -6,7 +6,7 @@ use App\Models\Device;
 use App\Models\DeviceLog;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use PhpMqtt\Client\ConnectionSettings;
+use App\Services\MqttHelper;
 use PhpMqtt\Client\MqttClient;
 
 /**
@@ -107,8 +107,7 @@ class DeviceService
                 (int) config('mqtt.port', 1883),
                 'laravel-device-service'
             );
-            $settings = (new ConnectionSettings())->setConnectTimeout(3);
-            $mqtt->connect($settings, true);
+            $mqtt->connect(MqttHelper::settings(3), true);
             $mqtt->publish($topic, $payload, 0);
             $mqtt->disconnect();
         } catch (\Exception $e) {

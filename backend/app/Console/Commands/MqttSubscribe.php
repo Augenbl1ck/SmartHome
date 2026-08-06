@@ -45,10 +45,7 @@ class MqttSubscribe extends Command
 
         try {
             $mqtt = new MqttClient($host, $port, 'laravel-subscriber');
-            $settings = (new ConnectionSettings())
-                ->setConnectTimeout(5)
-                ->setKeepAliveInterval(60);
-
+            $settings = MqttHelper::settings(5)->setKeepAliveInterval(60);
             $mqtt->connect($settings, true);
             $this->info('Verbunden. Warte auf Nachrichten...');
         } catch (\Exception $e) {

@@ -8,7 +8,7 @@ use App\Services\DeviceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use PhpMqtt\Client\MqttClient;
-use PhpMqtt\Client\ConnectionSettings;
+use App\Services\MqttHelper;
 
 class MqttController extends Controller
 {
@@ -27,8 +27,7 @@ class MqttController extends Controller
             config('mqtt.client_id', 'laravel-smarthome-pub')
         );
 
-        $settings = (new ConnectionSettings())->setConnectTimeout(5);
-        $mqtt->connect($settings, true);
+        $mqtt->connect(MqttHelper::settings(5), true);
         $mqtt->publish($data['topic'], $data['payload'], 0);
         $mqtt->disconnect();
 
