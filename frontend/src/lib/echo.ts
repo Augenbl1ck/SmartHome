@@ -8,9 +8,9 @@ declare global {
   }
 }
 
-let echo: Echo | null = null;
+let echo: Echo<'reverb'> | null = null;
 
-export function getEcho(): Echo {
+export function getEcho(): Echo<'reverb'> {
   if (echo) return echo;
 
   if (typeof window === 'undefined') {
