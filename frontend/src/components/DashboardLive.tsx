@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { api, Device, DeviceType, Room, Scene } from '@/lib/api';
 import { isToggleable } from '@/lib/devices';
@@ -8,6 +8,7 @@ import { DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { getEcho } from '@/lib/echo';
 import { cn } from '@/lib/utils';
 import QuickAccess from '@/components/QuickAccess';
+import { useDashboardLayout, type SectionId } from '@/hooks/useDashboardLayout';
 import DashboardActions from '@/components/DashboardActions';
 import WeatherWidget from '@/components/WeatherWidget';
 
@@ -85,6 +86,23 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes }: 
   const list          = devices;
   const activeDevices = list.filter(d => d.status === 'on' && isToggleable(d.type as DeviceType)).length;
 
+  const layout = useDashboardLayout();
+
+  const orderedRooms = useMemo(() => {
+    const { roomOrder } = layout;
+    if (roomOrder.length === 0) return rooms;
+    return [...rooms].sort((a, b) => {
+      const ai = roomOrder.indexOf(a.id);
+      const bi = roomOrder.indexOf(b.id);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
+  }, [rooms, layout]);
+
+  const sectionOrder: SectionId[] = layout.sectionOrder.length > 0
+    ? layout.sectionOrder
+    : ['scenes', 'rooms', 'quickaccess'];
+  const hiddenSections = new Set(layout.hiddenSections);
+
   const activateScene = async (scene: Scene) => {
     if (running.has(scene.id)) return;
     setRunning(r => new Set(r).add(scene.id));
@@ -135,88 +153,95 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes }: 
         <DashboardActions devices={list} />
       </div>
 
-      {/* ── Szenen-Leiste ────────────────────────────────────────── */}
-      {initialScenes.length > 0 && (
-        <div className="flex gap-3 overflow-x-auto pb-1 -mb-1 scrollbar-none">
-          {initialScenes.map(scene => {
-            const isRunning = running.has(scene.id);
-            const isDone    = done.has(scene.id);
-            return (
-              <button
-                key={scene.id}
-                onClick={() => activateScene(scene)}
-                disabled={isRunning}
-                className={cn(
-                  'flex-shrink-0 flex flex-col items-center gap-2 rounded-2xl border p-4 min-w-[110px]',
-                  'transition-all duration-200 active:scale-[0.95] cursor-pointer',
-                  isDone
-                    ? 'bg-green-500/15 border-green-400/40 text-green-600 dark:text-green-400'
-                    : 'bg-card border-border hover:bg-accent/60',
-                  isRunning && 'opacity-60 animate-pulse cursor-not-allowed',
-                )}
-              >
-                <span className="text-3xl leading-none select-none">
-                  {isDone ? '✓' : scene.icon}
-                </span>
-                <span className="text-xs font-semibold text-center leading-tight line-clamp-2 w-full">
-                  {isDone ? 'Aktiviert' : scene.name}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {sectionOrder.map(sectionId => {
+        if (hiddenSections.has(sectionId)) return null;
 
-      {/* ── Räume ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        {rooms.map(room => {
-          const roomDevices = list.filter(d => d.room_id === room.id);
-          const active      = roomDevices.filter(d => d.status === 'on' && isToggleable(d.type as DeviceType)).length;
-          return (
-            <Link key={room.id} href={`/rooms/${room.id}`}>
-              <div className={cn(
-                'rounded-2xl border p-5 flex flex-col gap-3 min-h-[165px] cursor-pointer',
-                'transition-all duration-300 ease-in-out active:scale-[0.97]',
-                active > 0
-                  ? 'bg-amber-500/15 border-amber-400/40 shadow-sm'
-                  : 'bg-card border-border hover:bg-accent/40'
-              )}>
-                <div className={cn(
-                  'w-14 h-14 rounded-xl flex items-center justify-center text-3xl select-none',
-                  active > 0 ? 'bg-amber-500/20' : 'bg-muted'
-                )}>
-                  {room.icon ?? '🏠'}
-                </div>
-                <div className="mt-auto">
-                  <p className="font-semibold text-base leading-tight">{room.name}</p>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <span className={cn(
-                      'h-2 w-2 rounded-full transition-colors',
-                      active > 0 ? 'bg-amber-500' : 'bg-muted-foreground/30'
-                    )} />
-                    <p className="text-sm text-muted-foreground">
-                      {active > 0
-                        ? `${active} aktiv`
-                        : roomDevices.length > 0
-                        ? 'Alles aus'
-                        : 'Keine Geräte'}
-                    </p>
+        if (sectionId === 'scenes') return initialScenes.length > 0 ? (
+          <div key="scenes" className="flex gap-3 overflow-x-auto pb-1 -mb-1 scrollbar-none">
+            {initialScenes.map(scene => {
+              const isRunning = running.has(scene.id);
+              const isDone    = done.has(scene.id);
+              return (
+                <button
+                  key={scene.id}
+                  onClick={() => activateScene(scene)}
+                  disabled={isRunning}
+                  className={cn(
+                    'flex-shrink-0 flex flex-col items-center gap-2 rounded-2xl border p-4 min-w-[110px]',
+                    'transition-all duration-200 active:scale-[0.95] cursor-pointer',
+                    isDone
+                      ? 'bg-green-500/15 border-green-400/40 text-green-600 dark:text-green-400'
+                      : 'bg-card border-border hover:bg-accent/60',
+                    isRunning && 'opacity-60 animate-pulse cursor-not-allowed',
+                  )}
+                >
+                  <span className="text-3xl leading-none select-none">
+                    {isDone ? '✓' : scene.icon}
+                  </span>
+                  <span className="text-xs font-semibold text-center leading-tight line-clamp-2 w-full">
+                    {isDone ? 'Aktiviert' : scene.name}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null;
+
+        if (sectionId === 'rooms') return (
+          <div key="rooms" className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            {orderedRooms.map(room => {
+              const roomDevices = list.filter(d => d.room_id === room.id);
+              const active      = roomDevices.filter(d => d.status === 'on' && isToggleable(d.type as DeviceType)).length;
+              return (
+                <Link key={room.id} href={`/rooms/${room.id}`}>
+                  <div className={cn(
+                    'rounded-2xl border p-5 flex flex-col gap-3 min-h-[165px] cursor-pointer',
+                    'transition-all duration-300 ease-in-out active:scale-[0.97]',
+                    active > 0
+                      ? 'bg-amber-500/15 border-amber-400/40 shadow-sm'
+                      : 'bg-card border-border hover:bg-accent/40'
+                  )}>
+                    <div className={cn(
+                      'w-14 h-14 rounded-xl flex items-center justify-center text-3xl select-none',
+                      active > 0 ? 'bg-amber-500/20' : 'bg-muted'
+                    )}>
+                      {room.icon ?? '🏠'}
+                    </div>
+                    <div className="mt-auto">
+                      <p className="font-semibold text-base leading-tight">{room.name}</p>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className={cn(
+                          'h-2 w-2 rounded-full transition-colors',
+                          active > 0 ? 'bg-amber-500' : 'bg-muted-foreground/30'
+                        )} />
+                        <p className="text-sm text-muted-foreground">
+                          {active > 0
+                            ? `${active} aktiv`
+                            : roomDevices.length > 0
+                            ? 'Alles aus'
+                            : 'Keine Geräte'}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            </Link>
-          );
-        })}
+                </Link>
+              );
+            })}
 
-        {rooms.length === 0 && (
-          <p className="text-muted-foreground text-sm col-span-full py-12 text-center">
-            Noch keine Räume. Gehe zu Einstellungen um welche hinzuzufügen.
-          </p>
-        )}
-      </div>
+            {rooms.length === 0 && (
+              <p className="text-muted-foreground text-sm col-span-full py-12 text-center">
+                Noch keine Räume. Gehe zu Einstellungen um welche hinzuzufügen.
+              </p>
+            )}
+          </div>
+        );
 
-      {/* ── Schnellzugriff (nur wenn Favoriten gesetzt) ──────────── */}
-      {mounted && <QuickAccess initialDevices={list} />}
+        if (sectionId === 'quickaccess') return mounted ? (
+          <QuickAccess key="quickaccess" initialDevices={list} />
+        ) : null;
+
+        return null;
+      })}
 
     </div>
   );
