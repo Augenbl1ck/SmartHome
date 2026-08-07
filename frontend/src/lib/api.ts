@@ -77,6 +77,14 @@ export const api = {
     request<{ ok: boolean }>(`/zigbee/devices/${encodeURIComponent(ieee)}`, { method: 'DELETE' }),
   zigbeeImport: (ieee: string, friendly_name: string, data: { name: string; type: string; room_id: number }) =>
     request<Device>(`/zigbee/devices/${encodeURIComponent(ieee)}/import`, { method: 'POST', body: JSON.stringify({ ...data, friendly_name }) }),
+
+  // Push Notifications
+  pushSubscribe: (sub: { endpoint: string; public_key: string; auth_token: string; device_name?: string }) =>
+    request<{ ok: boolean }>('/push/subscribe', { method: 'POST', body: JSON.stringify(sub) }),
+  pushUnsubscribe: (endpoint: string) =>
+    request<{ ok: boolean }>('/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) }),
+  pushTest: () =>
+    request<{ ok: boolean }>('/push/test', { method: 'POST' }),
 };
 
 // Types

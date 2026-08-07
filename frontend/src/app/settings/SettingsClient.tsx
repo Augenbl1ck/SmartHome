@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useTransition, useCallback } from 'react';
 import { api, Device, DeviceType, Room, ZigbeeDevice } from '@/lib/api';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { deviceLabels, CUSTOM_COLORS } from '@/lib/devices';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,7 +15,7 @@ import {
 import {
   Pencil, Plus, Trash2, Wifi, LockKeyhole, LockKeyholeOpen, Timer,
   ChevronDown, Home, Cpu, Cloud, LayoutDashboard, Search, Loader2, Radio,
-  ChevronUp, X, ChevronRight, ArrowLeft, Clapperboard, Zap, Monitor, RefreshCw, Check,
+  ChevronUp, X, ChevronRight, ArrowLeft, Clapperboard, Zap, Monitor, RefreshCw, Check, Bell,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePinLockContext } from '@/components/PinLockProvider';
@@ -638,6 +639,60 @@ function ZigbeeSection({ rooms, onDeviceImported }: { rooms: Room[]; onDeviceImp
   );
 }
 
+function NotificationsSection() {
+  const { state, subscribe, unsubscribe, sendTest } = usePushNotifications();
+  const [testSent, setTestSent] = useState(false);
+
+  const handleTest = async () => {
+    await sendTest();
+    setTestSent(true);
+    setTimeout(() => setTestSent(false), 3000);
+  };
+
+  return (
+    <div className="rounded-2xl border bg-card divide-y overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 gap-3">
+        <div>
+          <p className="text-sm font-medium">Push-Benachrichtigungen</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {state === 'unsupported' && 'Nicht unterstützt (HTTPS oder PWA benötigt)'}
+            {state === 'denied'      && 'Vom Browser blockiert — in Browser-Einstellungen erlauben'}
+            {state === 'subscribed'  && 'Aktiv — dieses Gerät erhält Benachrichtigungen'}
+            {state === 'unsubscribed'&& 'Deaktiviert'}
+            {state === 'loading'     && 'Wird geladen…'}
+          </p>
+        </div>
+        <div className="shrink-0">
+          {state === 'subscribed' ? (
+            <Button size="sm" variant="outline"
+              className="text-destructive border-destructive/40"
+              onClick={unsubscribe}>Deaktivieren</Button>
+          ) : state === 'unsubscribed' ? (
+            <Button size="sm" onClick={subscribe}>Aktivieren</Button>
+          ) : null}
+        </div>
+      </div>
+      {state === 'subscribed' && (
+        <div className="flex items-center justify-between px-4 py-3 gap-3">
+          <div>
+            <p className="text-sm font-medium">Testbenachrichtigung</p>
+            <p className="text-xs text-muted-foreground">Sendet eine Test-Push an dieses Gerät</p>
+          </div>
+          <Button size="sm" variant="outline" onClick={handleTest}>
+            {testSent ? '✓ Gesendet' : 'Test senden'}
+          </Button>
+        </div>
+      )}
+      <div className="px-4 py-3">
+        <p className="text-xs text-muted-foreground">
+          Benachrichtigungen werden ausgelöst wenn eine Automation mit Aktion „Benachrichtigung" ausgelöst wird.
+          Jedes Gerät muss separat aktiviert werden.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function KioskSection() {
   const { kioskMode, setKioskMode } = useKiosk();
   return (
@@ -865,6 +920,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     { id: 'security', icon: LockKeyhole,  color: 'text-orange-500 bg-orange-500/10', label: 'Sicherheit',       desc: 'PIN & Bildschirmsperre' },
     { id: 'kiosk',    icon: Monitor,      color: 'text-teal-500   bg-teal-500/10',   label: 'Kiosk-Modus',      desc: 'Wandbildschirm einrichten' },
     { id: 'zigbee',   icon: Radio,        color: 'text-cyan-500   bg-cyan-500/10',   label: 'Zigbee',           desc: 'Geräte anlernen & verwalten' },
+    { id: 'notifs',   icon: Bell,         color: 'text-rose-500   bg-rose-500/10',   label: 'Benachrichtigungen', desc: 'Push-Nachrichten' },
   ];
   const viewLabel = CATEGORIES.find(c => c.id === view)?.label ?? view;
 
@@ -1083,6 +1139,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
       {view === 'weather'   && <div key="weather"   className="animate-page-in"><WeatherSection /></div>}
       {view === 'kiosk'     && <div key="kiosk"     className="animate-page-in"><KioskSection /></div>}
       {view === 'zigbee'    && <div key="zigbee"    className="animate-page-in"><ZigbeeSection rooms={rooms} onDeviceImported={d => setDevices(prev => [...prev, d])} /></div>}
+      {view === 'notifs'    && <div key="notifs"    className="animate-page-in"><NotificationsSection /></div>}
 
       {/* ═══════════════════════════════════════════════════════════
           Dialoge
