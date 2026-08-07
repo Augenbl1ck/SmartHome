@@ -1,10 +1,14 @@
 #!/bin/bash
-# Fixe Push-Notification-Konfiguration auf dem Pi
+# Fixe Push-Notification-Konfiguration und deploye Updates auf dem Pi
 
 set -e
 
 cd ~/SmartHome
 
+echo "📥 Hole neueste Änderungen..."
+git pull
+
+echo ""
 echo "📝 Lese VAPID Keys aus Backend..."
 VAPID_PUB=$(grep "^VAPID_PUBLIC_KEY=" backend/.env | cut -d'=' -f2)
 VAPID_PRIV=$(grep "^VAPID_PRIVATE_KEY=" backend/.env | cut -d'=' -f2)
@@ -49,10 +53,16 @@ echo "🔧 Cleane Backend-Config-Cache..."
 cd ~/SmartHome/backend
 php artisan config:clear
 php artisan cache:clear
+php artisan route:clear
+
+echo ""
+echo "📦 Installiere Backend-Dependencies..."
+composer install --no-interaction --prefer-dist --optimize-autoloader
 
 echo ""
 echo "🔨 Baue Frontend neu..."
 cd ~/SmartHome/frontend
+npm install
 npm run build
 
 echo ""
@@ -61,14 +71,12 @@ sudo systemctl restart smarthome-backend
 sudo systemctl restart smarthome-frontend
 
 echo ""
-echo "✅ Push-Benachrichtigungen sind jetzt konfiguriert!"
+echo "✅ Deployment abgeschlossen!"
 echo ""
 echo "📍 Teste jetzt:"
-echo "   1. Öffne https://smarthome.taile4b6ab.ts.net"
-echo "   2. Drücke F12 → Console-Tab"
-echo "   3. Gehe zu Einstellungen → Benachrichtigungen"
-echo "   4. Klicke 'Aktivieren' (Browser fragt nach Berechtigung)"
-echo "   5. Klicke 'Test senden'"
+echo "   - Lokal:    http://smarthome.local"
+echo "   - Tailscale: https://smarthome.taile4b6ab.ts.net"
+echo "   - System-Status in Einstellungen → System"
 echo ""
 echo "🐛 Bei Problemen:"
 echo "   - Prüfe Browser-Console auf Fehler"

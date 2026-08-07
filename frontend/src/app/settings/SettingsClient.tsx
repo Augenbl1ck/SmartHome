@@ -15,7 +15,7 @@ import {
 import {
   Pencil, Plus, Trash2, Wifi, LockKeyhole, LockKeyholeOpen, Timer,
   ChevronDown, Home, Cpu, Cloud, LayoutDashboard, Search, Loader2, Radio,
-  ChevronUp, X, ChevronRight, ArrowLeft, Clapperboard, Zap, Monitor, RefreshCw, Check, Bell,
+  ChevronUp, X, ChevronRight, ArrowLeft, Clapperboard, Zap, Monitor, RefreshCw, Check, Bell, Activity,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePinLockContext } from '@/components/PinLockProvider';
@@ -720,6 +720,118 @@ function KioskSection() {
   );
 }
 
+function SystemSection() {
+  const [status, setStatus] = useState<{
+    cpu_temp: number | null;
+    uptime: number | null;
+    memory_used: number | null;
+    disk_used: number | null;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.getSystemStatus()
+      .then(setStatus)
+      .catch(() => setStatus(null))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const formatUptime = (seconds: number | null): string => {
+    if (!seconds) return '—';
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${mins}m`;
+    return `${mins}m`;
+  };
+
+  return (
+    <div className="rounded-2xl border bg-card divide-y overflow-hidden">
+      {loading && (
+        <div className="px-4 py-8 flex flex-col items-center gap-2">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Lade System-Status...</p>
+        </div>
+      )}
+
+      {!loading && !status && (
+        <div className="px-4 py-8 text-center">
+          <p className="text-sm text-muted-foreground">System-Status nicht verfügbar</p>
+          <p className="text-xs text-muted-foreground mt-1">Nur auf Raspberry Pi verfügbar</p>
+        </div>
+      )}
+
+      {!loading && status && (
+        <>
+          {/* CPU-Temperatur */}
+          <div className="flex items-center justify-between px-4 py-3 gap-3">
+            <div className="flex items-center gap-2">
+              <Cpu className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div>
+                <p className="text-sm font-medium">CPU-Temperatur</p>
+                <p className="text-xs text-muted-foreground">Raspberry Pi</p>
+              </div>
+            </div>
+            <div className="text-right">
+              {status.cpu_temp !== null ? (
+                <p className={cn(
+                  'text-lg font-semibold',
+                  status.cpu_temp > 70 ? 'text-red-500' : status.cpu_temp > 60 ? 'text-orange-500' : 'text-green-500'
+                )}>
+                  {status.cpu_temp}°C
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">—</p>
+              )}
+            </div>
+          </div>
+
+          {/* Uptime */}
+          <div className="flex items-center justify-between px-4 py-3 gap-3">
+            <div>
+              <p className="text-sm font-medium">Betriebszeit</p>
+              <p className="text-xs text-muted-foreground">Seit letztem Neustart</p>
+            </div>
+            <p className="text-sm font-medium">{formatUptime(status.uptime)}</p>
+          </div>
+
+          {/* RAM */}
+          {status.memory_used !== null && (
+            <div className="flex items-center justify-between px-4 py-3 gap-3">
+              <div>
+                <p className="text-sm font-medium">RAM-Nutzung</p>
+              </div>
+              <p className={cn(
+                'text-sm font-medium',
+                status.memory_used > 85 ? 'text-red-500' : status.memory_used > 70 ? 'text-orange-500' : ''
+              )}>
+                {status.memory_used}%
+              </p>
+            </div>
+          )}
+
+          {/* Disk */}
+          {status.disk_used !== null && (
+            <div className="flex items-center justify-between px-4 py-3 gap-3">
+              <div>
+                <p className="text-sm font-medium">Speicher</p>
+                <p className="text-xs text-muted-foreground">Root-Partition</p>
+              </div>
+              <p className={cn(
+                'text-sm font-medium',
+                status.disk_used > 90 ? 'text-red-500' : status.disk_used > 80 ? 'text-orange-500' : ''
+              )}>
+                {status.disk_used}%
+              </p>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsClient({ initialRooms, initialDevices }: Props) {
   const [rooms, setRooms]     = useState(initialRooms);
   const [devices, setDevices] = useState(initialDevices);
@@ -917,6 +1029,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     { id: 'automat',  icon: Zap,          color: 'text-green-500  bg-green-500/10',  label: 'Automationen',     desc: 'Regeln & Zeitpl\u00e4ne',        href: '/automations' },
     { id: 'dashboard',icon: LayoutDashboard, color: 'text-indigo-500 bg-indigo-500/10',label: 'Dashboard',      desc: 'Widgets konfigurieren' },
     { id: 'weather',  icon: Cloud,        color: 'text-sky-500    bg-sky-500/10',    label: 'Wetter-Widget',    desc: 'Ort & Einheiten' },
+    { id: 'system',   icon: Activity,     color: 'text-emerald-500 bg-emerald-500/10', label: 'System',         desc: 'CPU-Temp & Status' },
     { id: 'security', icon: LockKeyhole,  color: 'text-orange-500 bg-orange-500/10', label: 'Sicherheit',       desc: 'PIN & Bildschirmsperre' },
     { id: 'kiosk',    icon: Monitor,      color: 'text-teal-500   bg-teal-500/10',   label: 'Kiosk-Modus',      desc: 'Wandbildschirm einrichten' },
     { id: 'zigbee',   icon: Radio,        color: 'text-cyan-500   bg-cyan-500/10',   label: 'Zigbee',           desc: 'Geräte anlernen & verwalten' },
@@ -1137,6 +1250,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
 
       {view === 'dashboard' && <div key="dashboard" className="animate-page-in"><DashboardWidgetsSection devices={devices} /></div>}
       {view === 'weather'   && <div key="weather"   className="animate-page-in"><WeatherSection /></div>}
+      {view === 'system'    && <div key="system"    className="animate-page-in"><SystemSection /></div>}
       {view === 'kiosk'     && <div key="kiosk"     className="animate-page-in"><KioskSection /></div>}
       {view === 'zigbee'    && <div key="zigbee"    className="animate-page-in"><ZigbeeSection rooms={rooms} onDeviceImported={d => setDevices(prev => [...prev, d])} /></div>}
       {view === 'notifs'    && <div key="notifs"    className="animate-page-in"><NotificationsSection /></div>}

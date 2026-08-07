@@ -85,6 +85,10 @@ export const api = {
     request<{ ok: boolean }>('/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) }),
   pushTest: () =>
     request<{ ok: boolean }>('/push/test', { method: 'POST' }),
+
+  // System Status
+  getSystemStatus: () =>
+    request<SystemStatus>('/system/status'),
 };
 
 // Types
@@ -174,4 +178,11 @@ export interface ZigbeeDevice {
   };
   last_seen?: number;
   smarthome_device?: Device | null;
+}
+
+export interface SystemStatus {
+  cpu_temp: number | null;
+  uptime: number | null;
+  memory_used: number | null;
+  disk_used: number | null;
 }

@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\MqttController;
 use App\Http\Controllers\Api\RoomController;
 use App\Http\Controllers\Api\SceneController;
 use App\Http\Controllers\Api\ShellyRpcController;
+use App\Http\Controllers\Api\SystemController;
 use App\Http\Controllers\Api\ZigbeeController;
 use Illuminate\Support\Facades\Route;
 
@@ -49,4 +50,7 @@ Route::prefix('v1')->group(function () {
     Route::patch('zigbee/devices/{ieee}', [ZigbeeController::class, 'rename']);
     Route::delete('zigbee/devices/{ieee}', [ZigbeeController::class, 'remove']);
     Route::post('zigbee/devices/{ieee}/import', [ZigbeeController::class, 'import']);
+
+    // System Status
+    Route::get('system/status', [SystemController::class, 'status']);
 });
