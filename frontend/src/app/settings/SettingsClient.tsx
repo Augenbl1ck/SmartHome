@@ -4,6 +4,7 @@ import { useState, useEffect, useTransition, useCallback } from 'react';
 import { api, Device, DeviceType, Room, ZigbeeDevice } from '@/lib/api';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { deviceLabels, CUSTOM_COLORS } from '@/lib/devices';
+import { getEcho } from '@/lib/echo';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -890,20 +891,17 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
 
   // WebSocket-Updates für Geräte (Status, Attribute, last_seen)
   useEffect(() => {
-    let echo: ReturnType<typeof import('@/lib/echo').getEcho> | null = null;
+    let echo: ReturnType<typeof getEcho> | null = null;
     try {
-      const { getEcho } = require('@/lib/echo');
       echo = getEcho();
-      if (echo) {
-        echo.channel('devices').listen('.device.updated', (data: {
-          id: number; status: string; attributes: Record<string, unknown>; last_seen: string;
-        }) => {
-          setDevices(prev => prev.map(d => d.id === data.id
-            ? { ...d, status: data.status, attributes: data.attributes, last_seen: data.last_seen }
-            : d
-          ));
-        });
-      }
+      echo.channel('devices').listen('.device.updated', (data: {
+        id: number; status: string; attributes: Record<string, unknown>; last_seen: string;
+      }) => {
+        setDevices(prev => prev.map(d => d.id === data.id
+          ? { ...d, status: data.status, attributes: data.attributes, last_seen: data.last_seen }
+          : d
+        ));
+      });
     } catch (err) {
       console.warn('[Settings] WebSocket nicht verfügbar', err);
     }
