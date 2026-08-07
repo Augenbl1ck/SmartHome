@@ -894,14 +894,16 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     try {
       const { getEcho } = require('@/lib/echo');
       echo = getEcho();
-      echo.channel('devices').listen('.device.updated', (data: {
-        id: number; status: string; attributes: Record<string, unknown>; last_seen: string;
-      }) => {
-        setDevices(prev => prev.map(d => d.id === data.id
-          ? { ...d, status: data.status, attributes: data.attributes, last_seen: data.last_seen }
-          : d
-        ));
-      });
+      if (echo) {
+        echo.channel('devices').listen('.device.updated', (data: {
+          id: number; status: string; attributes: Record<string, unknown>; last_seen: string;
+        }) => {
+          setDevices(prev => prev.map(d => d.id === data.id
+            ? { ...d, status: data.status, attributes: data.attributes, last_seen: data.last_seen }
+            : d
+          ));
+        });
+      }
     } catch (err) {
       console.warn('[Settings] WebSocket nicht verfügbar', err);
     }
