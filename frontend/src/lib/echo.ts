@@ -19,13 +19,24 @@ export function getEcho(): Echo<'reverb'> {
 
   window.Pusher = Pusher;
 
+  // Dynamisch HTTPS erkennen und WebSocket-Konfiguration anpassen
+  const isHttps = window.location.protocol === 'https:';
+  const currentHost = window.location.hostname;
+  
+  // Bei HTTPS nutzen wir den aktuellen Host (z.B. smarthome.taile4b6ab.ts.net)
+  // Bei HTTP nutzen wir die konfigurierte Host (z.B. smarthome.local)
+  const wsHost = isHttps ? currentHost : (process.env.NEXT_PUBLIC_REVERB_HOST ?? 'localhost');
+  
+  // Port: Nginx proxied WebSocket auf 80/443, also nutzen wir Standard-Ports
+  const wsPort = isHttps ? 443 : 80;
+
   echo = new Echo({
     broadcaster: 'reverb',
     key:         process.env.NEXT_PUBLIC_REVERB_APP_KEY!,
-    wsHost:      process.env.NEXT_PUBLIC_REVERB_HOST ?? 'localhost',
-    wsPort:      Number(process.env.NEXT_PUBLIC_REVERB_PORT ?? 8080),
-    wssPort:     Number(process.env.NEXT_PUBLIC_REVERB_PORT ?? 8080),
-    forceTLS:    (process.env.NEXT_PUBLIC_REVERB_SCHEME ?? 'http') === 'https',
+    wsHost:      wsHost,
+    wsPort:      wsPort,
+    wssPort:     wsPort,
+    forceTLS:    isHttps,
     enabledTransports: ['ws', 'wss'],
     disableStats: true,
   });

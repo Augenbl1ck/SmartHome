@@ -24,7 +24,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // API-Requests immer live holen
+  // API-Requests immer live holen (kein Caching)
   if (url.pathname.startsWith('/api/')) {
     return;
   }
@@ -39,7 +39,11 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       })
-      .catch(() => caches.match(event.request))
+      .catch(() => 
+        caches.match(event.request).then((cached) => 
+          cached || new Response('Offline', { status: 503, statusText: 'Service Unavailable' })
+        )
+      )
   );
 });
 
