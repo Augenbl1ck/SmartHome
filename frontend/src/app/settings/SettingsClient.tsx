@@ -432,6 +432,12 @@ function ZigbeeSection({ rooms, onDeviceImported }: { rooms: Room[]; onDeviceImp
 
   useEffect(() => { load(); }, [load]);
 
+  // Auto-Refresh: Alle 10s während Pairing, sonst alle 30s
+  useEffect(() => {
+    const interval = setInterval(load, pairing ? 10_000 : 30_000);
+    return () => clearInterval(interval);
+  }, [load, pairing]);
+
   useEffect(() => {
     if (!pairing || pairCountdown <= 0) return;
     const t = setTimeout(() => setPairCountdown(c => {
@@ -728,13 +734,28 @@ function SystemSection() {
     disk_used: number | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
-  useEffect(() => {
+  const fetchStatus = useCallback(() => {
     api.getSystemStatus()
-      .then(setStatus)
+      .then(data => {
+        setStatus(data);
+        setLastUpdate(new Date());
+      })
       .catch(() => setStatus(null))
       .finally(() => setLoading(false));
   }, []);
+
+  // Initialer Load
+  useEffect(() => {
+    fetchStatus();
+  }, [fetchStatus]);
+
+  // Auto-Refresh alle 5 Sekunden
+  useEffect(() => {
+    const interval = setInterval(fetchStatus, 5000);
+    return () => clearInterval(interval);
+  }, [fetchStatus]);
 
   const formatUptime = (seconds: number | null): string => {
     if (!seconds) return '—';
@@ -746,8 +767,33 @@ function SystemSection() {
     return `${mins}m`;
   };
 
+  const formatLastUpdate = () => {
+    if (!lastUpdate) return '';
+    const now = new Date();
+    const diff = Math.floor((now.getTime() - lastUpdate.getTime()) / 1000);
+    if (diff < 5) return 'gerade eben';
+    if (diff < 60) return `vor ${diff}s`;
+    return lastUpdate.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  };
+
   return (
     <div className="rounded-2xl border bg-card divide-y overflow-hidden">
+      {/* Header mit Refresh-Button */}
+      {!loading && status && (
+        <div className="flex items-center justify-between px-4 py-2 bg-muted/30">
+          <p className="text-xs text-muted-foreground">
+            Aktualisiert {formatLastUpdate()}
+          </p>
+          <button
+            onClick={fetchStatus}
+            className="cursor-pointer flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+          >
+            <RefreshCw className="h-3 w-3" />
+            Aktualisieren
+          </button>
+        </div>
+      )}
+
       {loading && (
         <div className="px-4 py-8 flex flex-col items-center gap-2">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -841,6 +887,28 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
 
   const navigate = (target: string | null) =>
     startTransition(() => setView(target));
+
+  // WebSocket-Updates für Geräte (Status, Attribute, last_seen)
+  useEffect(() => {
+    let echo: ReturnType<typeof import('@/lib/echo').getEcho> | null = null;
+    try {
+      const { getEcho } = require('@/lib/echo');
+      echo = getEcho();
+      echo.channel('devices').listen('.device.updated', (data: {
+        id: number; status: string; attributes: Record<string, unknown>; last_seen: string;
+      }) => {
+        setDevices(prev => prev.map(d => d.id === data.id
+          ? { ...d, status: data.status, attributes: data.attributes, last_seen: data.last_seen }
+          : d
+        ));
+      });
+    } catch (err) {
+      console.warn('[Settings] WebSocket nicht verfügbar', err);
+    }
+    return () => {
+      if (echo) echo.leaveChannel('devices');
+    };
+  }, []);
 
   // ── Gerät-Dialog ────────────────────────────────────────────────
   const [deviceDialog, setDeviceDialog] = useState<{
