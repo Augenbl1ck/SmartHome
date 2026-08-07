@@ -313,7 +313,7 @@ export default function ShellyPlugPanel({ deviceId, mode = 'ble' }: Props) {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="mt-2 border-t border-border/40 pt-2 space-y-1 bg-card/80 rounded-b-xl -mx-5 px-5 pb-2">
+    <div className="mt-2 border-t pt-2 space-y-1">
 
       {/* ── Verbrauch (eigene Sektion) ───────────────────────────────── */}
       <button type="button" onClick={handlePowerExpand}
@@ -361,7 +361,7 @@ export default function ShellyPlugPanel({ deviceId, mode = 'ble' }: Props) {
       </button>
 
       {expanded && (
-        <div className="mt-1 space-y-4 max-h-72 overflow-y-auto overflow-x-hidden pr-1 bg-card rounded-xl p-2 -mx-2">
+        <div className="mt-1 space-y-4 max-h-72 overflow-y-auto overflow-x-hidden pr-1">
           {error && (
             <p className="text-xs text-destructive bg-destructive/10 rounded px-2 py-1">{error}</p>
           )}
