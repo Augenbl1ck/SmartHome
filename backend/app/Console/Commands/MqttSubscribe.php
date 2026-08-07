@@ -146,12 +146,14 @@ class MqttSubscribe extends Command
         DeviceStatusUpdated::dispatch($fresh);
         app(AutomationEngine::class)->onDeviceUpdated($fresh, $previousStatus);
 
-        DeviceLog::create([
-            'device_id'   => $device->id,
-            'status'      => $status,
-            'value'       => $power !== null ? (string) round($power, 1) : null,
-            'recorded_at' => now(),
-        ]);
+        if ($status !== $previousStatus) {
+            DeviceLog::create([
+                'device_id'   => $device->id,
+                'status'      => $status,
+                'value'       => $power !== null ? (string) round($power, 1) : null,
+                'recorded_at' => now(),
+            ]);
+        }
 
         $this->line("[Shelly] {$device->name}: {$status}" . ($power !== null ? " ({$power} W)" : ''));
     }
@@ -286,7 +288,9 @@ class MqttSubscribe extends Command
             $fresh = $device->fresh();
             DeviceStatusUpdated::dispatch($fresh);
             app(AutomationEngine::class)->onDeviceUpdated($fresh, $previousStatus);
-            DeviceLog::create(['device_id' => $device->id, 'status' => $normalized, 'recorded_at' => now()]);
+            if ($normalized !== $previousStatus) {
+                DeviceLog::create(['device_id' => $device->id, 'status' => $normalized, 'recorded_at' => now()]);
+            }
             $this->line("[Simple] {$device->name}: {$normalized}");
             return;
         }
