@@ -618,7 +618,7 @@ function Toggle({ checked, onChange, disabled }: {
       )}>
       <span className={cn(
         'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all duration-200',
-        checked ? 'left-4' : 'left-0.5'
+        checked ? 'left-4' : 'left-0'
       )} />
     </button>
   );
