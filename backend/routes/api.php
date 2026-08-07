@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\PushController;
 use App\Http\Controllers\Api\AutomationController;
 use App\Http\Controllers\Api\AutomationLogController;
 use App\Http\Controllers\Api\BleController;
@@ -36,6 +37,11 @@ Route::prefix('v1')->group(function () {
     // Geräteerkennung
     Route::get('discover/zigbee', [DiscoverController::class, 'zigbee']);
     Route::get('discover/all', [DiscoverController::class, 'all']);
+
+    // Push Notifications
+    Route::post('push/subscribe',   [PushController::class, 'subscribe']);
+    Route::post('push/unsubscribe', [PushController::class, 'unsubscribe']);
+    Route::post('push/test',        [PushController::class, 'test']);
 
     // Zigbee2MQTT Management
     Route::get('zigbee/devices', [ZigbeeController::class, 'devices']);

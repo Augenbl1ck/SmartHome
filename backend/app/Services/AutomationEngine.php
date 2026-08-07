@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Services\PushNotificationService;
 use App\Events\AutomationFired;
 use App\Jobs\DelayedDeviceAction;
 use App\Models\Automation;
@@ -226,8 +227,12 @@ class AutomationEngine
                 break;
 
             case 'notify':
-                // Placeholder – später: Push-Benachrichtigung / WebSocket-Event
-                Log::info('[Automation] Benachrichtigung: ' . ($action['message'] ?? ''));
+                $message = $action['message'] ?? 'Automation ausgelöst';
+                app(PushNotificationService::class)->send(
+                    $automationName ?? 'SmartHome',
+                    $message,
+                );
+                Log::info('[Automation] Push gesendet: ' . $message);
                 break;
         }
 
