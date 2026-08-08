@@ -62,18 +62,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         `}} /></head>
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <VirtualKeyboardProvider>
-        <KioskProvider>
           <PinLockProvider>
-            <NavBar />
-            <main className="flex-1 p-4 md:p-6 max-w-6xl mx-auto w-full pb-24 md:pb-8">
-              {children}
-            </main>
-            <AutomationRunnerProvider />
-            <AutomationNotifications />
-            <ServiceWorkerRegistrar />
-            <Toaster position="bottom-right" richColors closeButton />
+            <KioskProvider>
+              <NavBar />
+              <main className="flex-1 p-4 md:p-6 max-w-6xl mx-auto w-full pb-24 md:pb-8">
+                {children}
+              </main>
+              <AutomationRunnerProvider />
+              <AutomationNotifications />
+              <ServiceWorkerRegistrar />
+              <Toaster position="bottom-right" richColors closeButton />
+            </KioskProvider>
           </PinLockProvider>
-        </KioskProvider>
         </VirtualKeyboardProvider>
       </body>
     </html>
