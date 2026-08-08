@@ -52,6 +52,19 @@ function isVirtualKeyboardTarget(target: EventTarget | null) {
     && !!target.closest('.virtual-keyboard-container, .simple-keyboard, .hg-button')
 }
 
+function isInVirtualKeyboardZone(event: { clientY?: number; detail?: { originalEvent?: { clientY?: number } } }) {
+  if (!document.body.classList.contains('virtual-keyboard-open')) return false
+  const y = typeof event.clientY === 'number'
+    ? event.clientY
+    : event.detail?.originalEvent?.clientY
+  if (typeof y !== 'number') return false
+  const kb = document.querySelector('.virtual-keyboard-container')
+  if (!(kb instanceof HTMLElement)) {
+    return y >= window.innerHeight - Math.min(280, window.innerHeight * 0.42)
+  }
+  return y >= kb.getBoundingClientRect().top
+}
+
 function DialogContent({
   className,
   children,
@@ -74,11 +87,15 @@ function DialogContent({
         )}
         {...props}
         onPointerDownOutside={(e) => {
-          if (isVirtualKeyboardTarget(e.target)) e.preventDefault()
+          if (isVirtualKeyboardTarget(e.target) || isInVirtualKeyboardZone(e)) {
+            e.preventDefault()
+          }
           onPointerDownOutside?.(e)
         }}
         onInteractOutside={(e) => {
-          if (isVirtualKeyboardTarget(e.target)) e.preventDefault()
+          if (isVirtualKeyboardTarget(e.target) || isInVirtualKeyboardZone(e)) {
+            e.preventDefault()
+          }
           onInteractOutside?.(e)
         }}
         onFocusOutside={(e) => {

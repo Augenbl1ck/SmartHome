@@ -109,7 +109,7 @@ input[type="range"].range-slider::-moz-range-thumb {
   bottom: 0;
   left: 0;
   right: 0;
-  z-index: 9999;
+  z-index: 100000;
   border-top: 1px solid var(--border);
   background: var(--card);
   box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
@@ -117,16 +117,28 @@ input[type="range"].range-slider::-moz-range-thumb {
   touch-action: manipulation;
   -webkit-user-select: none;
   user-select: none;
+  pointer-events: auto;
 }
 
-/* Platz für Tastatur — Dialoge/Inhalte nicht verdecken */
+/* Platz für Tastatur — Dialoge nach oben, Overlay nicht über Tastatur */
 body.virtual-keyboard-open {
-  padding-bottom: min(280px, 42vh);
+  --vk-height: min(280px, 42vh);
+  padding-bottom: var(--vk-height);
+}
+
+body.virtual-keyboard-open [data-slot="dialog-overlay"] {
+  bottom: var(--vk-height);
+  height: auto;
 }
 
 body.virtual-keyboard-open [data-slot="dialog-content"] {
-  max-height: min(55vh, calc(100vh - 300px));
+  top: 1rem;
+  bottom: auto;
+  left: 50%;
+  transform: translateX(-50%) translateY(0) !important;
+  max-height: calc(100dvh - var(--vk-height) - 2rem);
   overflow-y: auto;
+  margin: 0;
 }
 
 .virtual-keyboard-close {

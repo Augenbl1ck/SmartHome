@@ -293,6 +293,7 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
     <div
       ref={wrapperRef}
       className="virtual-keyboard-container"
+      style={{ zIndex: 100000 }}
       onPointerDown={e => {
         e.preventDefault();
         e.stopPropagation();
