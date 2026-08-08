@@ -63,6 +63,16 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
   const wrapperRef  = useRef<HTMLDivElement>(null);
   const pinLock = usePinLockContext();
 
+  useEffect(() => {
+    if (keyboardRef.current) {
+      console.debug('[VK] keyboardRef instance', {
+        keys: Object.keys(keyboardRef.current),
+        keyboardDOM: keyboardRef.current.keyboardDOM,
+        keyboardDOMClass: keyboardRef.current.keyboardDOM?.className,
+      });
+    }
+  }, [visible]);
+
   const openFor = useCallback((el: HTMLInputElement | HTMLTextAreaElement) => {
     console.debug('[VK] openFor', { value: el.value, type: el.type, name: el.name, id: el.id });
     activeEl.current = el;
@@ -97,7 +107,7 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
     function isKeyboardTarget(node: Node | null) {
       if (!node || !(node instanceof HTMLElement)) return false;
       if (wrapperRef.current?.contains(node)) return true;
-      if (node.closest('.virtual-keyboard-container, .hg-button, .hg-row, .hg-rows, .hg-button-container')) return true;
+      if (node.closest('[data-skInstance], .virtual-keyboard-container, .hg-button, .hg-row, .hg-rows, .hg-button-container')) return true;
       return false;
     }
 
