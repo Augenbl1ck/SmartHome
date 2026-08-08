@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import Keyboard from 'react-simple-keyboard';
 import 'react-simple-keyboard/build/css/index.css';
 import { X } from 'lucide-react';
+import { usePinLockContext } from '@/components/PinLockProvider';
 
 const TEXT_INPUT_TYPES = new Set(['text', 'email', 'search', 'url', 'tel', 'password', '']);
 
@@ -55,9 +56,11 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
   const [visible,    setVisible]    = useState(false);
   const [layoutName, setLayoutName] = useState<LayoutName>('default');
   const activeEl    = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const pointerInside = useRef(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const keyboardRef = useRef<any>(null);
   const wrapperRef  = useRef<HTMLDivElement>(null);
+  const pinLock = usePinLockContext();
 
   const openFor = useCallback((el: HTMLInputElement | HTMLTextAreaElement) => {
     activeEl.current = el;
@@ -74,6 +77,7 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
   /* Globaler focusin-Listener */
   useEffect(() => {
     function onFocusIn(e: FocusEvent) {
+      if (pinLock.locked || pinLock.screenOff) return;
       const target = e.target as HTMLElement;
       if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') return;
       const input = target as HTMLInputElement;
@@ -85,8 +89,8 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
 
     function onFocusOut(e: FocusEvent) {
       const related = e.relatedTarget as HTMLElement | null;
-      // Fokus geht auf Tastatur-Button → nicht schließen
       if (related && wrapperRef.current?.contains(related)) return;
+      if (pointerInside.current) return;
       setTimeout(() => {
         const active = document.activeElement;
         if (!active) { close(); return; }
@@ -102,7 +106,13 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
       document.removeEventListener('focusin',  onFocusIn);
       document.removeEventListener('focusout', onFocusOut);
     };
-  }, [openFor, close]);
+  }, [openFor, close, pinLock.locked, pinLock.screenOff]);
+
+  useEffect(() => {
+    if (pinLock.locked || pinLock.screenOff) {
+      close();
+    }
+  }, [pinLock.locked, pinLock.screenOff, close]);
 
   function onKeyPress(button: string) {
     const el = activeEl.current;
@@ -147,6 +157,8 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
           /* Verhindert, dass Klick auf Tastatur das Input-Blur auslöst */
           onMouseDown={e => e.preventDefault()}
           onPointerDown={e => e.preventDefault()}
+          onPointerEnter={() => { pointerInside.current = true; }}
+          onPointerLeave={() => { pointerInside.current = false; }}
         >
           <button
             className="virtual-keyboard-close"

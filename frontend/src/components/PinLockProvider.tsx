@@ -6,7 +6,7 @@
  * Exportiert usePinLockContext für Komponenten die lock/unlock aufrufen wollen.
  */
 
-import { createContext, useContext, useLayoutEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useState } from 'react';
 import { usePinLock, PinLockState } from '@/hooks/usePinLock';
 import PinLockScreen from '@/components/PinLockScreen';
 
@@ -26,6 +26,16 @@ export default function PinLockProvider({ children }: { children: React.ReactNod
     // Inline-Blocker entfernen sobald React übernimmt
     document.getElementById('pin-blocker')?.remove();
   }, []);
+
+  useEffect(() => {
+    if (!state.enabled) return;
+    if (!state.locked && !state.screenOff) return;
+    const active = document.activeElement as HTMLElement | null;
+    if (!active) return;
+    if (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') {
+      active.blur();
+    }
+  }, [state.enabled, state.locked, state.screenOff]);
 
   return (
     <PinLockContext.Provider value={state}>
