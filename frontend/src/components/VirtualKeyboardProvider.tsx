@@ -94,10 +94,18 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
       openFor(input as HTMLInputElement | HTMLTextAreaElement);
     }
 
+    function isKeyboardTarget(node: Node | null) {
+      if (!node || !(node instanceof HTMLElement)) return false;
+      if (wrapperRef.current?.contains(node)) return true;
+      if (node.closest('.virtual-keyboard-container, .hg-button, .hg-row, .hg-rows, .hg-button-container')) return true;
+      return false;
+    }
+
     function onFocusOut(e: FocusEvent) {
       const related = e.relatedTarget as HTMLElement | null;
-      console.debug('[VK] focusout', { related: related?.tagName, pointerInside: pointerInside.current, pointerDownInside: pointerDownInside.current });
-      if (related && wrapperRef.current?.contains(related)) return;
+      const insideRelated = related ? isKeyboardTarget(related) : false;
+      console.debug('[VK] focusout', { related: related?.tagName, insideRelated, pointerInside: pointerInside.current, pointerDownInside: pointerDownInside.current });
+      if (insideRelated) return;
       if (pointerDownInside.current || pointerInside.current) return;
       setTimeout(() => {
         const active = document.activeElement;
@@ -111,9 +119,21 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
 
     function onDocumentPointerDown(e: PointerEvent) {
       const target = e.target as Node | null;
-      console.debug('[VK] pointerdown', { targetTag: target instanceof HTMLElement ? target.tagName : null, inside: wrapperRef.current?.contains(target) });
+      const path = e.composedPath?.();
+      const insidePath = Array.isArray(path) && path.some((node) => isKeyboardTarget(node as Node));
+      const inside = isKeyboardTarget(target) || insidePath;
+      const targetEl = target instanceof HTMLElement ? target : null;
+      const closestKeyboard = targetEl?.closest('.virtual-keyboard-container, .hg-button, .hg-row, .hg-rows, .hg-button-container');
+      console.debug('[VK] pointerdown', {
+        targetTag: targetEl?.tagName,
+        targetClass: targetEl?.className,
+        closestKeyboard: closestKeyboard?.className,
+        inside,
+        wrapperHasTarget: wrapperRef.current?.contains(target as Node) ?? null,
+        composedHasKeyboard: Array.isArray(path) ? path.map(node => node instanceof HTMLElement ? node.className : null).filter(Boolean).slice(0,5) : null,
+      });
       if (!target) return;
-      if (wrapperRef.current?.contains(target)) return;
+      if (inside) return;
       if (target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
       close();
     }
@@ -175,9 +195,10 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
           ref={wrapperRef}
           className="virtual-keyboard-container"
           /* Verhindert, dass Klick auf Tastatur das Input-Blur auslöst */
-          onMouseDown={e => { e.preventDefault(); console.debug('[VK] keyboard mouse down'); }}
+          onMouseDown={e => { e.preventDefault(); e.stopPropagation(); console.debug('[VK] keyboard mouse down'); }}
           onPointerDown={e => {
             e.preventDefault();
+            e.stopPropagation();
             pointerDownInside.current = true;
             pointerInside.current = true;
             console.debug('[VK] keyboard pointer down');
