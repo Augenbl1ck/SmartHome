@@ -47,10 +47,18 @@ function DialogOverlay({
   )
 }
 
+function isVirtualKeyboardTarget(target: EventTarget | null) {
+  return target instanceof Element
+    && !!target.closest('.virtual-keyboard-container, .simple-keyboard, .hg-button')
+}
+
 function DialogContent({
   className,
   children,
   showCloseButton = true,
+  onPointerDownOutside,
+  onInteractOutside,
+  onFocusOutside,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
@@ -65,6 +73,18 @@ function DialogContent({
           className
         )}
         {...props}
+        onPointerDownOutside={(e) => {
+          if (isVirtualKeyboardTarget(e.target)) e.preventDefault()
+          onPointerDownOutside?.(e)
+        }}
+        onInteractOutside={(e) => {
+          if (isVirtualKeyboardTarget(e.target)) e.preventDefault()
+          onInteractOutside?.(e)
+        }}
+        onFocusOutside={(e) => {
+          if (isVirtualKeyboardTarget(e.target)) e.preventDefault()
+          onFocusOutside?.(e)
+        }}
       >
         {children}
         {showCloseButton && (
