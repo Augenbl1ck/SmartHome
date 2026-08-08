@@ -64,6 +64,7 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
   const pinLock = usePinLockContext();
 
   const openFor = useCallback((el: HTMLInputElement | HTMLTextAreaElement) => {
+    console.debug('[VK] openFor', { value: el.value, type: el.type, name: el.name, id: el.id });
     activeEl.current = el;
     keyboardRef.current?.setInput(el.value);
     setLayoutName('default');
@@ -71,14 +72,19 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
   }, []);
 
   const close = useCallback(() => {
+    console.debug('[VK] close', { visible, activeEl: activeEl.current?.id ?? activeEl.current?.name ?? null });
     setVisible(false);
     activeEl.current = null;
-  }, []);
+  }, [visible]);
 
   /* Globaler focusin-Listener */
   useEffect(() => {
     function onFocusIn(e: FocusEvent) {
-      if (pinLock.locked || pinLock.screenOff) return;
+      console.debug('[VK] focusin', { target: (e.target as HTMLElement)?.tagName, related: (e.relatedTarget as HTMLElement | null)?.tagName });
+      if (pinLock.locked || pinLock.screenOff) {
+        console.debug('[VK] blocked open due lock/screenOff');
+        return;
+      }
       const target = e.target as HTMLElement;
       if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') return;
       const input = target as HTMLInputElement;
@@ -90,10 +96,12 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
 
     function onFocusOut(e: FocusEvent) {
       const related = e.relatedTarget as HTMLElement | null;
+      console.debug('[VK] focusout', { related: related?.tagName, pointerInside: pointerInside.current, pointerDownInside: pointerDownInside.current });
       if (related && wrapperRef.current?.contains(related)) return;
       if (pointerDownInside.current || pointerInside.current) return;
       setTimeout(() => {
         const active = document.activeElement;
+        console.debug('[VK] focusout timeout active', { activeTag: active?.tagName });
         if (!active) { close(); return; }
         if (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA') {
           close();
@@ -103,6 +111,7 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
 
     function onDocumentPointerDown(e: PointerEvent) {
       const target = e.target as Node | null;
+      console.debug('[VK] pointerdown', { targetTag: target instanceof HTMLElement ? target.tagName : null, inside: wrapperRef.current?.contains(target) });
       if (!target) return;
       if (wrapperRef.current?.contains(target)) return;
       if (target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
@@ -166,15 +175,16 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
           ref={wrapperRef}
           className="virtual-keyboard-container"
           /* Verhindert, dass Klick auf Tastatur das Input-Blur auslöst */
-          onMouseDown={e => e.preventDefault()}
+          onMouseDown={e => { e.preventDefault(); console.debug('[VK] keyboard mouse down'); }}
           onPointerDown={e => {
             e.preventDefault();
             pointerDownInside.current = true;
             pointerInside.current = true;
+            console.debug('[VK] keyboard pointer down');
           }}
-          onPointerUp={() => { pointerDownInside.current = false; }}
-          onPointerEnter={() => { pointerInside.current = true; }}
-          onPointerLeave={() => { pointerInside.current = false; }}
+          onPointerUp={() => { pointerDownInside.current = false; console.debug('[VK] keyboard pointer up'); }}
+          onPointerEnter={() => { pointerInside.current = true; console.debug('[VK] keyboard enter'); }}
+          onPointerLeave={() => { pointerInside.current = false; console.debug('[VK] keyboard leave'); }}
         >
           <button
             className="virtual-keyboard-close"
