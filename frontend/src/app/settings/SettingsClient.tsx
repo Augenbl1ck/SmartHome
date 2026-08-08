@@ -17,14 +17,12 @@ import {
   Pencil, Plus, Trash2, Wifi, LockKeyhole, LockKeyholeOpen, Timer,
   ChevronDown, Home, Cpu, Cloud, LayoutDashboard, Search, Loader2, Radio,
   ChevronUp, X, ChevronRight, ArrowLeft, Clapperboard, Zap, Monitor, RefreshCw, Check, Bell, Activity,
-  Eye, EyeOff,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePinLockContext } from '@/components/PinLockProvider';
 import { useKiosk } from '@/components/KioskProvider';
 import EmojiPicker from '@/components/EmojiPicker';
 import { cn } from '@/lib/utils';
-import { saveDashboardLayout, DASHBOARD_LAYOUT_KEY, type SectionId } from '@/hooks/useDashboardLayout';
 
 // ─────────────────────────────────────────────────────────────────
 // Typen & Konstanten
@@ -239,190 +237,63 @@ function deviceToForm(d: Device): DeviceForm {
 
 const WIDGETS_KEY = 'smarthome_dashboard_widgets';
 
-const SECTION_LABELS: Record<string, string> = {
-  scenes: 'Szenen',
-  rooms: 'Räume',
-  quickaccess: 'Schnellzugriff',
-};
-
-function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms: Room[] }) {
-  // ── Abschnitte & Räume-Reihenfolge (auto-save) ──
-  const [sectionOrder, setSectionOrder] = useState<SectionId[]>(['scenes', 'rooms', 'quickaccess']);
-  const [hiddenSections, setHiddenSections] = useState<SectionId[]>([]);
-  const [roomOrder, setRoomOrder] = useState<number[]>([]);
-
-  // ── Status-Kacheln (manuell speichern) ──
+function DashboardWidgetsSection({ devices }: { devices: Device[] }) {
   const [selected, setSelected] = useState<number[]>([]);
-  const [widgetSaved, setWidgetSaved] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(WIDGETS_KEY);
       if (raw) setSelected(JSON.parse(raw));
     } catch { /* */ }
-    try {
-      const raw = localStorage.getItem(DASHBOARD_LAYOUT_KEY);
-      if (raw) {
-        const l = JSON.parse(raw);
-        if (Array.isArray(l.sectionOrder)) setSectionOrder(l.sectionOrder);
-        if (Array.isArray(l.hiddenSections)) setHiddenSections(l.hiddenSections);
-        if (Array.isArray(l.roomOrder)) setRoomOrder(l.roomOrder);
-      }
-    } catch { /* */ }
   }, []);
 
-  const persistLayout = (so: SectionId[], hs: SectionId[], ro: number[]) =>
-    saveDashboardLayout({ sectionOrder: so, hiddenSections: hs, roomOrder: ro });
+  const add = (id: number) => setSelected(prev =>
+    prev.includes(id) || prev.length >= 2 ? prev : [...prev, id]
+  );
 
-  // ── Section helpers ──
-  const toggleSection = (id: SectionId) => {
-    const next = hiddenSections.includes(id)
-      ? hiddenSections.filter(s => s !== id)
-      : [...hiddenSections, id];
-    setHiddenSections(next);
-    persistLayout(sectionOrder, next, roomOrder);
-  };
-  const moveSectionUp = (i: number) => {
-    if (i === 0) return;
-    const next = [...sectionOrder];
-    [next[i - 1], next[i]] = [next[i], next[i - 1]];
-    setSectionOrder(next);
-    persistLayout(next, hiddenSections, roomOrder);
-  };
-  const moveSectionDown = (i: number) => {
-    if (i >= sectionOrder.length - 1) return;
-    const next = [...sectionOrder];
-    [next[i], next[i + 1]] = [next[i + 1], next[i]];
-    setSectionOrder(next);
-    persistLayout(next, hiddenSections, roomOrder);
-  };
-
-  // ── Room order helpers ──
-  const orderedRooms = roomOrder.length === 0
-    ? rooms
-    : rooms.slice().sort((a, b) => {
-        const ai = roomOrder.indexOf(a.id);
-        const bi = roomOrder.indexOf(b.id);
-        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-      });
-
-  const moveRoomUp = (i: number) => {
-    if (i === 0) return;
-    const ids = orderedRooms.map(r => r.id);
-    [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]];
-    setRoomOrder(ids);
-    persistLayout(sectionOrder, hiddenSections, ids);
-  };
-  const moveRoomDown = (i: number) => {
-    if (i >= orderedRooms.length - 1) return;
-    const ids = orderedRooms.map(r => r.id);
-    [ids[i], ids[i + 1]] = [ids[i + 1], ids[i]];
-    setRoomOrder(ids);
-    persistLayout(sectionOrder, hiddenSections, ids);
-  };
-
-  // ── Widget helpers ──
-  const add    = (id: number) => setSelected(prev => prev.includes(id) || prev.length >= 2 ? prev : [...prev, id]);
   const remove = (id: number) => setSelected(prev => prev.filter(x => x !== id));
+
   const moveUp = (i: number) => setSelected(prev => {
     if (i === 0) return prev;
-    const next = [...prev]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; return next;
+    const next = [...prev];
+    [next[i - 1], next[i]] = [next[i], next[i - 1]];
+    return next;
   });
+
   const moveDown = (i: number) => setSelected(prev => {
     if (i >= prev.length - 1) return prev;
-    const next = [...prev]; [next[i], next[i + 1]] = [next[i + 1], next[i]]; return next;
+    const next = [...prev];
+    [next[i], next[i + 1]] = [next[i + 1], next[i]];
+    return next;
   });
-  const saveWidgets = () => {
+
+  const save = () => {
     localStorage.setItem(WIDGETS_KEY, JSON.stringify(selected));
     window.dispatchEvent(new StorageEvent('storage', { key: WIDGETS_KEY }));
-    setWidgetSaved(true);
-    setTimeout(() => setWidgetSaved(false), 2000);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
   };
-  const resetWidgets = () => {
+
+  const reset = () => {
     setSelected([]);
     localStorage.removeItem(WIDGETS_KEY);
-    setWidgetSaved(true);
-    setTimeout(() => setWidgetSaved(false), 2000);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
   };
+
   const available = devices.filter(d => !selected.includes(d.id));
 
   return (
-    <div className="space-y-6">
-
-      {/* ── Abschnitte ── */}
-      <div>
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Abschnitte</p>
-        <p className="text-xs text-muted-foreground mb-3">Ein-/Ausblenden und Reihenfolge der Dashboard-Bereiche.</p>
-        <div className="space-y-1">
-          {sectionOrder.map((id, i) => {
-            const isHidden = hiddenSections.includes(id);
-            return (
-              <div key={id} className={cn(
-                'flex items-center gap-2 rounded-lg border px-3 py-2 transition-opacity',
-                isHidden ? 'opacity-50' : '',
-              )}>
-                <button onClick={() => toggleSection(id)}
-                  title={isHidden ? 'Einblenden' : 'Ausblenden'}
-                  className={cn(
-                    'cursor-pointer h-7 w-7 rounded flex items-center justify-center shrink-0 transition-colors',
-                    isHidden
-                      ? 'bg-muted text-muted-foreground hover:bg-accent'
-                      : 'bg-primary/15 text-primary hover:bg-primary/25',
-                  )}>
-                  {isHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                </button>
-                <span className="text-sm flex-1">{SECTION_LABELS[id]}</span>
-                <div className="flex gap-0.5 shrink-0">
-                  <button onClick={() => moveSectionUp(i)} disabled={i === 0}
-                    className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
-                    <ChevronUp className="h-3.5 w-3.5" />
-                  </button>
-                  <button onClick={() => moveSectionDown(i)} disabled={i === sectionOrder.length - 1}
-                    className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ── Räume-Reihenfolge ── */}
-      {rooms.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Räume-Reihenfolge</p>
-          <p className="text-xs text-muted-foreground mb-3">Reihenfolge der Raum-Kacheln auf dem Dashboard.</p>
-          <div className="space-y-1">
-            {orderedRooms.map((room, i) => (
-              <div key={room.id} className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2">
-                <span className="text-base select-none w-6 text-center">{room.icon ?? '🏠'}</span>
-                <span className="text-sm flex-1 truncate">{room.name}</span>
-                <div className="flex gap-0.5 shrink-0">
-                  <button onClick={() => moveRoomUp(i)} disabled={i === 0}
-                    className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
-                    <ChevronUp className="h-3.5 w-3.5" />
-                  </button>
-                  <button onClick={() => moveRoomDown(i)} disabled={i === orderedRooms.length - 1}
-                    className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Status-Kacheln ── */}
-      <div>
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Status-Kacheln</p>
-        <p className="text-xs text-muted-foreground mb-3">
-          Bis zu <strong>2 Geräte</strong> als Schnellzugriff-Kacheln anzeigen.
+    <div className="space-y-4">
+      <div className="space-y-4">
+        <p className="text-xs text-muted-foreground">
+          Wähle bis zu <strong>2 Geräte</strong> als Status-Kacheln oben im Dashboard. Die Reihenfolge bestimmt die Anzeige.
         </p>
 
+        {/* Ausgewählte (geordnet) */}
         {selected.length > 0 && (
-          <div className="space-y-1 mb-3">
+          <div className="space-y-1">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Ausgewählt</p>
             {selected.map((id, i) => {
               const d = devices.find(x => x.id === id);
@@ -452,8 +323,9 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
           </div>
         )}
 
+        {/* Verfügbare Geräte */}
         {selected.length < 2 && available.length > 0 && (
-          <div className="space-y-1 mb-3">
+          <div className="space-y-1">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Hinzufügen</p>
             <div className="max-h-44 overflow-y-auto space-y-0.5">
               {available.map(d => (
@@ -472,15 +344,14 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
           <p className="text-sm text-muted-foreground text-center py-4">Keine Geräte vorhanden.</p>
         )}
 
-        <p className="text-[11px] text-muted-foreground mb-2">{selected.length}/2 ausgewählt</p>
+        <p className="text-[11px] text-muted-foreground">{selected.length}/2 ausgewählt</p>
         <div className="flex gap-2">
-          <Button onClick={saveWidgets} size="sm">{widgetSaved ? '✓ Gespeichert' : 'Speichern'}</Button>
+          <Button onClick={save} size="sm">{saved ? '✓ Gespeichert' : 'Speichern'}</Button>
           {selected.length > 0 && (
-            <Button onClick={resetWidgets} size="sm" variant="outline">Zurücksetzen</Button>
+            <Button onClick={reset} size="sm" variant="outline">Zurücksetzen</Button>
           )}
         </div>
       </div>
-
     </div>
   );
 }
@@ -1224,7 +1095,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     { id: 'rooms',    icon: Home,         color: 'text-violet-500 bg-violet-500/10', label: 'R\u00e4ume',            desc: `${rooms.length} Raum/${rooms.length !== 1 ? 'R\u00e4ume' : ''}` },
     { id: 'scenes',   icon: Clapperboard, color: 'text-amber-500  bg-amber-500/10',  label: 'Szenen',           desc: 'Szenen verwalten',         href: '/scenes' },
     { id: 'automat',  icon: Zap,          color: 'text-green-500  bg-green-500/10',  label: 'Automationen',     desc: 'Regeln & Zeitpl\u00e4ne',        href: '/automations' },
-    { id: 'dashboard',icon: LayoutDashboard, color: 'text-indigo-500 bg-indigo-500/10',label: 'Dashboard',      desc: 'Abschnitte & Räume anordnen' },
+    { id: 'dashboard',icon: LayoutDashboard, color: 'text-indigo-500 bg-indigo-500/10',label: 'Dashboard',      desc: 'Widgets konfigurieren' },
     { id: 'weather',  icon: Cloud,        color: 'text-sky-500    bg-sky-500/10',    label: 'Wetter-Widget',    desc: 'Ort & Einheiten' },
     { id: 'system',   icon: Activity,     color: 'text-emerald-500 bg-emerald-500/10', label: 'System',         desc: 'CPU-Temp & Status' },
     { id: 'security', icon: LockKeyhole,  color: 'text-orange-500 bg-orange-500/10', label: 'Sicherheit',       desc: 'PIN & Bildschirmsperre' },
@@ -1445,7 +1316,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
         </div>
       )}
 
-      {view === 'dashboard' && <div key="dashboard" className="animate-page-in"><DashboardWidgetsSection devices={devices} rooms={rooms} /></div>}
+      {view === 'dashboard' && <div key="dashboard" className="animate-page-in"><DashboardWidgetsSection devices={devices} /></div>}
       {view === 'weather'   && <div key="weather"   className="animate-page-in"><WeatherSection /></div>}
       {view === 'system'    && <div key="system"    className="animate-page-in"><SystemSection /></div>}
       {view === 'kiosk'     && <div key="kiosk"     className="animate-page-in"><KioskSection /></div>}
