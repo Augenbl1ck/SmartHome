@@ -47,38 +47,11 @@ function DialogOverlay({
   )
 }
 
-function isVirtualKeyboardTarget(target: EventTarget | null) {
-  return target instanceof Element
-    && !!target.closest('.virtual-keyboard-container, .simple-keyboard, .hg-button')
-}
-
-function isInVirtualKeyboardZone(event: unknown) {
-  if (!document.body.classList.contains('virtual-keyboard-open')) return false
-
-  let y: number | undefined
-  if (event && typeof event === 'object') {
-    if ('clientY' in event && typeof (event as { clientY: unknown }).clientY === 'number') {
-      y = (event as { clientY: number }).clientY
-    } else if (
-      'detail' in event
-      && event.detail
-      && typeof event.detail === 'object'
-      && 'originalEvent' in event.detail
-      && event.detail.originalEvent
-      && typeof event.detail.originalEvent === 'object'
-      && 'clientY' in event.detail.originalEvent
-      && typeof (event.detail.originalEvent as { clientY: unknown }).clientY === 'number'
-    ) {
-      y = (event.detail.originalEvent as { clientY: number }).clientY
-    }
+/** Verhindert dass Radix den Dialog schließt wenn die virtuelle Tastatur offen ist. */
+function preventIfKeyboardOpen(e: { preventDefault(): void }) {
+  if (document.body.classList.contains('vk-open')) {
+    e.preventDefault()
   }
-  if (typeof y !== 'number') return false
-
-  const kb = document.querySelector('.virtual-keyboard-container')
-  if (!(kb instanceof HTMLElement)) {
-    return y >= window.innerHeight - Math.min(280, window.innerHeight * 0.42)
-  }
-  return y >= kb.getBoundingClientRect().top
 }
 
 function DialogContent({
@@ -103,19 +76,15 @@ function DialogContent({
         )}
         {...props}
         onPointerDownOutside={(e) => {
-          if (isVirtualKeyboardTarget(e.target) || isInVirtualKeyboardZone(e)) {
-            e.preventDefault()
-          }
+          preventIfKeyboardOpen(e)
           onPointerDownOutside?.(e)
         }}
         onInteractOutside={(e) => {
-          if (isVirtualKeyboardTarget(e.target) || isInVirtualKeyboardZone(e)) {
-            e.preventDefault()
-          }
+          preventIfKeyboardOpen(e)
           onInteractOutside?.(e)
         }}
         onFocusOutside={(e) => {
-          if (isVirtualKeyboardTarget(e.target)) e.preventDefault()
+          preventIfKeyboardOpen(e)
           onFocusOutside?.(e)
         }}
       >
@@ -127,8 +96,7 @@ function DialogContent({
               className="absolute top-2 right-2"
               size="icon-sm"
             >
-              <XIcon
-              />
+              <XIcon />
               <span className="sr-only">Close</span>
             </Button>
           </DialogPrimitive.Close>

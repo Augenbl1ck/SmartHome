@@ -104,7 +104,7 @@ input[type="range"].range-slider::-moz-range-thumb {
 /* Dark mode: automatisch durch CSS-Variablen abgedeckt */
 
 /* ─── Virtuelle Tastatur (Touch-Screen) ──────────────────────────── */
-.virtual-keyboard-container {
+.vk-root {
   position: fixed;
   bottom: 0;
   left: 0;
@@ -114,19 +114,20 @@ input[type="range"].range-slider::-moz-range-thumb {
   background: var(--card);
   box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
   padding-bottom: env(safe-area-inset-bottom, 0);
-  touch-action: manipulation;
 }
 
-/* Dialog direkt über der Tastatur positionieren */
-body.virtual-keyboard-open [data-slot="dialog-overlay"] {
-  bottom: var(--vk-height, 240px);
+/* Dialog über der Tastatur — --vk-h wird per JS gesetzt */
+body.vk-open [data-slot="dialog-overlay"] {
+  bottom: var(--vk-h, 240px);
+  top: 0;
+  height: auto;
 }
 
-body.virtual-keyboard-open [data-slot="dialog-content"] {
+body.vk-open [data-slot="dialog-content"] {
   top: auto;
-  bottom: calc(var(--vk-height, 240px) + 0.75rem);
+  bottom: calc(var(--vk-h, 240px) + 0.5rem);
   transform: translateX(-50%) !important;
-  max-height: calc(100dvh - var(--vk-height, 240px) - 1.5rem);
+  max-height: calc(100dvh - var(--vk-h, 240px) - 1rem);
   overflow-y: auto;
 }
 
