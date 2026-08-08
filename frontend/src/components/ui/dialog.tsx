@@ -52,12 +52,28 @@ function isVirtualKeyboardTarget(target: EventTarget | null) {
     && !!target.closest('.virtual-keyboard-container, .simple-keyboard, .hg-button')
 }
 
-function isInVirtualKeyboardZone(event: { clientY?: number; detail?: { originalEvent?: { clientY?: number } } }) {
+function isInVirtualKeyboardZone(event: unknown) {
   if (!document.body.classList.contains('virtual-keyboard-open')) return false
-  const y = typeof event.clientY === 'number'
-    ? event.clientY
-    : event.detail?.originalEvent?.clientY
+
+  let y: number | undefined
+  if (event && typeof event === 'object') {
+    if ('clientY' in event && typeof (event as { clientY: unknown }).clientY === 'number') {
+      y = (event as { clientY: number }).clientY
+    } else if (
+      'detail' in event
+      && event.detail
+      && typeof event.detail === 'object'
+      && 'originalEvent' in event.detail
+      && event.detail.originalEvent
+      && typeof event.detail.originalEvent === 'object'
+      && 'clientY' in event.detail.originalEvent
+      && typeof (event.detail.originalEvent as { clientY: unknown }).clientY === 'number'
+    ) {
+      y = (event.detail.originalEvent as { clientY: number }).clientY
+    }
+  }
   if (typeof y !== 'number') return false
+
   const kb = document.querySelector('.virtual-keyboard-container')
   if (!(kb instanceof HTMLElement)) {
     return y >= window.innerHeight - Math.min(280, window.innerHeight * 0.42)
