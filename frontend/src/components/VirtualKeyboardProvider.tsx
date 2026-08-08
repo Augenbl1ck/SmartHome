@@ -1,12 +1,16 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import Keyboard from 'react-simple-keyboard';
 import 'react-simple-keyboard/build/css/index.css';
 import { X } from 'lucide-react';
 import { usePinLockContext } from '@/components/PinLockProvider';
 
-const TEXT_INPUT_TYPES = new Set(['text', 'email', 'search', 'url', 'tel', 'password', '']);
+const TEXT_INPUT_TYPES = new Set(['text', 'email', 'search', 'url', 'tel', 'password', 'number', '']);
+
+const OPEN_GRACE_MS = 400;
+const CLOSE_DELAY_MS = 250;
 
 type LayoutName = 'default' | 'shift' | 'numbers';
 
@@ -52,111 +56,200 @@ function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement, value: strin
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
+function isTextInput(el: HTMLInputElement | HTMLTextAreaElement) {
+  if (el.tagName === 'TEXTAREA') return true;
+  return TEXT_INPUT_TYPES.has(el.type);
+}
+
+function restoreInput(el: HTMLInputElement | HTMLTextAreaElement | null) {
+  if (!el) return;
+  if (el.dataset.vkManaged === '1') {
+    el.readOnly = false;
+    delete el.dataset.vkManaged;
+  }
+  if (el.dataset.vkInputMode) {
+    el.inputMode = el.dataset.vkInputMode as typeof el.inputMode;
+    delete el.dataset.vkInputMode;
+  } else {
+    el.removeAttribute('inputmode');
+  }
+}
+
+function prepareInput(el: HTMLInputElement | HTMLTextAreaElement) {
+  if (!el.readOnly) {
+    el.readOnly = true;
+    el.dataset.vkManaged = '1';
+  }
+  if (el.inputMode) {
+    el.dataset.vkInputMode = el.inputMode;
+  }
+  el.inputMode = 'none';
+}
+
+function defaultLayoutFor(el: HTMLInputElement | HTMLTextAreaElement): LayoutName {
+  if (el.type === 'tel' || el.type === 'number' || el.inputMode === 'numeric') {
+    return 'numbers';
+  }
+  return 'default';
+}
+
 export default function VirtualKeyboardProvider({ children }: { children: React.ReactNode }) {
-  const [visible,    setVisible]    = useState(false);
+  const [visible, setVisible] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [layoutName, setLayoutName] = useState<LayoutName>('default');
-  const activeEl    = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+
+  const activeEl = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const visibleRef = useRef(false);
   const pointerInside = useRef(false);
   const pointerDownInside = useRef(false);
+  const suppressCloseUntil = useRef(0);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const keyboardRef = useRef<any>(null);
-  const wrapperRef  = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const pinLock = usePinLockContext();
 
   useEffect(() => {
-    if (keyboardRef.current) {
-      console.debug('[VK] keyboardRef instance', {
-        keys: Object.keys(keyboardRef.current),
-        keyboardDOM: keyboardRef.current.keyboardDOM,
-        keyboardDOMClass: keyboardRef.current.keyboardDOM?.className,
-      });
-    }
-  }, [visible]);
-
-  const openFor = useCallback((el: HTMLInputElement | HTMLTextAreaElement) => {
-    console.debug('[VK] openFor', { value: el.value, type: el.type, name: el.name, id: el.id });
-    activeEl.current = el;
-    keyboardRef.current?.setInput(el.value);
-    setLayoutName('default');
-    setVisible(true);
+    setMounted(true);
   }, []);
 
-  const close = useCallback(() => {
-    console.debug('[VK] close', { visible, activeEl: activeEl.current?.id ?? activeEl.current?.name ?? null });
-    setVisible(false);
-    activeEl.current = null;
+  useEffect(() => {
+    visibleRef.current = visible;
+    document.body.classList.toggle('virtual-keyboard-open', visible);
+    return () => {
+      if (!visibleRef.current) {
+        document.body.classList.remove('virtual-keyboard-open');
+      }
+    };
   }, [visible]);
 
-  /* Globaler focusin-Listener */
-  useEffect(() => {
-    function onFocusIn(e: FocusEvent) {
-      console.debug('[VK] focusin', { target: (e.target as HTMLElement)?.tagName, related: (e.relatedTarget as HTMLElement | null)?.tagName });
-      if (pinLock.locked || pinLock.screenOff) {
-        console.debug('[VK] blocked open due lock/screenOff');
-        return;
-      }
-      const target = e.target as HTMLElement;
-      if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') return;
-      const input = target as HTMLInputElement;
-      if (!TEXT_INPUT_TYPES.has(input.type)) return;
-      if (input.readOnly || input.disabled) return;
-      if ((input as HTMLElement).dataset.noKeyboard === 'true') return;
-      openFor(input as HTMLInputElement | HTMLTextAreaElement);
+  const close = useCallback(() => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+    restoreInput(activeEl.current);
+    activeEl.current = null;
+    pointerInside.current = false;
+    pointerDownInside.current = false;
+    setVisible(false);
+  }, []);
+
+  const openFor = useCallback((el: HTMLInputElement | HTMLTextAreaElement) => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
     }
 
+    if (activeEl.current && activeEl.current !== el) {
+      restoreInput(activeEl.current);
+    }
+
+    activeEl.current = el;
+    prepareInput(el);
+    suppressCloseUntil.current = Date.now() + OPEN_GRACE_MS;
+
+    const layout = defaultLayoutFor(el);
+    setLayoutName(layout);
+    keyboardRef.current?.setInput(el.value);
+    setVisible(true);
+
+    requestAnimationFrame(() => {
+      el.focus({ preventScroll: false });
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      keyboardRef.current?.setInput(el.value);
+    });
+  }, []);
+
+  const scheduleCloseCheck = useCallback(() => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => {
+      closeTimer.current = null;
+      if (!visibleRef.current) return;
+      if (Date.now() < suppressCloseUntil.current) return;
+      if (pointerDownInside.current || pointerInside.current) return;
+
+      const active = document.activeElement;
+      if (activeEl.current && active === activeEl.current) return;
+      if (active instanceof HTMLElement && wrapperRef.current?.contains(active)) return;
+
+      close();
+    }, CLOSE_DELAY_MS);
+  }, [close]);
+
+  /* Globaler Focus-/Pointer-Listener */
+  useEffect(() => {
     function isKeyboardTarget(node: Node | null) {
       if (!node || !(node instanceof HTMLElement)) return false;
       if (wrapperRef.current?.contains(node)) return true;
-      if (node.closest('[data-skInstance], .virtual-keyboard-container, .hg-button, .hg-row, .hg-rows, .hg-button-container')) return true;
-      return false;
+      return !!node.closest(
+        '[data-skinstance], .virtual-keyboard-container, .simple-keyboard, .hg-button, .hg-row, .hg-rows, .hg-button-container'
+      );
+    }
+
+    function onFocusIn(e: FocusEvent) {
+      if (pinLock.locked || pinLock.screenOff) return;
+
+      const target = e.target;
+      if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return;
+      if (!isTextInput(target)) return;
+      if (target.disabled) return;
+      if (target.dataset.noKeyboard === 'true') return;
+      if (target.readOnly && target.dataset.vkManaged !== '1') return;
+
+      openFor(target);
     }
 
     function onFocusOut(e: FocusEvent) {
-      const related = e.relatedTarget as HTMLElement | null;
-      const insideRelated = related ? isKeyboardTarget(related) : false;
-      console.debug('[VK] focusout', { related: related?.tagName, insideRelated, pointerInside: pointerInside.current, pointerDownInside: pointerDownInside.current });
-      if (insideRelated) return;
+      if (!visibleRef.current) return;
+
+      const related = e.relatedTarget instanceof Node ? e.relatedTarget : null;
+      if (related && isKeyboardTarget(related)) return;
       if (pointerDownInside.current || pointerInside.current) return;
-      setTimeout(() => {
-        const active = document.activeElement;
-        console.debug('[VK] focusout timeout active', { activeTag: active?.tagName });
-        if (!active) { close(); return; }
-        if (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA') {
-          close();
-        }
-      }, 80);
+
+      scheduleCloseCheck();
     }
 
     function onDocumentPointerDown(e: PointerEvent) {
+      if (!visibleRef.current) return;
+      if (Date.now() < suppressCloseUntil.current) return;
+
       const target = e.target as Node | null;
-      const path = e.composedPath?.();
-      const insidePath = Array.isArray(path) && path.some((node) => isKeyboardTarget(node as Node));
-      const inside = isKeyboardTarget(target) || insidePath;
-      const targetEl = target instanceof HTMLElement ? target : null;
-      const closestKeyboard = targetEl?.closest('.virtual-keyboard-container, .hg-button, .hg-row, .hg-rows, .hg-button-container');
-      console.debug('[VK] pointerdown', {
-        targetTag: targetEl?.tagName,
-        targetClass: targetEl?.className,
-        closestKeyboard: closestKeyboard?.className,
-        inside,
-        wrapperHasTarget: wrapperRef.current?.contains(target as Node) ?? null,
-        composedHasKeyboard: Array.isArray(path) ? path.map(node => node instanceof HTMLElement ? node.className : null).filter(Boolean).slice(0,5) : null,
-      });
-      if (!target) return;
-      if (inside) return;
-      if (target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
-      close();
+      const path = e.composedPath?.() ?? [];
+      const inside = isKeyboardTarget(target)
+        || path.some(node => isKeyboardTarget(node as Node));
+
+      if (inside) {
+        pointerDownInside.current = true;
+        pointerInside.current = true;
+        return;
+      }
+
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+        if (target === activeEl.current) return;
+        return;
+      }
+
+      scheduleCloseCheck();
     }
 
-    document.addEventListener('focusin',  onFocusIn);
+    function onDocumentPointerUp() {
+      pointerDownInside.current = false;
+    }
+
+    document.addEventListener('focusin', onFocusIn);
     document.addEventListener('focusout', onFocusOut);
-    document.addEventListener('pointerdown', onDocumentPointerDown);
+    document.addEventListener('pointerdown', onDocumentPointerDown, true);
+    document.addEventListener('pointerup', onDocumentPointerUp, true);
+
     return () => {
-      document.removeEventListener('focusin',  onFocusIn);
+      document.removeEventListener('focusin', onFocusIn);
       document.removeEventListener('focusout', onFocusOut);
-      document.removeEventListener('pointerdown', onDocumentPointerDown);
+      document.removeEventListener('pointerdown', onDocumentPointerDown, true);
+      document.removeEventListener('pointerup', onDocumentPointerUp, true);
+      if (closeTimer.current) clearTimeout(closeTimer.current);
     };
-  }, [openFor, close, pinLock.locked, pinLock.screenOff]);
+  }, [openFor, scheduleCloseCheck, pinLock.locked, pinLock.screenOff]);
 
   useEffect(() => {
     if (pinLock.locked || pinLock.screenOff) {
@@ -167,7 +260,6 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
   function onKeyPress(button: string) {
     const el = activeEl.current;
 
-    /* Layout-Umschalter */
     if (button === '{shift}') {
       setLayoutName(l => l === 'shift' ? 'default' : 'shift');
       return;
@@ -192,48 +284,63 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
 
     setNativeValue(el, next);
     keyboardRef.current?.setInput(next);
+    el.focus({ preventScroll: true });
 
-    // Shift nach Buchstabe zurücksetzen
     if (layoutName === 'shift') setLayoutName('default');
   }
+
+  const keyboard = visible && mounted ? createPortal(
+    <div
+      ref={wrapperRef}
+      className="virtual-keyboard-container"
+      onPointerDown={e => {
+        e.preventDefault();
+        e.stopPropagation();
+        pointerDownInside.current = true;
+        pointerInside.current = true;
+        suppressCloseUntil.current = Date.now() + OPEN_GRACE_MS;
+      }}
+      onPointerUp={() => {
+        pointerDownInside.current = false;
+      }}
+      onPointerEnter={() => {
+        pointerInside.current = true;
+      }}
+      onPointerLeave={() => {
+        pointerInside.current = false;
+      }}
+    >
+      <button
+        type="button"
+        className="virtual-keyboard-close"
+        onPointerDown={e => {
+          e.preventDefault();
+          e.stopPropagation();
+          close();
+        }}
+        aria-label="Tastatur schließen"
+      >
+        <X size={18} />
+      </button>
+      <Keyboard
+        keyboardRef={(r: unknown) => { keyboardRef.current = r; }}
+        onKeyPress={onKeyPress}
+        layoutName={layoutName}
+        layout={LAYOUTS}
+        display={DISPLAY}
+        theme="hg-theme-default smarthome-kb"
+        useTouchEvents
+        useMouseEvents
+        preventMouseDownDefault
+      />
+    </div>,
+    document.body,
+  ) : null;
 
   return (
     <>
       {children}
-      {visible && (
-        <div
-          ref={wrapperRef}
-          className="virtual-keyboard-container"
-          /* Verhindert, dass Klick auf Tastatur das Input-Blur auslöst */
-          onMouseDown={e => { e.preventDefault(); e.stopPropagation(); console.debug('[VK] keyboard mouse down'); }}
-          onPointerDown={e => {
-            e.preventDefault();
-            e.stopPropagation();
-            pointerDownInside.current = true;
-            pointerInside.current = true;
-            console.debug('[VK] keyboard pointer down');
-          }}
-          onPointerUp={() => { pointerDownInside.current = false; console.debug('[VK] keyboard pointer up'); }}
-          onPointerEnter={() => { pointerInside.current = true; console.debug('[VK] keyboard enter'); }}
-          onPointerLeave={() => { pointerInside.current = false; console.debug('[VK] keyboard leave'); }}
-        >
-          <button
-            className="virtual-keyboard-close"
-            onPointerDown={e => { e.preventDefault(); close(); }}
-            aria-label="Tastatur schließen"
-          >
-            <X size={18} />
-          </button>
-          <Keyboard
-            keyboardRef={(r: any) => { keyboardRef.current = r; }}
-            onKeyPress={onKeyPress}
-            layoutName={layoutName}
-            layout={LAYOUTS}
-            display={DISPLAY}
-            theme="hg-theme-default smarthome-kb"
-          />
-        </div>
-      )}
+      {keyboard}
     </>
   );
 }

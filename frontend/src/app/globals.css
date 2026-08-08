@@ -109,11 +109,24 @@ input[type="range"].range-slider::-moz-range-thumb {
   bottom: 0;
   left: 0;
   right: 0;
-  z-index: 300;
+  z-index: 9999;
   border-top: 1px solid var(--border);
   background: var(--card);
   box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
   padding-bottom: env(safe-area-inset-bottom, 0);
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Platz für Tastatur — Dialoge/Inhalte nicht verdecken */
+body.virtual-keyboard-open {
+  padding-bottom: min(280px, 42vh);
+}
+
+body.virtual-keyboard-open [data-slot="dialog-content"] {
+  max-height: min(55vh, calc(100vh - 300px));
+  overflow-y: auto;
 }
 
 .virtual-keyboard-close {
