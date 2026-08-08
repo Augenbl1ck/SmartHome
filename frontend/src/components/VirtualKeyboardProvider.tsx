@@ -57,6 +57,7 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
   const [layoutName, setLayoutName] = useState<LayoutName>('default');
   const activeEl    = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const pointerInside = useRef(false);
+  const pointerDownInside = useRef(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const keyboardRef = useRef<any>(null);
   const wrapperRef  = useRef<HTMLDivElement>(null);
@@ -90,7 +91,7 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
     function onFocusOut(e: FocusEvent) {
       const related = e.relatedTarget as HTMLElement | null;
       if (related && wrapperRef.current?.contains(related)) return;
-      if (pointerInside.current) return;
+      if (pointerDownInside.current || pointerInside.current) return;
       setTimeout(() => {
         const active = document.activeElement;
         if (!active) { close(); return; }
@@ -100,11 +101,21 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
       }, 80);
     }
 
+    function onDocumentPointerDown(e: PointerEvent) {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (wrapperRef.current?.contains(target)) return;
+      if (target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+      close();
+    }
+
     document.addEventListener('focusin',  onFocusIn);
     document.addEventListener('focusout', onFocusOut);
+    document.addEventListener('pointerdown', onDocumentPointerDown);
     return () => {
       document.removeEventListener('focusin',  onFocusIn);
       document.removeEventListener('focusout', onFocusOut);
+      document.removeEventListener('pointerdown', onDocumentPointerDown);
     };
   }, [openFor, close, pinLock.locked, pinLock.screenOff]);
 
@@ -156,7 +167,12 @@ export default function VirtualKeyboardProvider({ children }: { children: React.
           className="virtual-keyboard-container"
           /* Verhindert, dass Klick auf Tastatur das Input-Blur auslöst */
           onMouseDown={e => e.preventDefault()}
-          onPointerDown={e => e.preventDefault()}
+          onPointerDown={e => {
+            e.preventDefault();
+            pointerDownInside.current = true;
+            pointerInside.current = true;
+          }}
+          onPointerUp={() => { pointerDownInside.current = false; }}
           onPointerEnter={() => { pointerInside.current = true; }}
           onPointerLeave={() => { pointerInside.current = false; }}
         >
