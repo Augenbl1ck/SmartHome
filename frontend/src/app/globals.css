@@ -103,6 +103,94 @@ input[type="range"].range-slider::-moz-range-thumb {
 }
 /* Dark mode: automatisch durch CSS-Variablen abgedeckt */
 
+/* ─── Virtuelle Tastatur (Touch-Screen) ──────────────────────────── */
+.virtual-keyboard-container {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 300;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.virtual-keyboard-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.virtual-keyboard-close:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.smarthome-kb.hg-theme-default {
+  background: var(--card);
+  padding: 8px 10px 10px;
+  border-radius: 0;
+  font-family: inherit;
+}
+
+.smarthome-kb .hg-row {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 5px;
+  justify-content: center;
+}
+
+.smarthome-kb .hg-button {
+  background: var(--muted);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-bottom: 2px solid var(--border);
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  height: 46px;
+  min-width: 36px;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background 0.08s;
+}
+
+.smarthome-kb .hg-button:active,
+.smarthome-kb .hg-button.hg-activeButton {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+
+/* Leertaste breiter */
+.smarthome-kb .hg-button[data-skbtn="{space}"] {
+  flex-grow: 4;
+  background: var(--background);
+}
+
+/* Funktionstasten (Shift, Backspace, Enter, 123, ABC) */
+.smarthome-kb .hg-button[data-skbtn="{bksp}"],
+.smarthome-kb .hg-button[data-skbtn="{shift}"],
+.smarthome-kb .hg-button[data-skbtn="{enter}"],
+.smarthome-kb .hg-button[data-skbtn="{numbers}"],
+.smarthome-kb .hg-button[data-skbtn="{default}"] {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  flex-grow: 1.5;
+  font-size: 0.9rem;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

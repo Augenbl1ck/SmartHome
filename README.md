@@ -320,6 +320,14 @@ Muss dauerhaft laufen (systemd-Service oder separates Terminal).
 
 ---
 
+## Um Pi zu aktualisieren nach Änderung
+
+```bash
+bash ~/SmartHome/deploy/update.sh
+```
+
+---
+
 ## Hardware-Empfehlungen
 
 | Kategorie | Empfehlung |

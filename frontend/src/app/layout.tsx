@@ -6,6 +6,7 @@ import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 import PinLockProvider from "@/components/PinLockProvider";
 import AutomationNotifications from "@/components/AutomationNotifications";
 import KioskProvider from "@/components/KioskProvider";
+import VirtualKeyboardProvider from "@/components/VirtualKeyboardProvider";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -60,6 +61,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           })();
         `}} /></head>
       <body className="min-h-full flex flex-col bg-background text-foreground">
+        <VirtualKeyboardProvider>
         <KioskProvider>
           <PinLockProvider>
             <NavBar />
@@ -72,6 +74,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Toaster position="bottom-right" richColors closeButton />
           </PinLockProvider>
         </KioskProvider>
+        </VirtualKeyboardProvider>
       </body>
     </html>
   );

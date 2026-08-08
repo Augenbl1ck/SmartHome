@@ -1,0 +1,29 @@
+{
+    /* ORIGINAL (Beschreibung):
+    "phpSwitcher.detectedApps": [
+        {
+            "type": "path",
+            "name": "System PATH",
+            "basePath": "D:\\xampp\\php"
+        }
+    ]
+    */
+
+    // GEÄNDERT: Ergänze `php.executablePath` als Workspace-Einstellung
+    "phpSwitcher.detectedApps": [
+        {
+            "type": "path",
+            "name": "System PATH",
+            "basePath": "D:\\xampp\\php"
+        }
+    ],
+
+    // Pfad zur PHP-Executable für dieses Workspace (automatisch aus basePath abgeleitet)
+    "php.executablePath": "D:/xampp/php/php.exe",
+
+    // GEÄNDERT: Damit die PHP-Validierung in VS Code die gleiche PHP-Executable nutzt
+    "php.validate.executablePath": "D:/xampp/php/php.exe",
+
+    // GEÄNDERT: Intelephense auf die gefundene PHP-Version einstellen
+    "intelephense.environment.phpVersion": "7.4.27"
+}
