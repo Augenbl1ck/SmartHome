@@ -242,21 +242,17 @@ zigbee2mqtt
 
 ### 7. Chromium Kiosk + virtuelle Tastatur
 
-Der SmartHome-Browser startet automatisch beim Desktop-Login im Vollbild-Modus mit eingebauter Bildschirmtastatur:
+Der SmartHome-Browser startet automatisch beim Desktop-Login über `deploy/start-kiosk.sh` (Autostart-`.desktop`).
 
 ```bash
 mkdir -p ~/.config/autostart
 cp ~/SmartHome/deploy/smarthome-kiosk.desktop ~/.config/autostart/
+chmod +x ~/SmartHome/deploy/start-kiosk.sh
 ```
 
-Oder beim ersten Setup automatisch via `setup-pi.sh`.
+Oder beim ersten Setup / Update automatisch via `setup-pi.sh` bzw. `update.sh`.
 
-**Was der Kiosk-Modus macht:**
-- `--kiosk` → Vollbild, keine Browser-Leiste
-- `--enable-virtual-keyboard` → Chromiums eingebaute Tastatur erscheint bei jedem Tipp auf ein Eingabefeld
-- `--noerrdialogs` / `--disable-infobars` → keine Störmeldungen
-
-Beim nächsten Pi-Neustart öffnet sich der Browser automatisch. Das Dashboard kann zusätzlich über **Einstellungen → Kiosk-Modus** umschalten.
+**Wichtig (Squeekboard):** Echtes Chromium-`--kiosk` / Fullscreen legt das Fenster *über* die Bildschirmtastatur (Wayland-Layer). Deshalb startet das Skript Chromium als **App-Fenster maximiert** (`--app` + `--start-maximized`) — optisch voller Screen, aber Squeekboard bleibt sichtbar. Die App selbst aktiviert den UI-Kiosk über `?kiosk=1`.
 
 ---
 

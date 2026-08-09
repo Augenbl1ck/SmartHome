@@ -1,6 +1,10 @@
 #!/bin/bash
 # SmartHome Chromium-Kiosk starten (Autostart vom Desktop)
-# Wichtig: als Wrapper, damit Wayland/Squeekboard wie beim manuellen Chrome greifen.
+#
+# WICHTIG: Kein --kiosk / kein echtes Fullscreen!
+# Unter Wayland (labwc) liegt Squeekboard auf Layer TOP — darunter liegt
+# ein Fullscreen-Fenster. Die Tastatur startet dann, ist aber unsichtbar.
+# Stattdessen: App-Fenster ohne Browser-UI, maximiert (füllt den Screen).
 
 set -e
 
@@ -9,7 +13,7 @@ URL="${SMARTHOME_KIOSK_URL:-http://smarthome.local?kiosk=1}"
 # Kurz warten, bis Session/Compositor/Squeekboard bereit sind
 sleep 3
 
-# Squeekboard (Pi-Bildschirmtastatur) sicherstellen — nur Wayland
+# Squeekboard (Pi-Bildschirmtastatur) sicherstellen
 if command -v squeekboard >/dev/null 2>&1; then
   if ! pgrep -x squeekboard >/dev/null 2>&1; then
     squeekboard &
@@ -17,7 +21,6 @@ if command -v squeekboard >/dev/null 2>&1; then
   fi
 fi
 
-# Chromium-Binary finden (je nach Pi-OS-Version)
 CHROMIUM=""
 for bin in chromium-browser chromium google-chrome; do
   if command -v "$bin" >/dev/null 2>&1; then
@@ -31,16 +34,25 @@ if [ -z "$CHROMIUM" ]; then
   exit 1
 fi
 
-# Wie manueller Desktop-Start: Wayland-Client, damit Squeekboard auf Fokus reagiert.
-# --kiosk allein läuft oft unter XWayland → dann keine OSK.
+# Wayland-IME, damit Fokus-Events Squeekboard erreichen
+export GDK_BACKEND=wayland
+export GTK_IM_MODULE=wayland
+export QT_IM_MODULE=wayland
+export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-wayland}"
+
+# --app = ohne Adressleiste/Tabs (wie Kiosk-Optik)
+# --start-maximized = voller Screen OHNE compositor-fullscreen
+# Kein --kiosk, kein --start-fullscreen → sonst keine sichtbare OSK
 exec "$CHROMIUM" \
-  --kiosk \
+  --app="$URL" \
+  --start-maximized \
   --ozone-platform=wayland \
-  --enable-features=UseOzonePlatform,OverlayScrollbar \
+  --enable-features=UseOzonePlatform,WaylandWindowDecorations \
+  --enable-wayland-ime \
   --noerrdialogs \
   --disable-infobars \
   --disable-session-crashed-bubble \
   --disable-restore-session-state \
   --check-for-update-interval=604800 \
   --overscroll-history-navigation=0 \
-  "$URL"
+  --window-position=0,0
