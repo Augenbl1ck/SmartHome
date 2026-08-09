@@ -99,7 +99,7 @@ class DeviceService
         }
 
         $protocol = $device->attributes['protocol'] ?? 'simple';
-        [$topic, $payload] = $this->buildMqttCommand($device->mqtt_topic, $protocol, $status);
+        [$topic, $payload] = $this->buildMqttCommand($device, $protocol, $status);
 
         try {
             $mqtt = new MqttClient(
@@ -115,9 +115,9 @@ class DeviceService
         }
     }
 
-    private function buildMqttCommand(string $base, string $protocol, string $status): array
+    private function buildMqttCommand(Device $device, string $protocol, string $status): array
     {
-        $base = rtrim($base, '/');
+        $base = rtrim((string) $device->mqtt_topic, '/');
 
         if ($protocol === 'shelly_gen3') {
             return [
@@ -136,6 +136,23 @@ class DeviceService
         }
 
         if ($protocol === 'zigbee2mqtt') {
+            // Thermostat / TRV (z.B. SONOFF TRVZB): system_mode + occupied_heating_setpoint
+            if ($device->type === 'thermostat') {
+                $mode = strtolower($status);
+                if (in_array($mode, ['off', 'auto', 'heat'], true)) {
+                    return [
+                        $base . '/set',
+                        json_encode(['system_mode' => $mode]),
+                    ];
+                }
+                if (is_numeric($status)) {
+                    return [
+                        $base . '/set',
+                        json_encode(['occupied_heating_setpoint' => (float) $status]),
+                    ];
+                }
+            }
+
             return [
                 $base . '/set',
                 json_encode(['state' => strtoupper($status)]),

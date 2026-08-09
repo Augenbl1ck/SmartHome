@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\MqttController;
 use App\Http\Controllers\Api\RoomController;
 use App\Http\Controllers\Api\SceneController;
 use App\Http\Controllers\Api\ShellyRpcController;
+use App\Http\Controllers\Api\PanelSettingsController;
 use App\Http\Controllers\Api\SystemController;
 use App\Http\Controllers\Api\ZigbeeController;
 use Illuminate\Support\Facades\Route;
@@ -53,4 +54,8 @@ Route::prefix('v1')->group(function () {
 
     // System Status
     Route::get('system/status', [SystemController::class, 'status']);
+
+    // Panel-Einstellungen (PIN / Kiosk) — überleben Reboot & Origin-Wechsel
+    Route::get('panel-settings', [PanelSettingsController::class, 'show']);
+    Route::put('panel-settings', [PanelSettingsController::class, 'update']);
 });

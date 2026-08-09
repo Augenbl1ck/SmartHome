@@ -196,9 +196,10 @@ class MqttSubscribe extends Command
         $attrs   = $device->attributes ?? [];
         $logStatus = null;
         $logValue  = null;
+        $isThermostat = $device->type === 'thermostat';
 
-        // Schalter / Steckdose
-        if (isset($data['state'])) {
+        // Schalter / Steckdose — nicht für Thermostate (die nutzen system_mode)
+        if (!$isThermostat && isset($data['state'])) {
             $status = strtolower($data['state']) === 'on' ? 'on' : 'off';
             $updates['status'] = $status;
             $logStatus = $status;
@@ -218,12 +219,22 @@ class MqttSubscribe extends Command
             $attrs['humidity'] = round((float) $data['humidity'], 1);
         }
 
-        // Thermostat
+        // Thermostat / TRV
+        if ($isThermostat && isset($data['system_mode'])) {
+            $mode = strtolower((string) $data['system_mode']);
+            $updates['status'] = $mode;
+            $logStatus = $mode;
+        }
         if (isset($data['occupied_heating_setpoint'])) {
             $attrs['setpoint'] = (float) $data['occupied_heating_setpoint'];
+        } elseif (isset($data['current_heating_setpoint'])) {
+            $attrs['setpoint'] = (float) $data['current_heating_setpoint'];
         }
         if (isset($data['local_temperature'])) {
             $attrs['local_temperature'] = round((float) $data['local_temperature'], 1);
+        }
+        if (isset($data['running_state'])) {
+            $attrs['running_state'] = strtolower((string) $data['running_state']);
         }
 
         // Tür-/Fensterkontakt

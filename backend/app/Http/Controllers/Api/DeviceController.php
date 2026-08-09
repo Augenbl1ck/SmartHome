@@ -77,8 +77,25 @@ class DeviceController extends Controller
     public function setStatus(Request $request, Device $device): JsonResponse
     {
         $data = $request->validate(['status' => 'required|string|max:64']);
-        $this->deviceService->setStatus($device, $data['status']);
-        $device->update(['status' => $data['status'], 'last_seen' => now()]);
-        return response()->json($device);
+        $status = $data['status'];
+        $this->deviceService->setStatus($device, $status);
+
+        // Thermostat: Solltemperatur gehört in attributes.setpoint,
+        // status bleibt der Modus (off/auto/heat) — sonst zeigt die UI immer "Aktiv".
+        if ($device->type === 'thermostat' && is_numeric($status)) {
+            $attrs = $device->attributes ?? [];
+            $attrs['setpoint'] = (float) $status;
+            $device->update([
+                'attributes' => $attrs,
+                'last_seen'  => now(),
+            ]);
+        } else {
+            $device->update([
+                'status'    => strtolower($status),
+                'last_seen' => now(),
+            ]);
+        }
+
+        return response()->json($device->fresh());
     }
 }

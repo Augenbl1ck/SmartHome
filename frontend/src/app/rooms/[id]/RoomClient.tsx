@@ -232,10 +232,11 @@ export default function RoomClient({ room, initialDevices }: Props) {
   const handleSetpointChange = async (device: Device, delta: number) => {
     const current = setpoints.get(device.id) ?? 20;
     const next = Math.round((current + delta) * 2) / 2; // 0.5°C Schritte
-    const clamped = Math.min(30, Math.max(5, next));
+    const clamped = Math.min(35, Math.max(4, next)); // TRVZB: 4–35°C
     setSetpoints(m => new Map(m).set(device.id, clamped));
     try {
-      await api.setDeviceStatus(device.id, String(clamped));
+      const updated = await api.setDeviceStatus(device.id, String(clamped));
+      setDevices(prev => prev.map(d => d.id === device.id ? { ...d, ...updated } : d));
     } catch {
       setSetpoints(m => new Map(m).set(device.id, current));
     }
@@ -403,7 +404,8 @@ export default function RoomClient({ room, initialDevices }: Props) {
           const isOn       = device.status === 'on';
           const isActive   = isOn
             || (isFan   && ['low', 'medium', 'high'].includes(device.status))
-            || (isTherm && !['off', 'unknown', ''].includes(device.status));
+            // Thermostat: nur echte Heiz-Modi — nicht jede Zahl/Setpoint als "An"
+            || (isTherm && ['auto', 'heat', 'on'].includes(device.status));
           const isPending  = pending.has(device.id);
           const isDisabled = isPending;
 
@@ -472,10 +474,11 @@ export default function RoomClient({ room, initialDevices }: Props) {
                     onClick={e => {
                       e.stopPropagation();
                       if (isTherm) {
-                        // Thermostat: 'auto' ↔ 'off'
-                        const newStatus = isActive ? 'off' : 'auto';
+                        // Thermostat: 'heat' ↔ 'off' (Zigbee system_mode)
+                        const newStatus = isActive ? 'off' : 'heat';
                         setDevices(prev => prev.map(d => d.id === device.id ? { ...d, status: newStatus } : d));
                         api.setDeviceStatus(device.id, newStatus)
+                          .then(updated => setDevices(prev => prev.map(d => d.id === device.id ? { ...d, ...updated } : d)))
                           .catch(() => setDevices(prev => prev.map(d => d.id === device.id ? device : d)));
                       } else {
                         handleToggle(device);
@@ -628,9 +631,12 @@ export default function RoomClient({ room, initialDevices }: Props) {
                 {/* Thermostat: nur Solltemperatur, An/Aus über Header-Button */}
                 {isTherm && (
                   <div className="mt-4 space-y-3">
-                    {device.status && !['on','off','auto','unknown'].includes(device.status) && (
+                    {typeof device.attributes?.local_temperature === 'number' && (
                       <p className="text-sm text-muted-foreground">
-                        Aktuell: <span className="font-semibold text-foreground">{device.status}°C</span>
+                        Aktuell:{' '}
+                        <span className="font-semibold text-foreground">
+                          {(device.attributes.local_temperature as number).toFixed(1)}°C
+                        </span>
                       </p>
                     )}
                     <div>

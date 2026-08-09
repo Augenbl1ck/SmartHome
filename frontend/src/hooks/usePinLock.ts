@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { api } from '@/lib/api';
 
 const KEYS = {
   hash:          'smarthome_pin_hash',
@@ -18,6 +19,17 @@ const KEYS = {
   lockTimeout:   'smarthome_lock_timeout',
   screenTimeout: 'smarthome_screen_off_timeout',
 } as const;
+
+function persistToServer(patch: {
+  pin_hash?: string | null;
+  pin_enabled?: boolean;
+  lock_timeout?: number;
+  screen_timeout?: number;
+}) {
+  api.updatePanelSettings(patch).catch(() => {
+    /* offline — localStorage bleibt Quelle */
+  });
+}
 
 async function sha256(text: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -163,6 +175,48 @@ export function usePinLock(): PinLockState {
   const lastActivity = useRef<number>(Date.now());
   const intervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Server → localStorage (überlebt Reboot / anderen Browser-Origin)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await api.getPanelSettings();
+        if (cancelled) return;
+
+        // local → server migrieren falls Server noch leer, lokal aber gesetzt
+        const localHash = load<string>(KEYS.hash, '');
+        if (!s.pin_hash && localHash) {
+          persistToServer({
+            pin_hash: localHash,
+            pin_enabled: load<boolean>(KEYS.enabled, false),
+            lock_timeout: load<number>(KEYS.lockTimeout, 30),
+            screen_timeout: load<number>(KEYS.screenTimeout, 60),
+          });
+        }
+
+        if (s.pin_hash) {
+          save(KEYS.hash, s.pin_hash);
+          setHasPin(true);
+        } else if (!localHash) {
+          localStorage.removeItem(KEYS.hash);
+          setHasPin(false);
+        }
+        if (s.pin_hash || s.pin_enabled) {
+          save(KEYS.enabled, s.pin_enabled);
+          setEnabled(s.pin_enabled);
+        }
+        save(KEYS.lockTimeout, s.lock_timeout);
+        setLockTimeoutS(s.lock_timeout);
+        save(KEYS.screenTimeout, s.screen_timeout);
+        setScreenTimeoutS(s.screen_timeout);
+        if (s.pin_enabled && s.pin_hash) setLocked(true);
+      } catch {
+        /* API down — weiter mit localStorage */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // Aktivitäts-Listener — nur explizites Tippen/Klicken
   useEffect(() => {
     const onActivity = () => { lastActivity.current = Date.now(); };
@@ -243,6 +297,7 @@ export function usePinLock(): PinLockState {
       save(KEYS.enabled, true);
       setHasPin(true);
       setEnabled(true);
+      persistToServer({ pin_hash: newHash, pin_enabled: true });
       return true;
     },
     []
@@ -255,16 +310,19 @@ export function usePinLock(): PinLockState {
     setEnabled(false);
     setLocked(false);
     clearTimers();
+    persistToServer({ pin_hash: null, pin_enabled: false });
   }, [clearTimers]);
 
   const setLockTimeout = useCallback((seconds: number) => {
     save(KEYS.lockTimeout, seconds);
     setLockTimeoutS(seconds);
+    persistToServer({ lock_timeout: seconds });
   }, []);
 
   const setScreenTimeout = useCallback((seconds: number) => {
     save(KEYS.screenTimeout, seconds);
     setScreenTimeoutS(seconds);
+    persistToServer({ screen_timeout: seconds });
   }, []);
 
   return {

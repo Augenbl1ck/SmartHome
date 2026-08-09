@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { usePinLockContext } from '@/components/PinLockProvider';
 import KioskBar from '@/components/KioskBar';
 import KioskScreensaver from '@/components/KioskScreensaver';
+import { api } from '@/lib/api';
 
 const KIOSK_KEY = 'smarthome_kiosk';
 
@@ -30,12 +31,29 @@ export default function KioskProvider({ children }: { children: React.ReactNode 
 
   useEffect(() => {
     setMounted(true);
-    // Early-Script in layout.tsx kann localStorage schon gesetzt haben
-    const force = urlWantsKiosk() || localStorage.getItem(KIOSK_KEY) === 'true';
-    if (urlWantsKiosk()) {
-      localStorage.setItem(KIOSK_KEY, 'true');
-    }
-    if (force) setKioskModeState(true);
+    const fromUrl = urlWantsKiosk();
+    const fromLocal = localStorage.getItem(KIOSK_KEY) === 'true';
+    if (fromUrl) localStorage.setItem(KIOSK_KEY, 'true');
+    if (fromUrl || fromLocal) setKioskModeState(true);
+
+    // Server-Persistenz (überlebt Reboot / anderen Origin)
+    api.getPanelSettings()
+      .then(s => {
+        if (fromUrl) {
+          if (!s.kiosk_mode) {
+            api.updatePanelSettings({ kiosk_mode: true }).catch(() => {});
+          }
+          return;
+        }
+        if (s.kiosk_mode) {
+          setKioskModeState(true);
+          localStorage.setItem(KIOSK_KEY, 'true');
+        } else if (!fromLocal && localStorage.getItem(KIOSK_KEY) === 'true') {
+          // lokal an, Server noch leer → hochladen
+          api.updatePanelSettings({ kiosk_mode: true }).catch(() => {});
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const setKioskMode = (v: boolean) => {
@@ -43,6 +61,7 @@ export default function KioskProvider({ children }: { children: React.ReactNode 
     localStorage.setItem(KIOSK_KEY, String(v));
     document.body.classList.toggle('kiosk-active', v);
     document.body.style.overscrollBehavior = v ? 'none' : '';
+    api.updatePanelSettings({ kiosk_mode: v }).catch(() => {});
   };
 
   useEffect(() => {

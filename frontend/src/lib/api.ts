@@ -89,7 +89,21 @@ export const api = {
   // System Status
   getSystemStatus: () =>
     request<SystemStatus>('/system/status'),
+
+  // Panel-Einstellungen (PIN / Kiosk) — serverseitig, überlebt Reboot
+  getPanelSettings: () =>
+    request<PanelSettings>('/panel-settings'),
+  updatePanelSettings: (data: Partial<PanelSettings>) =>
+    request<PanelSettings>('/panel-settings', { method: 'PUT', body: JSON.stringify(data) }),
 };
+
+export interface PanelSettings {
+  pin_hash: string | null;
+  pin_enabled: boolean;
+  lock_timeout: number;
+  screen_timeout: number;
+  kiosk_mode: boolean;
+}
 
 // Types
 export interface Room {
