@@ -19,7 +19,7 @@ export default function KioskBar() {
     href === '/' ? path === '/' : path.startsWith(href);
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-50 h-20 bg-background/95 backdrop-blur border-t flex items-stretch">
+    <nav data-slot="kiosk-bar" className="fixed bottom-0 inset-x-0 z-50 h-20 bg-background/95 backdrop-blur border-t flex items-stretch">
       {/* Home */}
       <Link href="/" className={cn('flex flex-col items-center justify-center gap-1 min-w-[72px] px-3 text-xs font-medium transition-colors', isActive('/') ? 'text-primary' : 'text-muted-foreground')}>
         <div className={cn('h-9 w-9 rounded-xl flex items-center justify-center', isActive('/') ? 'bg-primary/10' : 'hover:bg-accent')}>

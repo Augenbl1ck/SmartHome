@@ -196,13 +196,17 @@ function PinPadDialog({
                 key={i}
                 type="button"
                 disabled={saving}
-                onPointerDown={e => e.preventDefault()}
-                onClick={() => append(btn)}
+                onPointerDown={e => {
+                  // Touch: preventDefault unterdrückt sonst oft click → direkt tippen
+                  e.preventDefault();
+                  if (!saving) append(btn);
+                }}
                 className={cn(
                   'h-14 rounded-xl text-xl font-semibold',
                   'flex items-center justify-center',
                   'bg-muted hover:bg-accent active:scale-95 transition-transform',
                   'disabled:opacity-50',
+                  'touch-manipulation select-none',
                 )}
               >
                 {btn}

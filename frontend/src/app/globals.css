@@ -109,22 +109,29 @@ input, textarea, select {
   font-size: max(16px, 1rem); /* verhindert Auto-Zoom auf iOS/Android */
 }
 
-/* ─── Virtuelle Tastatur (über Dialogen / Overlay) ────────────────── */
+/* ─── Virtuelle Tastatur (eigene Buttons, über allem) ─────────────── */
 .vk-wrap {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  z-index: 2147483000; /* über Radix Dialog (z-50) und allem anderen */
+  z-index: 2147483000;
   isolation: isolate;
   border-top: 1px solid var(--border);
   background: var(--card);
   box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
-  padding-bottom: env(safe-area-inset-bottom, 0);
-  pointer-events: auto;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0));
+  pointer-events: auto !important;
   touch-action: manipulation;
   -webkit-user-select: none;
   user-select: none;
+}
+
+/* Bottom-Bars (Kiosk/Nav) verdecken sonst die Tasten */
+body.vk-open nav.fixed,
+body.vk-open [data-slot="kiosk-bar"] {
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 /* Overlay darf Tastatur-Taps NICHT abfangen */
@@ -132,7 +139,7 @@ body.vk-open [data-slot="dialog-overlay"] {
   bottom: var(--vk-h, 240px);
   top: 0;
   height: auto;
-  pointer-events: none;
+  pointer-events: none !important;
 }
 
 /* Dialog sitzt direkt über der Tastatur */
@@ -151,69 +158,67 @@ body.vk-open [data-slot="dialog-content"] {
   position: absolute;
   top: 6px;
   right: 8px;
-  z-index: 1;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 8px;
   color: var(--muted-foreground);
   background: transparent;
   border: none;
   cursor: pointer;
+  touch-action: manipulation;
 }
 .vk-close:hover {
   background: var(--muted);
   color: var(--foreground);
 }
 
-.vk-theme.hg-theme-default {
-  background: var(--card);
-  padding: 8px 10px 10px;
-  border-radius: 0;
-  font-family: inherit;
+.vk-board {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
 }
-.vk-theme .hg-row {
+.vk-row {
   display: flex;
   gap: 5px;
-  margin-bottom: 5px;
   justify-content: center;
 }
-.vk-theme .hg-button {
+.vk-key {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 48px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
   background: var(--muted);
   color: var(--foreground);
-  border: 1px solid var(--border);
-  border-bottom: 2px solid var(--border);
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 500;
-  height: 48px;
-  min-width: 36px;
-  box-shadow: none;
+  font-size: 1.05rem;
+  font-weight: 600;
+  font-family: inherit;
   cursor: pointer;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
 }
-.vk-theme .hg-button:active,
-.vk-theme .hg-button.hg-activeButton {
+.vk-key:active {
   background: var(--primary);
   color: var(--primary-foreground);
   border-color: var(--primary);
 }
-.vk-theme .hg-button[data-skbtn="{space}"] {
-  flex-grow: 4;
+.vk-key-space {
+  flex: 4 1 0;
   background: var(--background);
 }
-.vk-theme .hg-button[data-skbtn="{bksp}"],
-.vk-theme .hg-button[data-skbtn="{shift}"],
-.vk-theme .hg-button[data-skbtn="{enter}"],
-.vk-theme .hg-button[data-skbtn="{numbers}"],
-.vk-theme .hg-button[data-skbtn="{default}"] {
+.vk-key-fn {
+  flex: 1.6 1 0;
   background: var(--secondary);
   color: var(--secondary-foreground);
-  flex-grow: 1.5;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
 }
 
 @custom-variant dark (&:is(.dark *));
