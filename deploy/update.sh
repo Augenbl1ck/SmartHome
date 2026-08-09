@@ -10,7 +10,9 @@ echo "=== SmartHome Update ==="
 
 cd "$INSTALL_DIR"
 
-echo "[1/5] Code aktualisieren..."
+echo "[1/6] Code aktualisieren..."
+# Lokale Deploy-Skript-Änderungen verwerfen (Autostart-Edits auf dem Pi)
+git checkout -- deploy/start-kiosk.sh deploy/update.sh deploy/smarthome-kiosk.desktop 2>/dev/null || true
 git pull
 
 echo "[2/5] Backend-Abhängigkeiten..."
