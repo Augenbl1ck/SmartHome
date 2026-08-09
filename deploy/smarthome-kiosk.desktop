@@ -2,5 +2,13 @@
 Type=Application
 Name=SmartHome Kiosk
 Comment=SmartHome Dashboard im Kiosk-Modus
-Exec=chromium-browser --kiosk --noerrdialogs --disable-infobars --disable-session-crashed-bubble --disable-restore-session-state --enable-virtual-keyboard http://smarthome.local?kiosk=1
+Exec=chromium-browser \
+  --kiosk \
+  --ozone-platform=wayland \
+  --enable-features=UseOzonePlatform \
+  --noerrdialogs \
+  --disable-infobars \
+  --disable-session-crashed-bubble \
+  --disable-restore-session-state \
+  http://smarthome.local?kiosk=1
 X-GNOME-Autostart-enabled=true
