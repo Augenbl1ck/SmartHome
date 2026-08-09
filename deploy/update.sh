@@ -25,7 +25,8 @@ cd "$INSTALL_DIR/frontend"
 npm install
 npm run build
 
-echo "[4/5] Autostart aktualisieren..."
+echo "[4/6] Autostart aktualisieren..."
+chmod +x "$INSTALL_DIR/deploy/start-kiosk.sh"
 mkdir -p ~/.config/autostart
 cp "$INSTALL_DIR/deploy/smarthome-kiosk.desktop" ~/.config/autostart/smarthome-kiosk.desktop
 echo "  autostart    ✓"
