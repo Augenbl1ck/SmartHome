@@ -47,10 +47,42 @@ function DialogOverlay({
   )
 }
 
+/**
+ * Radix wertet Taps auf die virtuelle Tastatur als "Outside" —
+ * die Tastatur liegt in einem eigenen Portal außerhalb des Dialogs.
+ * Solange body.vk-open gesetzt ist ODER der echte Target in der Tastatur
+ * liegt, Dialog NICHT schließen.
+ */
+function shouldBlockOutsideDismiss(event: unknown): boolean {
+  if (typeof document !== "undefined" && document.body.classList.contains("vk-open")) {
+    return true
+  }
+  // Radix: e.detail.originalEvent hat den echten DOM-Target
+  const e = event as {
+    target?: EventTarget | null
+    detail?: { originalEvent?: Event }
+  }
+  const originalTarget = e.detail?.originalEvent?.target ?? e.target ?? null
+  if (originalTarget instanceof Element && originalTarget.closest("[data-vk-root]")) {
+    return true
+  }
+  return false
+}
+
+function blockOutside(
+  e: { preventDefault(): void },
+  event: unknown,
+) {
+  if (shouldBlockOutsideDismiss(event)) e.preventDefault()
+}
+
 function DialogContent({
   className,
   children,
   showCloseButton = true,
+  onPointerDownOutside,
+  onInteractOutside,
+  onFocusOutside,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
@@ -65,6 +97,18 @@ function DialogContent({
           className
         )}
         {...props}
+        onPointerDownOutside={(e) => {
+          blockOutside(e, e)
+          onPointerDownOutside?.(e)
+        }}
+        onInteractOutside={(e) => {
+          blockOutside(e, e)
+          onInteractOutside?.(e)
+        }}
+        onFocusOutside={(e) => {
+          blockOutside(e, e)
+          onFocusOutside?.(e)
+        }}
       >
         {children}
         {showCloseButton && (

@@ -103,11 +103,112 @@ input[type="range"].range-slider::-moz-range-thumb {
 }
 /* Dark mode: automatisch durch CSS-Variablen abgedeckt */
 
-/* ─── Touch-Eingabe: native Systemtastatur ────────────────────────── */
-/* Inputs auf Touch-Geräten gut bedienbar machen */
+/* ─── Touch-Eingabe ───────────────────────────────────────────────── */
 input, textarea, select {
   touch-action: manipulation;
   font-size: max(16px, 1rem); /* verhindert Auto-Zoom auf iOS/Android */
+}
+
+/* ─── Virtuelle Tastatur (über Dialogen / Overlay) ────────────────── */
+.vk-wrap {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100000; /* über Radix Dialog (z-50) und allem anderen */
+  border-top: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Overlay endet über der Tastatur — sonst fängt er Taps ab */
+body.vk-open [data-slot="dialog-overlay"] {
+  bottom: var(--vk-h, 240px);
+  top: 0;
+  height: auto;
+}
+
+/* Dialog sitzt direkt über der Tastatur */
+body.vk-open [data-slot="dialog-content"] {
+  top: auto;
+  bottom: calc(var(--vk-h, 240px) + 0.5rem);
+  transform: translateX(-50%) !important;
+  max-height: calc(100dvh - var(--vk-h, 240px) - 1rem);
+  overflow-y: auto;
+}
+
+.vk-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.vk-close:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.vk-theme.hg-theme-default {
+  background: var(--card);
+  padding: 8px 10px 10px;
+  border-radius: 0;
+  font-family: inherit;
+}
+.vk-theme .hg-row {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 5px;
+  justify-content: center;
+}
+.vk-theme .hg-button {
+  background: var(--muted);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-bottom: 2px solid var(--border);
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  height: 48px;
+  min-width: 36px;
+  box-shadow: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.vk-theme .hg-button:active,
+.vk-theme .hg-button.hg-activeButton {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+.vk-theme .hg-button[data-skbtn="{space}"] {
+  flex-grow: 4;
+  background: var(--background);
+}
+.vk-theme .hg-button[data-skbtn="{bksp}"],
+.vk-theme .hg-button[data-skbtn="{shift}"],
+.vk-theme .hg-button[data-skbtn="{enter}"],
+.vk-theme .hg-button[data-skbtn="{numbers}"],
+.vk-theme .hg-button[data-skbtn="{default}"] {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  flex-grow: 1.5;
+  font-size: 0.9rem;
 }
 
 @custom-variant dark (&:is(.dark *));
