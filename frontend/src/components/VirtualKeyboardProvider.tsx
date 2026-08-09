@@ -185,6 +185,30 @@ export default function VirtualKeyboardProvider({
     if (pinLock.locked || pinLock.screenOff) close();
   }, [pinLock.locked, pinLock.screenOff, close]);
 
+  /*
+   * ── KRITISCH: Nicht-passiver nativer touchstart-Listener ───────────
+   *
+   * React registriert onTouchStart als PASSIVEN Listener (passive: true).
+   * Passive Listener ignorieren e.preventDefault() — der Browser erzeugt
+   * trotzdem die synthetischen pointer/mouse-Events, die dem Input den
+   * Fokus stehlen.
+   *
+   * Lösung: nativer Listener mit { passive: false } direkt auf dem DOM-
+   * Element. Nur so kann preventDefault() den Fokus-Diebstahl verhindern.
+   */
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || !open) return;
+    const handler = (e: TouchEvent) => {
+      // X-Button ist eigenständig — rest prevent
+      const target = e.target as HTMLElement | null;
+      if (target?.classList.contains('vk-close') || target?.closest('.vk-close')) return;
+      e.preventDefault();
+    };
+    el.addEventListener('touchstart', handler, { passive: false });
+    return () => el.removeEventListener('touchstart', handler);
+  }, [open]);
+
   /* ── Tastendruck ─────────────────────────────────────────────────── */
   const onKey = useCallback(
     (btn: string) => {
@@ -212,9 +236,14 @@ export default function VirtualKeyboardProvider({
       writeToInput(el, next);
       kbRef.current?.setInput(next);
 
-      /* Fokus wiederherstellen falls durch touchend gestohlen */
+      /*
+       * Fokus nach dem Tastendruck zurück auf das Input-Feld.
+       * Backup falls trotzdem ein Event den Fokus gestohlen hat.
+       */
       requestAnimationFrame(() => {
-        if (inputRef.current === el) el.focus({ preventScroll: true });
+        if (inputRef.current && document.activeElement !== inputRef.current) {
+          inputRef.current.focus({ preventScroll: true });
+        }
       });
 
       if (layoutRef.current === 'shift') {
@@ -232,23 +261,15 @@ export default function VirtualKeyboardProvider({
           <div
             ref={wrapRef}
             className="vk-wrap"
-            /*
-             * TOUCHSCREEN-TRICK:
-             * onTouchStart.preventDefault() unterdrückt die vom Browser
-             * synthetisch erzeugten Pointer/Mouse-Events nach dem Touch.
-             * Dadurch stiehlt die Tastatur dem Input keinen Fokus.
-             * useTouchEvents={true} auf <Keyboard> erkennt Key-Taps
-             * über touchend, das davon nicht betroffen ist.
-             */
-            onTouchStart={e => e.preventDefault()}
-            /* Desktop: Fokus-Diebstahl über mousedown verhindern */
+            /* Desktop: mousedown verhindert Fokus-Diebstahl */
             onMouseDown={e => e.preventDefault()}
+            /* Touch: wird von nicht-passivem nativen Listener behandelt (s.u.) */
           >
             <button
               type="button"
               className="vk-close"
-              onTouchStart={e => { e.preventDefault(); close(); }}
               onMouseDown={e => { e.preventDefault(); close(); }}
+              onClick={close}
               aria-label="Tastatur schließen"
             >
               <X size={18} />
