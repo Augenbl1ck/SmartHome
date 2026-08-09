@@ -104,7 +104,7 @@ input[type="range"].range-slider::-moz-range-thumb {
 /* Dark mode: automatisch durch CSS-Variablen abgedeckt */
 
 /* ─── Virtuelle Tastatur (Touch-Screen) ──────────────────────────── */
-.vk-root {
+.vk-wrap {
   position: fixed;
   bottom: 0;
   left: 0;
@@ -116,7 +116,7 @@ input[type="range"].range-slider::-moz-range-thumb {
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
-/* Dialog über der Tastatur — --vk-h wird per JS gesetzt */
+/* Dialog direkt über der Tastatur */
 body.vk-open [data-slot="dialog-overlay"] {
   bottom: var(--vk-h, 240px);
   top: 0;
@@ -131,7 +131,8 @@ body.vk-open [data-slot="dialog-content"] {
   overflow-y: auto;
 }
 
-.virtual-keyboard-close {
+/* Schließen-Button */
+.vk-close {
   position: absolute;
   top: 6px;
   right: 8px;
@@ -147,26 +148,27 @@ body.vk-open [data-slot="dialog-content"] {
   border: none;
   cursor: pointer;
 }
-.virtual-keyboard-close:hover {
+.vk-close:hover {
   background: var(--muted);
   color: var(--foreground);
 }
 
-.smarthome-kb.hg-theme-default {
+/* Tastatur-Tasten */
+.vk-theme.hg-theme-default {
   background: var(--card);
   padding: 8px 10px 10px;
   border-radius: 0;
   font-family: inherit;
 }
 
-.smarthome-kb .hg-row {
+.vk-theme .hg-row {
   display: flex;
   gap: 5px;
   margin-bottom: 5px;
   justify-content: center;
 }
 
-.smarthome-kb .hg-button {
+.vk-theme .hg-button {
   background: var(--muted);
   color: var(--foreground);
   border: 1px solid var(--border);
@@ -174,32 +176,32 @@ body.vk-open [data-slot="dialog-content"] {
   border-radius: 8px;
   font-size: 1rem;
   font-weight: 500;
-  height: 46px;
+  height: 48px;
   min-width: 36px;
   box-shadow: none;
   cursor: pointer;
-  transition: background 0.08s;
+  transition: background 0.06s;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.smarthome-kb .hg-button:active,
-.smarthome-kb .hg-button.hg-activeButton {
+.vk-theme .hg-button:active,
+.vk-theme .hg-button.hg-activeButton {
   background: var(--primary);
   color: var(--primary-foreground);
   border-color: var(--primary);
 }
 
-/* Leertaste breiter */
-.smarthome-kb .hg-button[data-skbtn="{space}"] {
+.vk-theme .hg-button[data-skbtn="{space}"] {
   flex-grow: 4;
   background: var(--background);
 }
 
-/* Funktionstasten (Shift, Backspace, Enter, 123, ABC) */
-.smarthome-kb .hg-button[data-skbtn="{bksp}"],
-.smarthome-kb .hg-button[data-skbtn="{shift}"],
-.smarthome-kb .hg-button[data-skbtn="{enter}"],
-.smarthome-kb .hg-button[data-skbtn="{numbers}"],
-.smarthome-kb .hg-button[data-skbtn="{default}"] {
+.vk-theme .hg-button[data-skbtn="{bksp}"],
+.vk-theme .hg-button[data-skbtn="{shift}"],
+.vk-theme .hg-button[data-skbtn="{enter}"],
+.vk-theme .hg-button[data-skbtn="{numbers}"],
+.vk-theme .hg-button[data-skbtn="{default}"] {
   background: var(--secondary);
   color: var(--secondary-foreground);
   flex-grow: 1.5;

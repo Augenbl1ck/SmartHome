@@ -47,8 +47,13 @@ function DialogOverlay({
   )
 }
 
-/** Verhindert dass Radix den Dialog schließt wenn die virtuelle Tastatur offen ist. */
-function preventIfKeyboardOpen(e: { preventDefault(): void }) {
+/*
+ * Wenn die virtuelle Tastatur offen ist, darf Radix den Dialog
+ * NICHT über Outside-Clicks schließen — die Tastatur liegt außerhalb
+ * des Dialog-Portals und würde sonst jeden Tastendruck als "Außen-Klick"
+ * interpretieren.
+ */
+function noCloseWhenKeyboard(e: { preventDefault(): void }) {
   if (document.body.classList.contains('vk-open')) {
     e.preventDefault()
   }
@@ -75,27 +80,14 @@ function DialogContent({
           className
         )}
         {...props}
-        onPointerDownOutside={(e) => {
-          preventIfKeyboardOpen(e)
-          onPointerDownOutside?.(e)
-        }}
-        onInteractOutside={(e) => {
-          preventIfKeyboardOpen(e)
-          onInteractOutside?.(e)
-        }}
-        onFocusOutside={(e) => {
-          preventIfKeyboardOpen(e)
-          onFocusOutside?.(e)
-        }}
+        onPointerDownOutside={(e) => { noCloseWhenKeyboard(e); onPointerDownOutside?.(e) }}
+        onInteractOutside={(e)    => { noCloseWhenKeyboard(e); onInteractOutside?.(e) }}
+        onFocusOutside={(e)       => { noCloseWhenKeyboard(e); onFocusOutside?.(e) }}
       >
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close data-slot="dialog-close" asChild>
-            <Button
-              variant="ghost"
-              className="absolute top-2 right-2"
-              size="icon-sm"
-            >
+            <Button variant="ghost" className="absolute top-2 right-2" size="icon-sm">
               <XIcon />
               <span className="sr-only">Close</span>
             </Button>
@@ -150,10 +142,7 @@ function DialogTitle({
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
-      className={cn(
-        "font-heading text-base leading-none font-medium",
-        className
-      )}
+      className={cn("font-heading text-base leading-none font-medium", className)}
       {...props}
     />
   )
