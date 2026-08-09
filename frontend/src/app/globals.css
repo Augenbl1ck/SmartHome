@@ -142,23 +142,34 @@ body.vk-open [data-slot="dialog-overlay"] {
   pointer-events: none !important;
 }
 
-/* Dialog sitzt direkt über der Tastatur */
+/*
+ * Dialog über der Tastatur zentrieren.
+ * Wichtig: Tailwind v4 nutzt `translate` (nicht nur `transform`) —
+ * beides zurücksetzen, sonst rutscht der Dialog nach oben-links.
+ */
 body.vk-open [data-slot="dialog-content"] {
-  top: auto;
-  bottom: calc(var(--vk-h, 240px) + 0.5rem);
-  left: 50%;
-  transform: translateX(-50%) !important;
+  top: auto !important;
+  bottom: calc(var(--vk-h, 240px) + 0.5rem) !important;
+  left: 50% !important;
+  right: auto !important;
+  margin: 0 !important;
+  translate: -50% 0 !important;
+  transform: none !important;
   max-height: calc(100dvh - var(--vk-h, 240px) - 1rem);
   overflow-y: auto;
-  margin: 0;
   pointer-events: auto;
 }
 
+/* Leiste über den Tasten — X liegt nicht mehr auf einer Taste */
+.vk-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 36px;
+  margin-bottom: 4px;
+  padding: 0 2px;
+}
 .vk-close {
-  position: absolute;
-  top: 6px;
-  right: 8px;
-  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -166,13 +177,13 @@ body.vk-open [data-slot="dialog-content"] {
   height: 36px;
   border-radius: 8px;
   color: var(--muted-foreground);
-  background: transparent;
+  background: var(--muted);
   border: none;
   cursor: pointer;
   touch-action: manipulation;
 }
 .vk-close:hover {
-  background: var(--muted);
+  background: var(--accent);
   color: var(--foreground);
 }
 
@@ -180,7 +191,6 @@ body.vk-open [data-slot="dialog-content"] {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding-top: 4px;
 }
 .vk-row {
   display: flex;

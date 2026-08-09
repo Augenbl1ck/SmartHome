@@ -149,10 +149,7 @@ export default function VirtualKeyboardProvider({
     setOpen(true);
     document.body.classList.add('vk-open');
     document.documentElement.style.setProperty('--vk-h', '240px');
-
-    requestAnimationFrame(() => {
-      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    });
+    // Kein scrollIntoView — verschiebt Dialoge/Felder sonst nach oben-links
   }, []);
 
   const press = useCallback(
@@ -248,19 +245,20 @@ export default function VirtualKeyboardProvider({
             data-vk-root
             data-slot="virtual-keyboard"
           >
-            <button
-              type="button"
-              className="vk-close"
-              aria-label="Tastatur schließen"
-              onPointerDown={e => {
-                // Sofort schließen — nicht auf click warten (Touch + preventDefault)
-                e.preventDefault();
-                e.stopPropagation();
-                close();
-              }}
-            >
-              <X size={18} />
-            </button>
+            <div className="vk-toolbar">
+              <button
+                type="button"
+                className="vk-close"
+                aria-label="Tastatur schließen"
+                onPointerDown={e => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  close();
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
 
             <div className="vk-board">
               {rows.map((row, ri) => (
