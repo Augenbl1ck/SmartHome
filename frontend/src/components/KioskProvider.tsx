@@ -22,7 +22,15 @@ export default function KioskProvider({ children }: { children: React.ReactNode 
 
   useEffect(() => {
     setMounted(true);
-    if (localStorage.getItem(KIOSK_KEY) === 'true') setKioskModeState(true);
+    const params = new URLSearchParams(window.location.search);
+    const forceKiosk = params.get('kiosk') === '1';
+    if (forceKiosk) {
+      // URL-Parameter ?kiosk=1 gesetzt (z.B. vom Pi-Autostart) → Modus dauerhaft speichern
+      localStorage.setItem(KIOSK_KEY, 'true');
+      setKioskModeState(true);
+    } else if (localStorage.getItem(KIOSK_KEY) === 'true') {
+      setKioskModeState(true);
+    }
   }, []);
 
   const setKioskMode = (v: boolean) => {

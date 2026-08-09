@@ -25,7 +25,12 @@ cd "$INSTALL_DIR/frontend"
 npm install
 npm run build
 
-echo "[4/5] Services neu starten..."
+echo "[4/5] Autostart aktualisieren..."
+mkdir -p ~/.config/autostart
+cp "$INSTALL_DIR/deploy/smarthome-kiosk.desktop" ~/.config/autostart/smarthome-kiosk.desktop
+echo "  autostart    ✓"
+
+echo "[5/6] Services neu starten..."
 sudo systemctl restart \
   smarthome-backend \
   smarthome-frontend \
@@ -34,7 +39,7 @@ sudo systemctl restart \
   smarthome-queue \
   smarthome-scheduler
 
-echo "[5/5] Status prüfen..."
+echo "[6/6] Status prüfen..."
 sudo systemctl is-active --quiet smarthome-backend  && echo "  backend      ✓" || echo "  backend      ✗"
 sudo systemctl is-active --quiet smarthome-frontend && echo "  frontend     ✓" || echo "  frontend     ✗"
 sudo systemctl is-active --quiet smarthome-mqtt-subscriber && echo "  mqtt-sub     ✓" || echo "  mqtt-sub     ✗"
