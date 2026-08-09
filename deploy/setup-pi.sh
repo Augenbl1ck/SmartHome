@@ -54,11 +54,27 @@ sudo systemctl daemon-reload
 sudo systemctl enable  smarthome-ble-bridge smarthome-scheduler smarthome-backend smarthome-frontend
 sudo systemctl restart smarthome-ble-bridge smarthome-scheduler smarthome-backend smarthome-frontend
 
+# Kiosk-Autostart einrichten (Chromium mit virtueller Tastatur)
+echo "[7/7] Kiosk-Autostart einrichten..."
+AUTOSTART_DIR="/home/pi/.config/autostart"
+mkdir -p "$AUTOSTART_DIR"
+cp "${DEPLOY_DIR}/smarthome-kiosk.desktop" "$AUTOSTART_DIR/smarthome-kiosk.desktop"
+
+# Chromium-Einstellungen: "Wiederherstellen"-Dialog beim Start unterdrücken
+CHROMIUM_PREFS="/home/pi/.config/chromium/Default/Preferences"
+if [ -f "$CHROMIUM_PREFS" ]; then
+  # exit_type auf Normal setzen damit kein "Browser wurde unerwartet beendet" erscheint
+  sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/g' "$CHROMIUM_PREFS" 2>/dev/null || true
+fi
+
 echo ""
 echo "=== Setup abgeschlossen ==="
 echo "Backend:    http://$(hostname -I | awk '{print $1}'):8000"
 echo "Frontend:   http://$(hostname -I | awk '{print $1}'):3000"
 echo "BLE Bridge: http://127.0.0.1:3001 (nur intern)"
+echo ""
+echo "Kiosk-Browser startet automatisch beim nächsten Login."
+echo "Virtuelle Tastatur: Chromium --enable-virtual-keyboard aktiv."
 echo ""
 echo "Logs:"
 echo "  journalctl -u smarthome-ble-bridge -f"

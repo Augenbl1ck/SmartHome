@@ -240,7 +240,27 @@ EOF
 zigbee2mqtt
 ```
 
-### 7. Autostart (systemd)
+### 7. Chromium Kiosk + virtuelle Tastatur
+
+Der SmartHome-Browser startet automatisch beim Desktop-Login im Vollbild-Modus mit eingebauter Bildschirmtastatur:
+
+```bash
+mkdir -p ~/.config/autostart
+cp ~/SmartHome/deploy/smarthome-kiosk.desktop ~/.config/autostart/
+```
+
+Oder beim ersten Setup automatisch via `setup-pi.sh`.
+
+**Was der Kiosk-Modus macht:**
+- `--kiosk` → Vollbild, keine Browser-Leiste
+- `--enable-virtual-keyboard` → Chromiums eingebaute Tastatur erscheint bei jedem Tipp auf ein Eingabefeld
+- `--noerrdialogs` / `--disable-infobars` → keine Störmeldungen
+
+Beim nächsten Pi-Neustart öffnet sich der Browser automatisch. Das Dashboard kann zusätzlich über **Einstellungen → Kiosk-Modus** umschalten.
+
+---
+
+### 8. Autostart (systemd)
 
 Beispiel für das Backend — analog für `mqtt:subscribe`, Frontend und BLE Bridge anlegen:
 

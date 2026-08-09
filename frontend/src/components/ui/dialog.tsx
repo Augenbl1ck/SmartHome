@@ -47,25 +47,10 @@ function DialogOverlay({
   )
 }
 
-/*
- * Wenn die virtuelle Tastatur offen ist, darf Radix den Dialog
- * NICHT über Outside-Clicks schließen — die Tastatur liegt außerhalb
- * des Dialog-Portals und würde sonst jeden Tastendruck als "Außen-Klick"
- * interpretieren.
- */
-function noCloseWhenKeyboard(e: { preventDefault(): void }) {
-  if (document.body.classList.contains('vk-open')) {
-    e.preventDefault()
-  }
-}
-
 function DialogContent({
   className,
   children,
   showCloseButton = true,
-  onPointerDownOutside,
-  onInteractOutside,
-  onFocusOutside,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
@@ -80,9 +65,6 @@ function DialogContent({
           className
         )}
         {...props}
-        onPointerDownOutside={(e) => { noCloseWhenKeyboard(e); onPointerDownOutside?.(e) }}
-        onInteractOutside={(e)    => { noCloseWhenKeyboard(e); onInteractOutside?.(e) }}
-        onFocusOutside={(e)       => { noCloseWhenKeyboard(e); onFocusOutside?.(e) }}
       >
         {children}
         {showCloseButton && (

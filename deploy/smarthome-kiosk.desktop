@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=SmartHome Kiosk
+Comment=SmartHome Dashboard im Kiosk-Modus
+Exec=chromium-browser --kiosk --noerrdialogs --disable-infobars --disable-session-crashed-bubble --disable-restore-session-state --enable-virtual-keyboard http://smarthome.local
+X-GNOME-Autostart-enabled=true
