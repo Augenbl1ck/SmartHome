@@ -59,6 +59,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               }
             } catch(e) {}
           })();
+        `}} />
+        {/* Kiosk: ?kiosk=1 / #kiosk sofort speichern (vor React), Autostart vom Pi */}
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function(){
+            try {
+              var q = new URLSearchParams(location.search);
+              var hash = (location.hash || '').replace(/^#/, '');
+              var force = q.get('kiosk') === '1' || hash === 'kiosk' || hash.indexOf('kiosk=1') !== -1;
+              if (force) {
+                localStorage.setItem('smarthome_kiosk', 'true');
+                document.documentElement.classList.add('kiosk-boot');
+              }
+            } catch(e) {}
+          })();
         `}} /></head>
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <PinLockProvider>

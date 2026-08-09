@@ -16,33 +16,35 @@ const KioskCtx = createContext<KioskCtxType>({ kioskMode: false, setKioskMode: (
 
 export function useKiosk() { return useContext(KioskCtx); }
 
+function urlWantsKiosk(): boolean {
+  if (typeof window === 'undefined') return false;
+  const q = new URLSearchParams(window.location.search);
+  if (q.get('kiosk') === '1') return true;
+  const hash = (window.location.hash || '').replace(/^#/, '');
+  return hash === 'kiosk' || hash.includes('kiosk=1');
+}
+
 export default function KioskProvider({ children }: { children: React.ReactNode }) {
   const [kioskMode, setKioskModeState] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-    const params = new URLSearchParams(window.location.search);
-    const forceKiosk = params.get('kiosk') === '1';
-    if (forceKiosk) {
-      // URL-Parameter ?kiosk=1 gesetzt (z.B. vom Pi-Autostart) → Modus dauerhaft speichern
+    // Early-Script in layout.tsx kann localStorage schon gesetzt haben
+    const force = urlWantsKiosk() || localStorage.getItem(KIOSK_KEY) === 'true';
+    if (urlWantsKiosk()) {
       localStorage.setItem(KIOSK_KEY, 'true');
-      setKioskModeState(true);
-    } else if (localStorage.getItem(KIOSK_KEY) === 'true') {
-      setKioskModeState(true);
     }
+    if (force) setKioskModeState(true);
   }, []);
 
   const setKioskMode = (v: boolean) => {
     setKioskModeState(v);
     localStorage.setItem(KIOSK_KEY, String(v));
-    // body-Klasse für CSS-Padding-Adjustierung
     document.body.classList.toggle('kiosk-active', v);
-    // Overscroll verhindern
     document.body.style.overscrollBehavior = v ? 'none' : '';
   };
 
-  // Body-Klasse beim Mount setzen (verhindert Flash)
   useEffect(() => {
     if (kioskMode) {
       document.body.classList.add('kiosk-active');
@@ -54,7 +56,6 @@ export default function KioskProvider({ children }: { children: React.ReactNode 
     };
   }, [kioskMode]);
 
-  // Browser-Zurück-Taste im Kiosk-Modus deaktivieren
   useEffect(() => {
     if (!kioskMode) return;
     const prevent = () => window.history.pushState(null, '', window.location.href);
