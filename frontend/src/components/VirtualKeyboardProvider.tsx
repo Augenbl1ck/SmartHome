@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useLayoutEffect, useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Keyboard from 'react-simple-keyboard';
 import 'react-simple-keyboard/build/css/index.css';
@@ -58,6 +58,8 @@ function writeToInput(
 
 function defaultLayout(el: HTMLInputElement | HTMLTextAreaElement): Layout {
   if (el.type === 'tel' || el.type === 'number') return 'numbers';
+  const mode = el.getAttribute('inputmode');
+  if (mode === 'numeric' || mode === 'decimal') return 'numbers';
   return 'default';
 }
 
@@ -65,18 +67,35 @@ function insideKeyboard(node: EventTarget | null): boolean {
   return node instanceof Element && !!node.closest('[data-vk-root]');
 }
 
-/** Handy behält die native OS-Tastatur; Custom nur für Pi/Desktop-Touch. */
+function dialogIsOpen(): boolean {
+  return !!document.querySelector('[data-slot="dialog-overlay"]');
+}
+
+function inKeyboardZone(clientY: number): boolean {
+  const kb = document.querySelector('[data-vk-root]');
+  if (kb instanceof HTMLElement) {
+    return clientY >= kb.getBoundingClientRect().top - 4;
+  }
+  const h = parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue('--vk-h'),
+  );
+  const fallback = Number.isFinite(h) ? h : 240;
+  return clientY >= window.innerHeight - fallback;
+}
+
+/** Handy/Tablet: native OS-Tastatur. Sonst (Pi-Kiosk, Desktop) Custom. */
 function shouldUseCustomKeyboard(): boolean {
   if (typeof window === 'undefined') return false;
-  const ua = navigator.userAgent;
-  if (/Android|iPhone|iPad|iPod/i.test(ua)) return false;
-  // Touch / grober Pointer (Pi-Touchscreen) oder aktiver Kiosk-Modus
-  const coarse = window.matchMedia('(pointer: coarse)').matches;
-  const kiosk =
-    document.body.classList.contains('kiosk-active') ||
-    localStorage.getItem('smarthome_kiosk') === 'true' ||
-    new URLSearchParams(window.location.search).get('kiosk') === '1';
-  return coarse || kiosk;
+  if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) return false;
+  return true;
+}
+
+function restoreInputMode(el: HTMLInputElement | HTMLTextAreaElement) {
+  const orig = el.dataset.vkOrigInputmode;
+  if (orig === undefined) return;
+  if (orig) el.setAttribute('inputmode', orig);
+  else el.removeAttribute('inputmode');
+  delete el.dataset.vkOrigInputmode;
 }
 
 export default function VirtualKeyboardProvider({
@@ -99,7 +118,8 @@ export default function VirtualKeyboardProvider({
     setMounted(true);
   }, []);
 
-  useEffect(() => {
+  /* Tastatur-Höhe → CSS-Variable (Dialog/Overlay darüber positionieren) */
+  useLayoutEffect(() => {
     const el = wrapRef.current;
     if (!open || !el) {
       document.documentElement.style.removeProperty('--vk-h');
@@ -118,12 +138,7 @@ export default function VirtualKeyboardProvider({
 
   const close = useCallback(() => {
     const el = inputRef.current;
-    if (el) {
-      const orig = el.dataset.vkOrigInputmode ?? '';
-      if (orig) el.inputMode = orig as HTMLInputElement['inputMode'];
-      else el.removeAttribute('inputmode');
-      delete el.dataset.vkOrigInputmode;
-    }
+    if (el) restoreInputMode(el);
     inputRef.current = null;
     setOpen(false);
     document.body.classList.remove('vk-open');
@@ -138,15 +153,9 @@ export default function VirtualKeyboardProvider({
       return;
     }
 
-    if (inputRef.current) {
-      const prev = inputRef.current;
-      const orig = prev.dataset.vkOrigInputmode ?? '';
-      if (orig) prev.inputMode = orig as HTMLInputElement['inputMode'];
-      else prev.removeAttribute('inputmode');
-      delete prev.dataset.vkOrigInputmode;
-    }
+    if (inputRef.current) restoreInputMode(inputRef.current);
 
-    // Native OSK unterdrücken (Pi), Custom-Tastatur nutzen
+    /* Native OSK unterdrücken — Custom-Tastatur übernehmen */
     el.dataset.vkOrigInputmode = el.getAttribute('inputmode') ?? '';
     el.setAttribute('inputmode', 'none');
 
@@ -156,6 +165,8 @@ export default function VirtualKeyboardProvider({
     setLayout(l);
     setOpen(true);
     document.body.classList.add('vk-open');
+    /* Fallback-Höhe bis ResizeObserver misst — Overlay sofort kürzen */
+    document.documentElement.style.setProperty('--vk-h', '240px');
 
     requestAnimationFrame(() => {
       kbRef.current?.setInput(el.value ?? '');
@@ -177,22 +188,35 @@ export default function VirtualKeyboardProvider({
     return () => document.removeEventListener('focusin', onFocus);
   }, [openFor, pinLock.locked, pinLock.screenOff]);
 
-  // Tippen außerhalb von Tastatur + aktivem Input → schließen
-  // Dialoge selbst schließen NICHT die Tastatur (Felder darin brauchen sie)
+  /*
+   * Außen-Tap → Tastatur schließen.
+   * Bei offenem Dialog NICHT schließen — Overlay-/Miss-Taps würden sonst
+   * die Tastatur sofort wieder zu machen. Dann nur X / Enter / Dialog-zu.
+   */
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
       const t = e.target;
       if (insideKeyboard(t)) return;
+      if (inKeyboardZone(e.clientY)) return;
       if (t === inputRef.current) return;
       if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return;
-      // Klick in einen Dialog (Inhalt) — Tastatur offen lassen, solange Fokus im Input bleibt
-      if (t instanceof Element && t.closest('[data-slot="dialog-content"]')) return;
+      if (dialogIsOpen()) return;
       close();
     };
-    // capture: nach Radix, aber wir schließen nur unsere Tastatur — Dialog bleibt via dialog.tsx
     document.addEventListener('pointerdown', onDown, true);
     return () => document.removeEventListener('pointerdown', onDown, true);
+  }, [open, close]);
+
+  /* Dialog geschlossen / Input weg → Tastatur mit schließen */
+  useEffect(() => {
+    if (!open) return;
+    const tick = () => {
+      const el = inputRef.current;
+      if (!el || !el.isConnected) close();
+    };
+    const id = window.setInterval(tick, 200);
+    return () => window.clearInterval(id);
   }, [open, close]);
 
   useEffect(() => {
@@ -200,9 +224,8 @@ export default function VirtualKeyboardProvider({
   }, [pinLock.locked, pinLock.screenOff, close]);
 
   /*
-   * React onTouchStart ist passiv → preventDefault wirkt nicht.
-   * Ohne preventDefault stehlen synthetische mouse/pointer-Events den Fokus
-   * und Radix wertet den Tap als Outside-Click.
+   * React onTouchStart ist passiv → preventDefault wirkungslos.
+   * Ohne preventDefault stehlen synthetische mouse/pointer-Events den Fokus.
    */
   useEffect(() => {
     const el = wrapRef.current;
@@ -271,9 +294,7 @@ export default function VirtualKeyboardProvider({
             className="vk-wrap"
             data-vk-root
             data-slot="virtual-keyboard"
-            // Verhindert Fokus-Diebstahl auf Desktop-Pointer
             onMouseDown={e => e.preventDefault()}
-            onPointerDown={e => e.stopPropagation()}
           >
             <button
               type="button"

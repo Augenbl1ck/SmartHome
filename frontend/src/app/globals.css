@@ -115,7 +115,8 @@ input, textarea, select {
   bottom: 0;
   left: 0;
   right: 0;
-  z-index: 100000; /* über Radix Dialog (z-50) und allem anderen */
+  z-index: 2147483000; /* über Radix Dialog (z-50) und allem anderen */
+  isolation: isolate;
   border-top: 1px solid var(--border);
   background: var(--card);
   box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
@@ -137,9 +138,11 @@ body.vk-open [data-slot="dialog-overlay"] {
 body.vk-open [data-slot="dialog-content"] {
   top: auto;
   bottom: calc(var(--vk-h, 240px) + 0.5rem);
+  left: 50%;
   transform: translateX(-50%) !important;
   max-height: calc(100dvh - var(--vk-h, 240px) - 1rem);
   overflow-y: auto;
+  margin: 0;
 }
 
 .vk-close {
