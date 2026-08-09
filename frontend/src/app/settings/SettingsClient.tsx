@@ -102,6 +102,135 @@ function Field({
   );
 }
 
+/** PIN-Numpad im Dialog — kein Virtual-Keyboard, keine Chromium-Password-Prompts */
+const PIN_PAD = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'] as const;
+
+function PinPadDialog({
+  mode, oldPin, newPin, confirmPin, error, saving,
+  onChange, onSave, onCancel,
+}: {
+  mode: 'set' | 'change' | 'remove';
+  oldPin: string; newPin: string; confirmPin: string;
+  error: string; saving: boolean;
+  onChange: (patch: Partial<{ oldPin: string; newPin: string; confirmPin: string; error: string }>) => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  type Step = 'old' | 'new' | 'confirm';
+  const steps: Step[] =
+    mode === 'remove' ? ['old'] :
+    mode === 'change' ? ['old', 'new', 'confirm'] :
+    ['new', 'confirm'];
+
+  const [stepIdx, setStepIdx] = useState(0);
+  const step = steps[Math.min(stepIdx, steps.length - 1)];
+
+  const value =
+    step === 'old' ? oldPin :
+    step === 'new' ? newPin :
+    confirmPin;
+
+  const label =
+    step === 'old' ? 'Aktueller PIN' :
+    step === 'new' ? 'Neuer PIN (4 Ziffern)' :
+    'PIN bestätigen';
+
+  const canSave =
+    mode === 'remove' ? oldPin.length === 4 :
+    mode === 'change' ? oldPin.length === 4 && newPin.length === 4 && confirmPin.length === 4 :
+    newPin.length === 4 && confirmPin.length === 4;
+
+  const setValue = (v: string) => {
+    if (step === 'old') onChange({ oldPin: v, error: '' });
+    else if (step === 'new') onChange({ newPin: v, error: '' });
+    else onChange({ confirmPin: v, error: '' });
+  };
+
+  const append = (btn: string) => {
+    if (btn === '⌫') {
+      setValue(value.slice(0, -1));
+      return;
+    }
+    if (value.length >= 4) return;
+    const next = value + btn;
+    setValue(next);
+    // Voll → automatisch zum nächsten Schritt (Speichern bleibt manuell)
+    if (next.length === 4 && stepIdx < steps.length - 1) {
+      window.setTimeout(() => setStepIdx(i => i + 1), 120);
+    }
+  };
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>
+          {mode === 'set' && 'PIN einrichten'}
+          {mode === 'change' && 'PIN ändern'}
+          {mode === 'remove' && 'PIN entfernen'}
+        </DialogTitle>
+      </DialogHeader>
+
+      <div className="flex flex-col items-center gap-4 py-2 select-none">
+        <p className="text-sm font-medium">{label}</p>
+        <div className="flex gap-3">
+          {[0, 1, 2, 3].map(i => (
+            <div
+              key={i}
+              className={cn(
+                'h-3.5 w-3.5 rounded-full border-2 transition-all',
+                value.length > i
+                  ? 'bg-foreground border-foreground'
+                  : 'border-muted-foreground bg-transparent',
+              )}
+            />
+          ))}
+        </div>
+
+        {error && <p className="text-sm text-destructive">{error}</p>}
+
+        <div className="grid grid-cols-3 gap-2 w-56">
+          {PIN_PAD.map((btn, i) => {
+            if (btn === '') return <div key={i} />;
+            return (
+              <button
+                key={i}
+                type="button"
+                disabled={saving}
+                onPointerDown={e => e.preventDefault()}
+                onClick={() => append(btn)}
+                className={cn(
+                  'h-14 rounded-xl text-xl font-semibold',
+                  'flex items-center justify-center',
+                  'bg-muted hover:bg-accent active:scale-95 transition-transform',
+                  'disabled:opacity-50',
+                )}
+              >
+                {btn}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <DialogFooter>
+        <Button variant="ghost" onClick={onCancel} disabled={saving}>Abbrechen</Button>
+        {stepIdx > 0 && (
+          <Button variant="outline" onClick={() => setStepIdx(i => i - 1)} disabled={saving}>
+            Zurück
+          </Button>
+        )}
+        <Button
+          onClick={onSave}
+          disabled={saving || !canSave}
+          variant={mode === 'remove' ? 'destructive' : 'default'}
+        >
+          {mode === 'remove' ? 'Entfernen' : 'Speichern'}
+        </Button>
+      </DialogFooter>
+    </>
+  );
+}
+
 /** Eingabefeld mit festem Prefix (z.B. "zigbee2mqtt/") */
 function PrefixField({
   label, prefix, value, onChange, placeholder, hint,
@@ -1657,44 +1786,22 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
         </DialogContent>
       </Dialog>
 
-      {/* ── PIN-Dialog ────────────────────────────────────────────── */}
+      {/* ── PIN-Dialog (Inline-Numpad, kein Virtual-Keyboard) ───── */}
       <Dialog open={pinDialog.open}
         onOpenChange={open => !open && setPinDialog(s => ({ ...s, open: false }))}>
         <DialogContent className="sm:max-w-xs">
-          <DialogHeader>
-            <DialogTitle>
-              {pinDialog.mode === 'set' && 'PIN einrichten'}
-              {pinDialog.mode === 'change' && 'PIN ändern'}
-              {pinDialog.mode === 'remove' && 'PIN entfernen'}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            {(pinDialog.mode === 'change' || pinDialog.mode === 'remove') && (
-              <Field label="Aktueller PIN" value={pinDialog.oldPin}
-                onChange={v => setPinDialog(s => ({ ...s, oldPin: v.replace(/\D/g, '').slice(0, 4) }))}
-                placeholder="••••" type="tel" inputMode="numeric" pattern="[0-9]*" autoComplete="current-password" />
-            )}
-            {pinDialog.mode !== 'remove' && (
-              <>
-                <Field label="Neuer PIN (4 Ziffern)" value={pinDialog.newPin}
-                  onChange={v => setPinDialog(s => ({ ...s, newPin: v.replace(/\D/g, '').slice(0, 4) }))}
-                  placeholder="••••" type="tel" inputMode="numeric" pattern="[0-9]*" autoComplete="new-password" />
-                <Field label="PIN bestätigen" value={pinDialog.confirmPin}
-                  onChange={v => setPinDialog(s => ({ ...s, confirmPin: v.replace(/\D/g, '').slice(0, 4) }))}
-                  placeholder="••••" type="tel" inputMode="numeric" pattern="[0-9]*" autoComplete="new-password" />
-              </>
-            )}
-            {pinDialog.error && <p className="text-sm text-destructive">{pinDialog.error}</p>}
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setPinDialog(s => ({ ...s, open: false }))}>
-              Abbrechen
-            </Button>
-            <Button onClick={savePin} disabled={pinDialog.saving}
-              variant={pinDialog.mode === 'remove' ? 'destructive' : 'default'}>
-              {pinDialog.mode === 'remove' ? 'Entfernen' : 'Speichern'}
-            </Button>
-          </DialogFooter>
+          <PinPadDialog
+            key={`${pinDialog.mode}-${pinDialog.open}`}
+            mode={pinDialog.mode}
+            oldPin={pinDialog.oldPin}
+            newPin={pinDialog.newPin}
+            confirmPin={pinDialog.confirmPin}
+            error={pinDialog.error}
+            saving={pinDialog.saving}
+            onChange={patch => setPinDialog(s => ({ ...s, ...patch }))}
+            onSave={savePin}
+            onCancel={() => setPinDialog(s => ({ ...s, open: false }))}
+          />
         </DialogContent>
       </Dialog>
 

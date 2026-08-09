@@ -98,6 +98,13 @@ function restoreInputMode(el: HTMLInputElement | HTMLTextAreaElement) {
   delete el.dataset.vkOrigInputmode;
 }
 
+function buttonFromEvent(target: EventTarget | null): string | null {
+  if (!(target instanceof Element)) return null;
+  const btn = target.closest('[data-skbtn]');
+  if (!(btn instanceof HTMLElement)) return null;
+  return btn.getAttribute('data-skbtn');
+}
+
 export default function VirtualKeyboardProvider({
   children,
 }: {
@@ -118,7 +125,6 @@ export default function VirtualKeyboardProvider({
     setMounted(true);
   }, []);
 
-  /* Tastatur-Höhe → CSS-Variable (Dialog/Overlay darüber positionieren) */
   useLayoutEffect(() => {
     const el = wrapRef.current;
     if (!open || !el) {
@@ -155,7 +161,6 @@ export default function VirtualKeyboardProvider({
 
     if (inputRef.current) restoreInputMode(inputRef.current);
 
-    /* Native OSK unterdrücken — Custom-Tastatur übernehmen */
     el.dataset.vkOrigInputmode = el.getAttribute('inputmode') ?? '';
     el.setAttribute('inputmode', 'none');
 
@@ -165,7 +170,6 @@ export default function VirtualKeyboardProvider({
     setLayout(l);
     setOpen(true);
     document.body.classList.add('vk-open');
-    /* Fallback-Höhe bis ResizeObserver misst — Overlay sofort kürzen */
     document.documentElement.style.setProperty('--vk-h', '240px');
 
     requestAnimationFrame(() => {
@@ -173,71 +177,6 @@ export default function VirtualKeyboardProvider({
       el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     });
   }, []);
-
-  useEffect(() => {
-    const onFocus = (e: FocusEvent) => {
-      if (pinLock.locked || pinLock.screenOff) return;
-      const t = e.target;
-      if (!(t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement)) return;
-      if (t.disabled || t.readOnly) return;
-      if (t.dataset.noKeyboard === 'true') return;
-      if (!TEXT_TYPES.has(t.type)) return;
-      openFor(t);
-    };
-    document.addEventListener('focusin', onFocus);
-    return () => document.removeEventListener('focusin', onFocus);
-  }, [openFor, pinLock.locked, pinLock.screenOff]);
-
-  /*
-   * Außen-Tap → Tastatur schließen.
-   * Bei offenem Dialog NICHT schließen — Overlay-/Miss-Taps würden sonst
-   * die Tastatur sofort wieder zu machen. Dann nur X / Enter / Dialog-zu.
-   */
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      const t = e.target;
-      if (insideKeyboard(t)) return;
-      if (inKeyboardZone(e.clientY)) return;
-      if (t === inputRef.current) return;
-      if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return;
-      if (dialogIsOpen()) return;
-      close();
-    };
-    document.addEventListener('pointerdown', onDown, true);
-    return () => document.removeEventListener('pointerdown', onDown, true);
-  }, [open, close]);
-
-  /* Dialog geschlossen / Input weg → Tastatur mit schließen */
-  useEffect(() => {
-    if (!open) return;
-    const tick = () => {
-      const el = inputRef.current;
-      if (!el || !el.isConnected) close();
-    };
-    const id = window.setInterval(tick, 200);
-    return () => window.clearInterval(id);
-  }, [open, close]);
-
-  useEffect(() => {
-    if (pinLock.locked || pinLock.screenOff) close();
-  }, [pinLock.locked, pinLock.screenOff, close]);
-
-  /*
-   * React onTouchStart ist passiv → preventDefault wirkungslos.
-   * Ohne preventDefault stehlen synthetische mouse/pointer-Events den Fokus.
-   */
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el || !open) return;
-    const handler = (e: TouchEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target?.closest('.vk-close')) return;
-      e.preventDefault();
-    };
-    el.addEventListener('touchstart', handler, { passive: false });
-    return () => el.removeEventListener('touchstart', handler);
-  }, [open]);
 
   const onKey = useCallback(
     (btn: string) => {
@@ -286,6 +225,70 @@ export default function VirtualKeyboardProvider({
     [close],
   );
 
+  useEffect(() => {
+    const onFocus = (e: FocusEvent) => {
+      if (pinLock.locked || pinLock.screenOff) return;
+      const t = e.target;
+      if (!(t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement)) return;
+      if (t.disabled || t.readOnly) return;
+      if (t.dataset.noKeyboard === 'true') return;
+      if (!TEXT_TYPES.has(t.type)) return;
+      openFor(t);
+    };
+    document.addEventListener('focusin', onFocus);
+    return () => document.removeEventListener('focusin', onFocus);
+  }, [openFor, pinLock.locked, pinLock.screenOff]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target;
+      if (insideKeyboard(t)) return;
+      if (inKeyboardZone(e.clientY)) return;
+      if (t === inputRef.current) return;
+      if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return;
+      if (dialogIsOpen()) return;
+      close();
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    return () => document.removeEventListener('pointerdown', onDown, true);
+  }, [open, close]);
+
+  useEffect(() => {
+    if (!open) return;
+    const tick = () => {
+      const el = inputRef.current;
+      if (!el || !el.isConnected) close();
+    };
+    const id = window.setInterval(tick, 200);
+    return () => window.clearInterval(id);
+  }, [open, close]);
+
+  useEffect(() => {
+    if (pinLock.locked || pinLock.screenOff) close();
+  }, [pinLock.locked, pinLock.screenOff, close]);
+
+  /*
+   * Eigenes Pointer-Handling als Backup:
+   * - preventDefault verhindert Fokus-Diebstahl
+   * - data-skbtn → onKey, unabhängig von react-simple-keyboard Touch-Bugs
+   */
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || !open) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if ((e.target as Element | null)?.closest?.('.vk-close')) return;
+      // Fokus bleibt auf dem Input
+      e.preventDefault();
+      const btn = buttonFromEvent(e.target);
+      if (btn) onKey(btn);
+    };
+
+    el.addEventListener('pointerdown', onPointerDown);
+    return () => el.removeEventListener('pointerdown', onPointerDown);
+  }, [open, onKey]);
+
   const kb =
     open && mounted
       ? createPortal(
@@ -294,16 +297,15 @@ export default function VirtualKeyboardProvider({
             className="vk-wrap"
             data-vk-root
             data-slot="virtual-keyboard"
-            onMouseDown={e => e.preventDefault()}
           >
             <button
               type="button"
               className="vk-close"
-              onMouseDown={e => {
+              onPointerDown={e => {
                 e.preventDefault();
+                e.stopPropagation();
                 close();
               }}
-              onClick={close}
               aria-label="Tastatur schließen"
             >
               <X size={18} />
@@ -312,12 +314,12 @@ export default function VirtualKeyboardProvider({
               keyboardRef={(r: unknown) => {
                 kbRef.current = r;
               }}
-              onKeyPress={onKey}
               layoutName={layout}
               layout={LAYOUTS}
               display={DISPLAY}
               theme="hg-theme-default vk-theme"
-              useTouchEvents
+              // Key-Events kommen vom eigenen pointerdown-Handler oben
+              onKeyPress={() => {}}
             />
           </div>,
           document.body,

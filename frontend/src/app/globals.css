@@ -127,11 +127,12 @@ input, textarea, select {
   user-select: none;
 }
 
-/* Overlay endet über der Tastatur — sonst fängt er Taps ab */
+/* Overlay darf Tastatur-Taps NICHT abfangen */
 body.vk-open [data-slot="dialog-overlay"] {
   bottom: var(--vk-h, 240px);
   top: 0;
   height: auto;
+  pointer-events: none;
 }
 
 /* Dialog sitzt direkt über der Tastatur */
@@ -143,6 +144,7 @@ body.vk-open [data-slot="dialog-content"] {
   max-height: calc(100dvh - var(--vk-h, 240px) - 1rem);
   overflow-y: auto;
   margin: 0;
+  pointer-events: auto;
 }
 
 .vk-close {
