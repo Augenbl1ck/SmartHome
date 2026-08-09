@@ -240,9 +240,9 @@ EOF
 zigbee2mqtt
 ```
 
-### 7. Chromium Kiosk + virtuelle Tastatur
+### 7. Chromium Kiosk + virtuelle Tastatur (Squeekboard)
 
-Der SmartHome-Browser startet automatisch beim Desktop-Login über `deploy/start-kiosk.sh` (Autostart-`.desktop`).
+Der SmartHome-Browser startet automatisch beim Desktop-Login über `deploy/start-kiosk.sh`.
 
 ```bash
 mkdir -p ~/.config/autostart
@@ -250,9 +250,16 @@ cp ~/SmartHome/deploy/smarthome-kiosk.desktop ~/.config/autostart/
 chmod +x ~/SmartHome/deploy/start-kiosk.sh
 ```
 
-Oder beim ersten Setup / Update automatisch via `setup-pi.sh` bzw. `update.sh`.
+**Bekanntes Pi-OS-Problem:** Squeekboard liegt auf Wayland-Layer `TOP`, Chromium-`--kiosk`/Fullscreen darüber — die Tastatur läuft, ist aber unsichtbar ([raspberrypi-ui/squeekboard#13](https://github.com/raspberrypi-ui/squeekboard/issues/13)).
 
-**Wichtig (Squeekboard):** Echtes Chromium-`--kiosk` / Fullscreen legt das Fenster *über* die Bildschirmtastatur (Wayland-Layer). Deshalb startet das Skript Chromium als **App-Fenster maximiert** (`--app` + `--start-maximized`) — optisch voller Screen, aber Squeekboard bleibt sichtbar. Die App selbst aktiviert den UI-Kiosk über `?kiosk=1`.
+**Fix einmalig auf dem Pi** (baut Squeekboard mit Layer `OVERLAY` neu, ~15–40 Min):
+
+```bash
+bash ~/SmartHome/deploy/patch-squeekboard-overlay.sh
+sudo reboot
+```
+
+Danach: Autostart mit `--kiosk` + `SQUEEKBOARD_LAYER=overlay`. App-Kiosk zusätzlich über `?kiosk=1`.
 
 ---
 
