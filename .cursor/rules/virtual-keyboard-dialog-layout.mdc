@@ -23,23 +23,25 @@ dialog-portal (.vk-dialog-stack, flex column, fixed inset-0)
 
 ## Bevorzugtes Layout — Seite (Einstellungen, Formulare ohne Dialog)
 
-Gleiches Prinzip im `<main>`-Container (`flex-1 p-4 md:p-6 max-w-6xl mx-auto w-full pb-24 md:pb-8`):
+Gleiches Prinzip in **`vk-app-shell`** (`min-h-full flex flex-col bg-background text-foreground`, bei offener Tastatur `vk-open`):
 
 ```
-main (flex column, min-h-0)
-├── page-scroll (flex: 1, overflow-y-auto) — Seiteninhalt
-└── page-vk-slot (flex: 0) — Tastatur unten, gleiche Breite wie Content
+vk-app-shell (flex column, min-h-full → 100dvh wenn vk-open)
+├── NavBar
+├── main (flex-1, min-h-0, overflow-y-auto, max-w-6xl …) — Seiteninhalt
+└── page-vk-slot (flex: 0, max-w-6xl) — Tastatur unten im Shell-Flow
     └── .vk-wrap (per Portal, position: relative)
 ```
 
-- **Inhalt oben** scrollt in `page-scroll`
-- **Tastatur unten** im Flow des main-Containers — nicht `fixed` über die ganze Viewport-Breite
-- Portal-Ziel: `[data-slot="page-vk-slot"]` wenn Eingabe in `main`
+- **`vk-open`** auf `[data-slot="vk-app-shell"]` (nicht nur body)
+- **Inhalt oben** scrollt in `main`
+- **Tastatur unten** im Flow der Shell — nicht `fixed` über die ganze Viewport-Breite
+- Portal-Ziel: `[data-slot="page-vk-slot"]` wenn Eingabe in der Shell (nicht im Dialog)
 
 ## Portal-Ziel der Tastatur
 
 - Eingabe **im Dialog** → `createPortal` nach `[data-slot="dialog-vk-slot"]`
-- Eingabe **auf der Seite** (in `main`) → `[data-slot="page-vk-slot"]`
+- Eingabe **auf der Seite** (in `vk-app-shell`) → `[data-slot="page-vk-slot"]`
 - Fallback → `document.body`, `.vk-wrap` bleibt `fixed bottom`
 
 ## Vermeiden
@@ -48,4 +50,4 @@ main (flex column, min-h-0)
 - Dialog `fixed top-1/2 left-1/2 -translate-*` wenn Keyboard im Portal aktiv ist
 - `transform: translateX(-162.5%)` o.ä. zum Zentrieren
 - Tastatur und Dialog als separate fixed Layer übereinander legen
-- Seiten-Tastatur direkt an `document.body` portalen wenn Eingabe in `main` liegt
+- Seiten-Tastatur direkt an `document.body` portalen wenn Eingabe in der Shell liegt

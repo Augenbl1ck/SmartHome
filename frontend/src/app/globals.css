@@ -143,10 +143,19 @@ input, textarea, select {
 }
 
 /* Bottom-Bars (Kiosk/Nav) verdecken sonst die Tasten */
+.vk-app-shell.vk-open nav.fixed,
+.vk-app-shell.vk-open [data-slot="kiosk-bar"],
 body.vk-open nav.fixed,
 body.vk-open [data-slot="kiosk-bar"] {
   visibility: hidden !important;
   pointer-events: none !important;
+}
+
+/* App-Shell: volle Höhe, Inhalt schrumpft wenn Tastatur offen */
+.vk-app-shell.vk-open {
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
 }
 
 /* Dialog-Portal: Flex-Spalte — Dialog oben, Tastatur unten */
@@ -206,7 +215,7 @@ body.vk-open [data-slot="kiosk-bar"] {
   z-index: auto;
 }
 
-/* Seiten-Layout: Tastatur unten im main-Container (max-w-6xl), nicht fixed über alles */
+/* Seiten-Layout: Tastatur unten in vk-app-shell, nicht fixed über alles */
 .vk-page-vk-slot {
   flex: 0 0 auto;
   pointer-events: none;
@@ -216,7 +225,7 @@ body.vk-open [data-slot="kiosk-bar"] {
   pointer-events: auto;
 }
 
-main .vk-wrap {
+.vk-app-shell .vk-wrap {
   position: relative;
   bottom: auto;
   left: auto;

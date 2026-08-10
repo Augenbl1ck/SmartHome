@@ -107,7 +107,7 @@ function scrollInputIntoView(el: HTMLElement) {
     return;
   }
 
-  const scrollArea = el.closest('[data-slot="page-scroll"]');
+  const scrollArea = el.closest('main');
   if (scrollArea instanceof HTMLElement) {
     const elRect = el.getBoundingClientRect();
     const delta = elRect.top + elRect.height / 2 - targetCenterY;
@@ -132,7 +132,7 @@ function getKeyboardPortalTarget(
     const slot = document.querySelector('[data-slot="dialog-vk-slot"]');
     if (slot instanceof HTMLElement) return slot;
   }
-  if (input?.closest('main')) {
+  if (input?.closest('[data-slot="vk-app-shell"]')) {
     const slot = document.querySelector('[data-slot="page-vk-slot"]');
     if (slot instanceof HTMLElement) return slot;
   }
@@ -154,6 +154,7 @@ export default function VirtualKeyboardProvider({
 
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
   const layoutRef = useRef<Layout>('default');
   const pinLock = usePinLockContext();
   const closingRef = useRef(false);
@@ -205,6 +206,7 @@ export default function VirtualKeyboardProvider({
     inputRef.current = null;
     setOpen(false);
     setShown(false); // startet Slide-Out
+    shellRef.current?.classList.remove('vk-open');
     document.body.classList.remove('vk-open');
     document.documentElement.style.removeProperty('--vk-h');
 
@@ -234,6 +236,7 @@ export default function VirtualKeyboardProvider({
     setLayout(l);
     setPresent(true);
     setOpen(true);
+    shellRef.current?.classList.add('vk-open');
     document.body.classList.add('vk-open');
     document.documentElement.style.setProperty('--vk-h', '240px');
     setScrollToken(n => n + 1);
@@ -396,9 +399,17 @@ export default function VirtualKeyboardProvider({
       : null;
 
   return (
-    <>
+    <div
+      ref={shellRef}
+      data-slot="vk-app-shell"
+      className="min-h-full flex flex-col bg-background text-foreground"
+    >
       {children}
+      <div
+        data-slot="page-vk-slot"
+        className="vk-page-vk-slot shrink-0 w-full max-w-6xl mx-auto px-4 md:px-6"
+      />
       {kb}
-    </>
+    </div>
   );
 }

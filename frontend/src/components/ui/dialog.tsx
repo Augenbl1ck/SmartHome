@@ -62,8 +62,11 @@ function DialogOverlay({
  * liegt, Dialog NICHT schließen.
  */
 function shouldBlockOutsideDismiss(event: unknown): boolean {
-  if (typeof document !== "undefined" && document.body.classList.contains("vk-open")) {
-    return true
+  if (typeof document !== "undefined") {
+    const shell = document.querySelector('[data-slot="vk-app-shell"]')
+    if (shell?.classList.contains("vk-open") || document.body.classList.contains("vk-open")) {
+      return true
+    }
   }
   // Radix: e.detail.originalEvent hat den echten DOM-Target
   const e = event as {
