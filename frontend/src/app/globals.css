@@ -149,41 +149,74 @@ body.vk-open [data-slot="kiosk-bar"] {
   pointer-events: none !important;
 }
 
-/* Overlay darf Tastatur-Taps NICHT abfangen */
-body.vk-open [data-slot="dialog-overlay"] {
-  bottom: var(--vk-h, 240px);
-  top: 0;
-  height: auto;
+/*
+ * Dialog + Tastatur: Body als Spalte (Dialog oben 1fr, VK unten auto).
+ * Ohne offenen Dialog bleibt .vk-wrap fixed (normale Seiteneingaben).
+ */
+body.vk-open:has([data-slot="dialog-portal"]) {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+/* App unter Overlay: aus dem Flex nehmen */
+body.vk-open:has([data-slot="dialog-portal"])
+  > *:not([data-slot="dialog-portal"]):not(.vk-wrap) {
+  position: fixed !important;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+body.vk-open:has([data-slot="dialog-portal"]) [data-slot="dialog-portal"] {
+  position: relative !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: safe center;
+  order: 1;
+}
+
+body.vk-open:has([data-slot="dialog-portal"]) [data-slot="dialog-overlay"] {
+  position: absolute !important;
+  inset: 0 !important;
+  height: auto !important;
+  z-index: 0;
   pointer-events: none !important;
 }
 
-/*
- * Dialog über der Tastatur.
- * --vk-space-factor: auf kleinen Touchscreens etwas mehr Luft (1.1),
- * auf großen Monitoren weniger / Höhe deckeln.
- */
-body.vk-open {
-  --vk-space-factor: 1.1;
-}
-
-@media (min-height: 800px), (pointer: fine) and (min-width: 1024px) {
-  body.vk-open {
-    --vk-space-factor: 1;
-  }
-}
-
-body.vk-open [data-slot="dialog-content"] {
+body.vk-open:has([data-slot="dialog-portal"]) [data-slot="dialog-content"] {
+  position: relative !important;
   top: auto !important;
-  left: 50% !important;
+  left: auto !important;
   right: auto !important;
-  transform: translateY(50%) !important;
-  max-height: min(
-    36rem,
-    calc(100dvh - var(--vk-h, 240px) * var(--vk-space-factor) - 1rem)
-  );
+  bottom: auto !important;
+  transform: none !important;
+  translate: none !important;
+  margin: 1rem auto !important;
+  max-height: calc(100% - 2rem) !important;
+  width: min(28rem, calc(100% - 2rem));
   overflow-y: auto;
   pointer-events: auto;
-  margin-top: 20px;
+  z-index: 1;
+}
+
+/* Tastatur teilt sich den Viewport mit dem Dialog — Höhe ergibt sich selbst */
+body.vk-open:has([data-slot="dialog-portal"]) .vk-wrap {
+  position: relative !important;
+  bottom: auto !important;
+  left: auto !important;
+  right: auto !important;
+  flex: 0 0 auto;
+  width: 100%;
+  order: 2;
+  z-index: 100;
 }
 
 /* Leiste über den Tasten — X liegt nicht mehr auf einer Taste */

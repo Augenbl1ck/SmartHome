@@ -20,9 +20,17 @@ function DialogTrigger({
 }
 
 function DialogPortal({
+  children,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
-  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
+  return (
+    <DialogPrimitive.Portal {...props}>
+      {/* Eigene Layer-Box: bei Tastatur im Flex-Layout neben .vk-wrap */}
+      <div data-slot="dialog-portal" className="vk-dialog-layer">
+        {children}
+      </div>
+    </DialogPrimitive.Portal>
+  )
 }
 
 function DialogClose({
