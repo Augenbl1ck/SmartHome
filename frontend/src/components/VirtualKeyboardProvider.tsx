@@ -89,6 +89,35 @@ function keyClass(key: string): string {
   return 'vk-key';
 }
 
+function scrollInputIntoView(el: HTMLElement) {
+  const kbH =
+    parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue('--vk-h'),
+    ) || 240;
+  const pad = 16;
+  const visibleBottom = window.innerHeight - kbH - pad;
+  const rect = el.getBoundingClientRect();
+
+  // In Dialogen nur den Dialog-Inhalt scrollen — nicht die ganze Seite
+  const dialog = el.closest('[data-slot="dialog-content"]');
+  if (dialog instanceof HTMLElement) {
+    if (rect.bottom > visibleBottom) {
+      dialog.scrollBy({ top: rect.bottom - visibleBottom + pad, behavior: 'smooth' });
+    } else if (rect.top < dialog.getBoundingClientRect().top + pad) {
+      dialog.scrollBy({
+        top: rect.top - dialog.getBoundingClientRect().top - pad,
+        behavior: 'smooth',
+      });
+    }
+    return;
+  }
+
+  if (rect.bottom > visibleBottom || rect.top < pad) {
+    const delta = rect.top - (visibleBottom + pad) / 2;
+    window.scrollBy({ top: delta, behavior: 'smooth' });
+  }
+}
+
 export default function VirtualKeyboardProvider({
   children,
 }: {
@@ -135,9 +164,11 @@ export default function VirtualKeyboardProvider({
 
   const openFor = useCallback((el: HTMLInputElement | HTMLTextAreaElement) => {
     if (!shouldUseCustomKeyboard()) return;
-    if (inputRef.current === el) return;
+    if (inputRef.current === el && document.body.classList.contains('vk-open')) {
+      return;
+    }
 
-    if (inputRef.current) restoreInputMode(inputRef.current);
+    if (inputRef.current && inputRef.current !== el) restoreInputMode(inputRef.current);
 
     el.dataset.vkOrigInputmode = el.getAttribute('inputmode') ?? '';
     el.setAttribute('inputmode', 'none');
@@ -149,7 +180,11 @@ export default function VirtualKeyboardProvider({
     setOpen(true);
     document.body.classList.add('vk-open');
     document.documentElement.style.setProperty('--vk-h', '240px');
-    // Kein scrollIntoView — verschiebt Dialoge/Felder sonst nach oben-links
+
+    // Nach Layout der Tastatur zum Feld scrollen
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => scrollInputIntoView(el));
+    });
   }, []);
 
   const press = useCallback(
@@ -192,8 +227,12 @@ export default function VirtualKeyboardProvider({
     [close],
   );
 
+  /*
+   * Nur bei echtem Tippen/Klick auf ein Feld öffnen — nicht bei focusin.
+   * Sonst öffnet Radix-Dialog-Autofokus / Seitenfokus die Tastatur von allein.
+   */
   useEffect(() => {
-    const onFocus = (e: FocusEvent) => {
+    const onPointerDown = (e: PointerEvent) => {
       if (pinLock.locked || pinLock.screenOff) return;
       const t = e.target;
       if (!(t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement)) return;
@@ -202,8 +241,8 @@ export default function VirtualKeyboardProvider({
       if (!TEXT_TYPES.has(t.type)) return;
       openFor(t);
     };
-    document.addEventListener('focusin', onFocus);
-    return () => document.removeEventListener('focusin', onFocus);
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
   }, [openFor, pinLock.locked, pinLock.screenOff]);
 
   /* Außen tippen → schließen (nicht bei Dialog / Tastatur-Zone) */
@@ -233,6 +272,14 @@ export default function VirtualKeyboardProvider({
   useEffect(() => {
     if (pinLock.locked || pinLock.screenOff) close();
   }, [pinLock.locked, pinLock.screenOff, close]);
+
+  // Nach Tastatur-Höhenmessung nochmal scrollen (Dialog/Feld sichtbar halten)
+  useLayoutEffect(() => {
+    if (!open || !inputRef.current) return;
+    const el = inputRef.current;
+    const t = window.setTimeout(() => scrollInputIntoView(el), 50);
+    return () => window.clearTimeout(t);
+  }, [open]);
 
   const rows = LAYOUTS[layout];
 
