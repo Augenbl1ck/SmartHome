@@ -3,7 +3,7 @@
 import { useState, useEffect, useTransition, useCallback } from 'react';
 import { api, Device, DeviceType, Room, ZigbeeDevice } from '@/lib/api';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
-import { deviceLabels, CUSTOM_COLORS } from '@/lib/devices';
+import { deviceLabels, CUSTOM_COLORS, isToggleable } from '@/lib/devices';
 import { getEcho } from '@/lib/echo';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -24,7 +24,7 @@ import { usePinLockContext } from '@/components/PinLockProvider';
 import { useKiosk } from '@/components/KioskProvider';
 import EmojiPicker from '@/components/EmojiPicker';
 import { cn } from '@/lib/utils';
-import { saveDashboardLayout, DASHBOARD_LAYOUT_KEY, type SectionId } from '@/hooks/useDashboardLayout';
+import { saveDashboardLayout, loadDashboardLayout, createFieldId, fieldSectionId, sectionLabel, type SectionId, type DashboardField, type DashboardLayout } from '@/hooks/useDashboardLayout';
 
 // ─────────────────────────────────────────────────────────────────
 // Typen & Konstanten
@@ -367,64 +367,60 @@ function deviceToForm(d: Device): DeviceForm {
 // ─────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────
-// Dashboard-Widget-Einstellungen (localStorage)
+// Dashboard-Layout-Einstellungen (localStorage)
 // ─────────────────────────────────────────────────────────────────
 
-const WIDGETS_KEY = 'smarthome_dashboard_widgets';
-
-const SECTION_LABELS: Record<string, string> = {
-  scenes: 'Szenen',
-  rooms: 'Räume',
-  quickaccess: 'Schnellzugriff',
-};
-
 function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms: Room[] }) {
-  const [sectionOrder, setSectionOrder] = useState<SectionId[]>(['scenes', 'rooms', 'quickaccess']);
+  const [sectionOrder, setSectionOrder] = useState<SectionId[]>(['scenes', 'rooms']);
   const [hiddenSections, setHiddenSections] = useState<SectionId[]>([]);
   const [roomOrder, setRoomOrder] = useState<number[]>([]);
-
-  const [selected, setSelected] = useState<number[]>([]);
-  const [widgetSaved, setWidgetSaved] = useState(false);
+  const [fields, setFields] = useState<DashboardField[]>([]);
+  const [expandedField, setExpandedField] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(WIDGETS_KEY);
-      if (raw) setSelected(JSON.parse(raw));
-    } catch { /* */ }
-    try {
-      const raw = localStorage.getItem(DASHBOARD_LAYOUT_KEY);
-      if (raw) {
-        const l = JSON.parse(raw);
-        if (Array.isArray(l.sectionOrder)) setSectionOrder(l.sectionOrder);
-        if (Array.isArray(l.hiddenSections)) setHiddenSections(l.hiddenSections);
-        if (Array.isArray(l.roomOrder)) setRoomOrder(l.roomOrder);
-      }
-    } catch { /* */ }
+    const l = loadDashboardLayout();
+    setSectionOrder(l.sectionOrder);
+    setHiddenSections(l.hiddenSections);
+    setRoomOrder(l.roomOrder);
+    setFields(l.fields);
   }, []);
 
-  const persistLayout = (so: SectionId[], hs: SectionId[], ro: number[]) =>
-    saveDashboardLayout({ sectionOrder: so, hiddenSections: hs, roomOrder: ro });
+  const persist = (patch: Partial<DashboardLayout>) => {
+    const next: DashboardLayout = {
+      sectionOrder: patch.sectionOrder ?? sectionOrder,
+      hiddenSections: patch.hiddenSections ?? hiddenSections,
+      roomOrder: patch.roomOrder ?? roomOrder,
+      fields: patch.fields ?? fields,
+    };
+    if (patch.sectionOrder) setSectionOrder(patch.sectionOrder);
+    if (patch.hiddenSections) setHiddenSections(patch.hiddenSections);
+    if (patch.roomOrder) setRoomOrder(patch.roomOrder);
+    if (patch.fields) setFields(patch.fields);
+    saveDashboardLayout(next);
+  };
 
   const toggleSection = (id: SectionId) => {
     const next = hiddenSections.includes(id)
       ? hiddenSections.filter(s => s !== id)
       : [...hiddenSections, id];
     setHiddenSections(next);
-    persistLayout(sectionOrder, next, roomOrder);
+    persist({ hiddenSections: next });
   };
+
   const moveSectionUp = (i: number) => {
     if (i === 0) return;
     const next = [...sectionOrder];
     [next[i - 1], next[i]] = [next[i], next[i - 1]];
     setSectionOrder(next);
-    persistLayout(next, hiddenSections, roomOrder);
+    persist({ sectionOrder: next });
   };
+
   const moveSectionDown = (i: number) => {
     if (i >= sectionOrder.length - 1) return;
     const next = [...sectionOrder];
     [next[i], next[i + 1]] = [next[i + 1], next[i]];
     setSectionOrder(next);
-    persistLayout(next, hiddenSections, roomOrder);
+    persist({ sectionOrder: next });
   };
 
   const orderedRooms = roomOrder.length === 0
@@ -440,46 +436,85 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
     const ids = orderedRooms.map(r => r.id);
     [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]];
     setRoomOrder(ids);
-    persistLayout(sectionOrder, hiddenSections, ids);
+    persist({ roomOrder: ids });
   };
+
   const moveRoomDown = (i: number) => {
     if (i >= orderedRooms.length - 1) return;
     const ids = orderedRooms.map(r => r.id);
     [ids[i], ids[i + 1]] = [ids[i + 1], ids[i]];
     setRoomOrder(ids);
-    persistLayout(sectionOrder, hiddenSections, ids);
+    persist({ roomOrder: ids });
   };
 
-  const add    = (id: number) => setSelected(prev => prev.includes(id) || prev.length >= 2 ? prev : [...prev, id]);
-  const remove = (id: number) => setSelected(prev => prev.filter(x => x !== id));
-  const moveUp = (i: number) => setSelected(prev => {
-    if (i === 0) return prev;
-    const next = [...prev]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; return next;
-  });
-  const moveDown = (i: number) => setSelected(prev => {
-    if (i >= prev.length - 1) return prev;
-    const next = [...prev]; [next[i], next[i + 1]] = [next[i + 1], next[i]]; return next;
-  });
-  const saveWidgets = () => {
-    localStorage.setItem(WIDGETS_KEY, JSON.stringify(selected));
-    window.dispatchEvent(new StorageEvent('storage', { key: WIDGETS_KEY }));
-    setWidgetSaved(true);
-    setTimeout(() => setWidgetSaved(false), 2000);
+  const addField = () => {
+    const id = createFieldId();
+    const field: DashboardField = { id, name: `Feld ${fields.length + 1}`, deviceIds: [] };
+    const nextFields = [...fields, field];
+    const nextOrder = [...sectionOrder, fieldSectionId(id)];
+    setFields(nextFields);
+    setSectionOrder(nextOrder);
+    setExpandedField(id);
+    persist({ fields: nextFields, sectionOrder: nextOrder });
   };
-  const resetWidgets = () => {
-    setSelected([]);
-    localStorage.removeItem(WIDGETS_KEY);
-    setWidgetSaved(true);
-    setTimeout(() => setWidgetSaved(false), 2000);
+
+  const deleteField = (id: string) => {
+    const sid = fieldSectionId(id);
+    const nextFields = fields.filter(f => f.id !== id);
+    const nextOrder = sectionOrder.filter(s => s !== sid);
+    const nextHidden = hiddenSections.filter(s => s !== sid);
+    setFields(nextFields);
+    setSectionOrder(nextOrder);
+    setHiddenSections(nextHidden);
+    if (expandedField === id) setExpandedField(null);
+    persist({ fields: nextFields, sectionOrder: nextOrder, hiddenSections: nextHidden });
   };
-  const available = devices.filter(d => !selected.includes(d.id));
+
+  const renameField = (id: string, name: string) => {
+    const nextFields = fields.map(f => f.id === id ? { ...f, name: name.trim() || f.name } : f);
+    setFields(nextFields);
+    persist({ fields: nextFields });
+  };
+
+  const addDeviceToField = (fieldId: string, deviceId: number) => {
+    const nextFields = fields.map(f =>
+      f.id === fieldId && !f.deviceIds.includes(deviceId)
+        ? { ...f, deviceIds: [...f.deviceIds, deviceId] }
+        : f,
+    );
+    setFields(nextFields);
+    persist({ fields: nextFields });
+  };
+
+  const removeDeviceFromField = (fieldId: string, deviceId: number) => {
+    const nextFields = fields.map(f =>
+      f.id === fieldId ? { ...f, deviceIds: f.deviceIds.filter(id => id !== deviceId) } : f,
+    );
+    setFields(nextFields);
+    persist({ fields: nextFields });
+  };
+
+  const moveDeviceInField = (fieldId: string, index: number, dir: -1 | 1) => {
+    const nextFields = fields.map(f => {
+      if (f.id !== fieldId) return f;
+      const j = index + dir;
+      if (j < 0 || j >= f.deviceIds.length) return f;
+      const ids = [...f.deviceIds];
+      [ids[index], ids[j]] = [ids[j], ids[index]];
+      return { ...f, deviceIds: ids };
+    });
+    setFields(nextFields);
+    persist({ fields: nextFields });
+  };
+
+  const toggleableDevices = devices.filter(d => isToggleable(d.type as DeviceType));
 
   return (
     <div className="space-y-6">
 
       <div>
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Abschnitte</p>
-        <p className="text-xs text-muted-foreground mb-3">Ein-/Ausblenden und Reihenfolge der Dashboard-Bereiche.</p>
+        <p className="text-xs text-muted-foreground mb-3">Ein-/Ausblenden und Reihenfolge aller Dashboard-Bereiche.</p>
         <div className="space-y-1">
           {sectionOrder.map((id, i) => {
             const isHidden = hiddenSections.includes(id);
@@ -498,7 +533,7 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
                   )}>
                   {isHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                 </button>
-                <span className="text-sm flex-1">{SECTION_LABELS[id]}</span>
+                <span className="text-sm flex-1">{sectionLabel(id, fields)}</span>
                 <div className="flex gap-0.5 shrink-0">
                   <button onClick={() => moveSectionUp(i)} disabled={i === 0}
                     className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
@@ -541,68 +576,109 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
       )}
 
       <div>
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Status-Kacheln</p>
-        <p className="text-xs text-muted-foreground mb-3">
-          Bis zu <strong>2 Geräte</strong> als Schnellzugriff-Kacheln anzeigen.
-        </p>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Geräte-Felder</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Eigene Bereiche mit beliebig vielen Geräten — z.&nbsp;B. Schnellzugriff, Sensoren, Außenbereich.
+            </p>
+          </div>
+          <Button onClick={addField} size="sm" variant="outline" className="shrink-0">
+            <Plus className="h-3.5 w-3.5 mr-1" /> Neues Feld
+          </Button>
+        </div>
 
-        {selected.length > 0 && (
-          <div className="space-y-1 mb-3">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Ausgewählt</p>
-            {selected.map((id, i) => {
-              const d = devices.find(x => x.id === id);
-              if (!d) return null;
-              return (
-                <div key={id} className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-2 py-1.5">
-                  <span className="text-xs font-bold text-primary w-4 shrink-0">{i + 1}</span>
-                  <span className="text-sm flex-1 truncate">{d.name}</span>
-                  <span className="text-xs text-muted-foreground shrink-0">{d.type.replace('sensor_', '')}</span>
-                  <div className="flex gap-0.5 shrink-0">
-                    <button onClick={() => moveUp(i)} disabled={i === 0}
-                      className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
-                      <ChevronUp className="h-3.5 w-3.5" />
-                    </button>
-                    <button onClick={() => moveDown(i)} disabled={i === selected.length - 1}
-                      className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
-                      <ChevronDown className="h-3.5 w-3.5" />
-                    </button>
-                    <button onClick={() => remove(id)}
-                      className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive">
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+        {fields.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-6 rounded-xl border border-dashed">
+            Noch keine Felder. Erstelle ein Feld und füge Geräte hinzu.
+          </p>
+        )}
+
+        <div className="space-y-3">
+          {fields.map(field => {
+            const isOpen = expandedField === field.id;
+            const available = toggleableDevices.filter(d => !field.deviceIds.includes(d.id));
+            return (
+              <div key={field.id} className="rounded-xl border bg-card overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2.5">
+                  <button
+                    onClick={() => setExpandedField(isOpen ? null : field.id)}
+                    className="cursor-pointer flex-1 flex items-center gap-2 text-left min-w-0"
+                  >
+                    <ChevronRight className={cn('h-4 w-4 shrink-0 transition-transform', isOpen && 'rotate-90')} />
+                    <input
+                      value={field.name}
+                      onClick={e => e.stopPropagation()}
+                      onChange={e => renameField(field.id, e.target.value)}
+                      className="text-sm font-medium bg-transparent border-none outline-none flex-1 min-w-0"
+                    />
+                    <span className="text-xs text-muted-foreground shrink-0">{field.deviceIds.length} Geräte</span>
+                  </button>
+                  <button
+                    onClick={() => deleteField(field.id)}
+                    title="Feld löschen"
+                    className="cursor-pointer h-7 w-7 flex items-center justify-center rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive shrink-0"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                 </div>
-              );
-            })}
-          </div>
-        )}
 
-        {selected.length < 2 && available.length > 0 && (
-          <div className="space-y-1 mb-3">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Hinzufügen</p>
-            <div className="max-h-44 overflow-y-auto space-y-0.5">
-              {available.map(d => (
-                <button key={d.id} onClick={() => add(d.id)}
-                  className="cursor-pointer w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-accent transition-colors">
-                  <Plus className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  <span className="text-sm flex-1 truncate">{d.name}</span>
-                  <span className="text-xs text-muted-foreground shrink-0">{d.type.replace('sensor_', '')}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+                {isOpen && (
+                  <div className="px-3 pb-3 space-y-2 border-t pt-2">
+                    {field.deviceIds.length > 0 && (
+                      <div className="space-y-1">
+                        {field.deviceIds.map((id, i) => {
+                          const d = devices.find(x => x.id === id);
+                          if (!d) return null;
+                          return (
+                            <div key={id} className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-2 py-1.5">
+                              <span className="text-xs font-bold text-primary w-4 shrink-0">{i + 1}</span>
+                              <span className="text-sm flex-1 truncate">{d.name}</span>
+                              <span className="text-xs text-muted-foreground shrink-0">{d.type.replace('sensor_', '')}</span>
+                              <div className="flex gap-0.5 shrink-0">
+                                <button onClick={() => moveDeviceInField(field.id, i, -1)} disabled={i === 0}
+                                  className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
+                                  <ChevronUp className="h-3.5 w-3.5" />
+                                </button>
+                                <button onClick={() => moveDeviceInField(field.id, i, 1)} disabled={i === field.deviceIds.length - 1}
+                                  className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
+                                  <ChevronDown className="h-3.5 w-3.5" />
+                                </button>
+                                <button onClick={() => removeDeviceFromField(field.id, id)}
+                                  className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive">
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
 
-        {devices.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-4">Keine Geräte vorhanden.</p>
-        )}
+                    {available.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Gerät hinzufügen</p>
+                        <div className="max-h-44 overflow-y-auto space-y-0.5">
+                          {available.map(d => (
+                            <button key={d.id} onClick={() => addDeviceToField(field.id, d.id)}
+                              className="cursor-pointer w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-accent transition-colors">
+                              <Plus className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                              <span className="text-sm flex-1 truncate">{d.name}</span>
+                              <span className="text-xs text-muted-foreground shrink-0">{d.type.replace('sensor_', '')}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
-        <p className="text-[11px] text-muted-foreground mb-2">{selected.length}/2 ausgewählt</p>
-        <div className="flex gap-2">
-          <Button onClick={saveWidgets} size="sm">{widgetSaved ? '✓ Gespeichert' : 'Speichern'}</Button>
-          {selected.length > 0 && (
-            <Button onClick={resetWidgets} size="sm" variant="outline">Zurücksetzen</Button>
-          )}
+                    {field.deviceIds.length === 0 && available.length === 0 && (
+                      <p className="text-xs text-muted-foreground text-center py-3">Keine Geräte verfügbar.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -1349,7 +1425,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     { id: 'rooms',    icon: Home,         color: 'text-violet-500 bg-violet-500/10', label: 'R\u00e4ume',            desc: `${rooms.length} Raum/${rooms.length !== 1 ? 'R\u00e4ume' : ''}` },
     { id: 'scenes',   icon: Clapperboard, color: 'text-amber-500  bg-amber-500/10',  label: 'Szenen',           desc: 'Szenen verwalten',         href: '/scenes' },
     { id: 'automat',  icon: Zap,          color: 'text-green-500  bg-green-500/10',  label: 'Automationen',     desc: 'Regeln & Zeitpl\u00e4ne',        href: '/automations' },
-    { id: 'dashboard',icon: LayoutDashboard, color: 'text-indigo-500 bg-indigo-500/10',label: 'Dashboard',      desc: 'Abschnitte & Räume anordnen' },
+    { id: 'dashboard',icon: LayoutDashboard, color: 'text-indigo-500 bg-indigo-500/10',label: 'Dashboard',      desc: 'Felder & Anordnung' },
     { id: 'weather',  icon: Cloud,        color: 'text-sky-500    bg-sky-500/10',    label: 'Wetter-Widget',    desc: 'Ort & Einheiten' },
     { id: 'system',   icon: Activity,     color: 'text-emerald-500 bg-emerald-500/10', label: 'System',         desc: 'CPU-Temp & Status' },
     { id: 'security', icon: LockKeyhole,  color: 'text-orange-500 bg-orange-500/10', label: 'Sicherheit',       desc: 'PIN & Bildschirmsperre' },

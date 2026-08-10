@@ -7,8 +7,8 @@ import { isToggleable } from '@/lib/devices';
 import { DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { getEcho } from '@/lib/echo';
 import { cn } from '@/lib/utils';
-import QuickAccess from '@/components/QuickAccess';
-import { useDashboardLayout, type SectionId } from '@/hooks/useDashboardLayout';
+import DeviceFieldPanel from '@/components/DeviceFieldPanel';
+import { useDashboardLayout, parseFieldSectionId, type SectionId } from '@/hooks/useDashboardLayout';
 import DashboardActions from '@/components/DashboardActions';
 import WeatherWidget from '@/components/WeatherWidget';
 
@@ -100,8 +100,12 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes }: 
 
   const sectionOrder: SectionId[] = layout.sectionOrder.length > 0
     ? layout.sectionOrder
-    : ['scenes', 'rooms', 'quickaccess'];
+    : ['scenes', 'rooms'];
   const hiddenSections = new Set(layout.hiddenSections);
+  const fieldsById = useMemo(
+    () => new Map(layout.fields.map(f => [f.id, f])),
+    [layout.fields],
+  );
 
   const activateScene = async (scene: Scene) => {
     if (running.has(scene.id)) return;
@@ -236,9 +240,19 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes }: 
           </div>
         );
 
-        if (sectionId === 'quickaccess') return mounted ? (
-          <QuickAccess key="quickaccess" initialDevices={list} />
-        ) : null;
+        const fieldId = parseFieldSectionId(sectionId);
+        if (fieldId && mounted) {
+          const field = fieldsById.get(fieldId);
+          if (!field || field.deviceIds.length === 0) return null;
+          return (
+            <DeviceFieldPanel
+              key={sectionId}
+              title={field.name}
+              deviceIds={field.deviceIds}
+              initialDevices={list}
+            />
+          );
+        }
 
         return null;
       })}
@@ -246,5 +260,3 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes }: 
     </div>
   );
 }
-
-// WIDGETS_KEY bleibt erhalten — Settings-Widget-Konfigurator nutzt ihn noch
