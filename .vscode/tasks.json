@@ -5,8 +5,16 @@
       "label": "Mosquitto",
       "type": "shell",
       "command": "Get-Process mosquitto -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep 1; & 'C:\\Program Files\\mosquitto\\mosquitto.exe' -c '${workspaceFolder}\\.vscode\\mqtt.conf' -v",
-      "options": { "shell": { "executable": "powershell.exe" } },
-      "presentation": { "panel": "dedicated", "group": "smarthome", "reveal": "always" },
+      "options": {
+        "shell": {
+          "executable": "powershell.exe"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "group": "smarthome",
+        "reveal": "always"
+      },
       "isBackground": true,
       "problemMatcher": []
     },
@@ -14,8 +22,17 @@
       "label": "Backend",
       "type": "shell",
       "command": "C:\\php82\\php.exe artisan serve",
-      "options": { "cwd": "${workspaceFolder}/backend", "shell": { "executable": "powershell.exe" } },
-      "presentation": { "panel": "dedicated", "group": "smarthome", "reveal": "always" },
+      "options": {
+        "cwd": "${workspaceFolder}/backend",
+        "shell": {
+          "executable": "powershell.exe"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "group": "smarthome",
+        "reveal": "always"
+      },
       "isBackground": true,
       "problemMatcher": []
     },
@@ -23,8 +40,17 @@
       "label": "MQTT Subscriber",
       "type": "shell",
       "command": "C:\\php82\\php.exe artisan mqtt:subscribe",
-      "options": { "cwd": "${workspaceFolder}/backend", "shell": { "executable": "powershell.exe" } },
-      "presentation": { "panel": "dedicated", "group": "smarthome", "reveal": "always" },
+      "options": {
+        "cwd": "${workspaceFolder}/backend",
+        "shell": {
+          "executable": "powershell.exe"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "group": "smarthome",
+        "reveal": "always"
+      },
       "isBackground": true,
       "problemMatcher": []
     },
@@ -32,17 +58,17 @@
       "label": "Frontend",
       "type": "shell",
       "command": "npm run dev -- --hostname 0.0.0.0",
-      "options": { "cwd": "${workspaceFolder}/frontend", "shell": { "executable": "powershell.exe" } },
-      "presentation": { "panel": "dedicated", "group": "smarthome", "reveal": "always" },
-      "isBackground": true,
-      "problemMatcher": []
-    },
-    {
-      "label": "Sensor Sim",
-      "type": "shell",
-      "command": "node tools/sensor-sim.js",
-      "options": { "cwd": "${workspaceFolder}", "shell": { "executable": "powershell.exe" } },
-      "presentation": { "panel": "dedicated", "group": "smarthome", "reveal": "always" },
+      "options": {
+        "cwd": "${workspaceFolder}/frontend",
+        "shell": {
+          "executable": "powershell.exe"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "group": "smarthome",
+        "reveal": "always"
+      },
       "isBackground": true,
       "problemMatcher": []
     },
@@ -50,8 +76,17 @@
       "label": "Reverb WebSocket",
       "type": "shell",
       "command": "C:\\php82\\php.exe artisan reverb:start",
-      "options": { "cwd": "${workspaceFolder}/backend", "shell": { "executable": "powershell.exe" } },
-      "presentation": { "panel": "dedicated", "group": "smarthome", "reveal": "always" },
+      "options": {
+        "cwd": "${workspaceFolder}/backend",
+        "shell": {
+          "executable": "powershell.exe"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "group": "smarthome",
+        "reveal": "always"
+      },
       "isBackground": true,
       "problemMatcher": []
     },
@@ -59,8 +94,17 @@
       "label": "Queue Worker",
       "type": "shell",
       "command": "C:\\php82\\php.exe artisan queue:work --sleep=3 --tries=3",
-      "options": { "cwd": "${workspaceFolder}/backend", "shell": { "executable": "powershell.exe" } },
-      "presentation": { "panel": "dedicated", "group": "smarthome", "reveal": "always" },
+      "options": {
+        "cwd": "${workspaceFolder}/backend",
+        "shell": {
+          "executable": "powershell.exe"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "group": "smarthome",
+        "reveal": "always"
+      },
       "isBackground": true,
       "problemMatcher": []
     },
@@ -68,8 +112,17 @@
       "label": "Scheduler",
       "type": "shell",
       "command": "C:\\php82\\php.exe artisan schedule:work",
-      "options": { "cwd": "${workspaceFolder}/backend", "shell": { "executable": "powershell.exe" } },
-      "presentation": { "panel": "dedicated", "group": "smarthome", "reveal": "always" },
+      "options": {
+        "cwd": "${workspaceFolder}/backend",
+        "shell": {
+          "executable": "powershell.exe"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "group": "smarthome",
+        "reveal": "always"
+      },
       "isBackground": true,
       "problemMatcher": []
     },
@@ -77,23 +130,53 @@
       "label": "SmartHome: Alles stoppen",
       "type": "shell",
       "command": "${workspaceFolder}\\stop.ps1",
-      "options": { "shell": { "executable": "powershell.exe" } },
-      "presentation": { "panel": "shared", "reveal": "always" },
+      "options": {
+        "shell": {
+          "executable": "powershell.exe"
+        }
+      },
+      "presentation": {
+        "panel": "shared",
+        "reveal": "always"
+      },
       "problemMatcher": []
     },
     {
       "label": "SmartHome: Alles starten",
-      "dependsOn": ["Mosquitto", "Backend", "MQTT Subscriber", "Reverb WebSocket", "Queue Worker", "Scheduler", "Frontend", "Sensor Sim"],
+      "dependsOn": [
+        "Mosquitto",
+        "Backend",
+        "MQTT Subscriber",
+        "Reverb WebSocket",
+        "Queue Worker",
+        "Scheduler",
+        "Frontend"
+      ],
       "dependsOrder": "parallel",
-      "presentation": { "reveal": "silent" },
+      "presentation": {
+        "reveal": "silent"
+      },
       "problemMatcher": [],
-      "group": { "kind": "build", "isDefault": true }
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
     },
     {
       "label": "SmartHome: Ohne Sim",
-      "dependsOn": ["Mosquitto", "Backend", "MQTT Subscriber", "Reverb WebSocket", "Queue Worker", "Scheduler", "Frontend"],
+      "dependsOn": [
+        "Mosquitto",
+        "Backend",
+        "MQTT Subscriber",
+        "Reverb WebSocket",
+        "Queue Worker",
+        "Scheduler",
+        "Frontend"
+      ],
       "dependsOrder": "parallel",
-      "presentation": { "reveal": "silent" },
+      "presentation": {
+        "reveal": "silent"
+      },
       "problemMatcher": []
     }
   ]
