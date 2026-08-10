@@ -206,6 +206,25 @@ body.vk-open [data-slot="kiosk-bar"] {
   z-index: auto;
 }
 
+/* Seiten-Layout: Tastatur unten im main-Container (max-w-6xl), nicht fixed über alles */
+.vk-page-vk-slot {
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+
+.vk-page-vk-slot:has(.vk-wrap-open) {
+  pointer-events: auto;
+}
+
+main .vk-wrap {
+  position: relative;
+  bottom: auto;
+  left: auto;
+  right: auto;
+  width: 100%;
+  z-index: auto;
+}
+
 /* Leiste über den Tasten — X liegt nicht mehr auf einer Taste */
 .vk-toolbar {
   display: flex;

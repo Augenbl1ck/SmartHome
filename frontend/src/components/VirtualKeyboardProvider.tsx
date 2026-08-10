@@ -95,7 +95,6 @@ function scrollInputIntoView(el: HTMLElement) {
       getComputedStyle(document.documentElement).getPropertyValue('--vk-h'),
     ) || 240;
   const pad = 24;
-  // Mitte des sichtbaren Bereichs oberhalb der Tastatur
   const targetCenterY = (window.innerHeight - kbH) / 2;
 
   const dialog = el.closest('[data-slot="dialog-content"]');
@@ -104,6 +103,16 @@ function scrollInputIntoView(el: HTMLElement) {
     const delta = elRect.top + elRect.height / 2 - targetCenterY;
     if (Math.abs(delta) > 8) {
       dialog.scrollBy({ top: delta, behavior: 'smooth' });
+    }
+    return;
+  }
+
+  const scrollArea = el.closest('[data-slot="page-scroll"]');
+  if (scrollArea instanceof HTMLElement) {
+    const elRect = el.getBoundingClientRect();
+    const delta = elRect.top + elRect.height / 2 - targetCenterY;
+    if (Math.abs(delta) > 8) {
+      scrollArea.scrollBy({ top: delta, behavior: 'smooth' });
     }
     return;
   }
@@ -121,6 +130,10 @@ function getKeyboardPortalTarget(
   if (typeof document === 'undefined') return null;
   if (input?.closest('[data-slot="dialog-content"]')) {
     const slot = document.querySelector('[data-slot="dialog-vk-slot"]');
+    if (slot instanceof HTMLElement) return slot;
+  }
+  if (input?.closest('main')) {
+    const slot = document.querySelector('[data-slot="page-vk-slot"]');
     if (slot instanceof HTMLElement) return slot;
   }
   return document.body;
