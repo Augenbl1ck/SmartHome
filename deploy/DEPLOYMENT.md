@@ -79,6 +79,21 @@ sudo systemctl restart smarthome-backend smarthome-frontend
 
 ---
 
+## Kiosk / Autostart
+
+Nach Reboot startet Chromium über `deploy/start-kiosk.sh` (Autostart: `~/.config/autostart/smarthome-kiosk.desktop`).
+
+**„Unlock keyring“ nach Reboot:** Chromium will sonst Passwörter im GNOME-Keyring speichern — beim Autologin fehlt oft das Login-Passwort. Das Skript setzt `--password-store=basic` (kein Keyring-Dialog). Nach `git pull` ggf.:
+
+```bash
+chmod +x ~/SmartHome/deploy/start-kiosk.sh
+cp ~/SmartHome/deploy/smarthome-kiosk.desktop ~/.config/autostart/
+# einmal testen:
+bash ~/SmartHome/deploy/start-kiosk.sh
+```
+
+---
+
 ## Mobil-Test (Windows, selbes WLAN)
 
 1. `ipconfig` → IPv4-Adresse notieren (z.B. 192.168.1.50)

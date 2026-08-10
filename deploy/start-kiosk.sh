@@ -30,7 +30,9 @@ if [ -f "$PREFS" ]; then
   sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/g' "$PREFS" 2>/dev/null || true
 fi
 
+# Kein GNOME-Keyring-Dialog nach Reboot (Autologin / kein Login-Passwort)
 exec "$CHROMIUM" \
+  --password-store=basic \
   --app="$URL" \
   --start-fullscreen \
   --noerrdialogs \

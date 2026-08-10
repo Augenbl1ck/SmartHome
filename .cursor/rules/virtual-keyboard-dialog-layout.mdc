@@ -1,0 +1,38 @@
+---
+description: Dialog + virtuelle Tastatur — bevorzugtes Flex-Layout im Portal
+globs: frontend/src/components/{VirtualKeyboardProvider,ui/dialog}.tsx,frontend/src/app/globals.css
+alwaysApply: false
+---
+
+# Dialog + virtuelle Tastatur
+
+Bei Dialogen mit Custom-Keyboard **nicht** mit `fixed`/`absolute`-Hacks auf `body` arbeiten (kein `:has()`, kein manuelles `translateX`, kein `--vk-space-factor`).
+
+## Bevorzugtes Layout
+
+Dialog und Tastatur gehören **in ein gemeinsames Flex-Portal**:
+
+```
+dialog-portal (.vk-dialog-stack, flex column, fixed inset-0)
+├── dialog-overlay (absolute inset-0)
+├── dialog-stack-main (flex: 1, Dialog zentriert)
+│   └── dialog-content
+└── dialog-vk-slot (flex: 0, Tastatur unten)
+    └── .vk-wrap (per Portal)
+```
+
+- **Dialog oben** im verbleibenden Platz (`flex: 1`, `min-height: 0`, scroll im Content)
+- **Tastatur unten** im Flow (`flex: 0`, eigene Höhe)
+- Höhe passt sich responsiv an — ohne Monitor-Breakpoints oder `* 1.1`
+
+## Portal-Ziel der Tastatur
+
+- Eingabe **im Dialog** → `createPortal` nach `[data-slot="dialog-vk-slot"]`
+- Eingabe **auf der Seite** (ohne Dialog) → `document.body`, `.vk-wrap` bleibt `fixed bottom`
+
+## Vermeiden
+
+- Body als Flex-Container mit `:has([data-slot="dialog-portal"])`
+- Dialog `fixed top-1/2 left-1/2 -translate-*` wenn Keyboard im Portal aktiv ist
+- `transform: translateX(-162.5%)` o.ä. zum Zentrieren
+- Tastatur und Dialog als separate fixed Layer übereinander legen
