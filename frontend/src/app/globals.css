@@ -158,18 +158,29 @@ body.vk-open [data-slot="dialog-overlay"] {
 }
 
 /*
- * Dialog über der Tastatur zentrieren.
- * Wichtig: Tailwind v4 nutzt `translate` (nicht nur `transform`) —
- * beides zurücksetzen, sonst rutscht der Dialog nach oben-links.
+ * Dialog über der Tastatur.
+ * --vk-space-factor: auf kleinen Touchscreens etwas mehr Luft (1.1),
+ * auf großen Monitoren weniger / Höhe deckeln.
  */
+body.vk-open {
+  --vk-space-factor: 1.1;
+}
+
+@media (min-height: 800px), (pointer: fine) and (min-width: 1024px) {
+  body.vk-open {
+    --vk-space-factor: 1;
+  }
+}
+
 body.vk-open [data-slot="dialog-content"] {
   top: auto !important;
-  /* Weiter unten: nur halbe Tastaturhöhe als Abstand vom unteren Rand */
-  /* bottom: calc(var(--vk-h, 240px) * 0.5 + 0.5rem) !important; */
   left: 50% !important;
   right: auto !important;
   transform: translateY(50%) !important;
-  max-height: calc(100dvh - var(--vk-h, 240px) * 1.1 - 1rem);
+  max-height: min(
+    36rem,
+    calc(100dvh - var(--vk-h, 240px) * var(--vk-space-factor) - 1rem)
+  );
   overflow-y: auto;
   pointer-events: auto;
   margin-top: 20px;
