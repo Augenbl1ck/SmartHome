@@ -94,26 +94,23 @@ function scrollInputIntoView(el: HTMLElement) {
     parseFloat(
       getComputedStyle(document.documentElement).getPropertyValue('--vk-h'),
     ) || 240;
-  const pad = 16;
-  const visibleBottom = window.innerHeight - kbH - pad;
-  const rect = el.getBoundingClientRect();
+  const pad = 24;
+  // Mitte des sichtbaren Bereichs oberhalb der Tastatur
+  const targetCenterY = (window.innerHeight - kbH) / 2;
 
-  // In Dialogen nur den Dialog-Inhalt scrollen — nicht die ganze Seite
   const dialog = el.closest('[data-slot="dialog-content"]');
   if (dialog instanceof HTMLElement) {
-    if (rect.bottom > visibleBottom) {
-      dialog.scrollBy({ top: rect.bottom - visibleBottom + pad, behavior: 'smooth' });
-    } else if (rect.top < dialog.getBoundingClientRect().top + pad) {
-      dialog.scrollBy({
-        top: rect.top - dialog.getBoundingClientRect().top - pad,
-        behavior: 'smooth',
-      });
+    const elRect = el.getBoundingClientRect();
+    const delta = elRect.top + elRect.height / 2 - targetCenterY;
+    if (Math.abs(delta) > 8) {
+      dialog.scrollBy({ top: delta, behavior: 'smooth' });
     }
     return;
   }
 
-  if (rect.bottom > visibleBottom || rect.top < pad) {
-    const delta = rect.top - (visibleBottom + pad) / 2;
+  const elRect = el.getBoundingClientRect();
+  const delta = elRect.top + elRect.height / 2 - targetCenterY;
+  if (Math.abs(delta) > 8) {
     window.scrollBy({ top: delta, behavior: 'smooth' });
   }
 }
@@ -126,6 +123,7 @@ export default function VirtualKeyboardProvider({
   const [open, setOpen] = useState(false);
   const [layout, setLayout] = useState<Layout>('default');
   const [mounted, setMounted] = useState(false);
+  const [scrollToken, setScrollToken] = useState(0);
 
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -164,9 +162,9 @@ export default function VirtualKeyboardProvider({
 
   const openFor = useCallback((el: HTMLInputElement | HTMLTextAreaElement) => {
     if (!shouldUseCustomKeyboard()) return;
-    if (inputRef.current === el && document.body.classList.contains('vk-open')) {
-      return;
-    }
+
+    const alreadyOpenForSame =
+      inputRef.current === el && document.body.classList.contains('vk-open');
 
     if (inputRef.current && inputRef.current !== el) restoreInputMode(inputRef.current);
 
@@ -181,10 +179,12 @@ export default function VirtualKeyboardProvider({
     document.body.classList.add('vk-open');
     document.documentElement.style.setProperty('--vk-h', '240px');
 
-    // Nach Layout der Tastatur zum Feld scrollen
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => scrollInputIntoView(el));
-    });
+    // Immer Scroll anstoßen (auch bei Wechsel auf anderes Feld)
+    setScrollToken(n => n + 1);
+
+    if (alreadyOpenForSame) {
+      // nur Scroll neu planen, Layout schon offen
+    }
   }, []);
 
   const press = useCallback(
@@ -273,13 +273,18 @@ export default function VirtualKeyboardProvider({
     if (pinLock.locked || pinLock.screenOff) close();
   }, [pinLock.locked, pinLock.screenOff, close]);
 
-  // Nach Tastatur-Höhenmessung nochmal scrollen (Dialog/Feld sichtbar halten)
-  useLayoutEffect(() => {
-    if (!open || !inputRef.current) return;
+  // 1s nach Feld-Klick / Tastatur-Öffnen zum Feld scrollen
+  useEffect(() => {
+    if (!open || scrollToken === 0) return;
     const el = inputRef.current;
-    const t = window.setTimeout(() => scrollInputIntoView(el), 50);
+    if (!el) return;
+    const t = window.setTimeout(() => {
+      if (inputRef.current === el && el.isConnected) {
+        scrollInputIntoView(el);
+      }
+    }, 1000);
     return () => window.clearTimeout(t);
-  }, [open]);
+  }, [open, scrollToken]);
 
   const rows = LAYOUTS[layout];
 
