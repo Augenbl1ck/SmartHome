@@ -134,10 +134,13 @@ class AutomationEngine
         $deviceTriggers = [
             'device_status', 'temperature_above', 'temperature_below',
             'humidity_above', 'humidity_below', 'motion', 'door_open', 'door_closed',
+            'flood', 'smoke', 'battery_low', 'power_above',
         ];
         if (in_array($type, $deviceTriggers) && $deviceId && $deviceId !== $device->id) {
             return false;
         }
+
+        $temperature = $this->resolveTemperature($device);
 
         return match ($type) {
             // Gerät ein-/ausgeschaltet (nur bei Zustandswechsel)
@@ -145,15 +148,15 @@ class AutomationEngine
                 $device->status === ($trigger['status'] ?? '')
                 && $previousStatus !== ($trigger['status'] ?? ''),
 
-            // Temperatursensor
+            // Temperatur (Sensor oder Thermostat local_temperature)
             'temperature_above' =>
-                isset($device->attributes['temperature'])
-                && (float) $device->attributes['temperature'] > (float) ($trigger['threshold'] ?? 0)
+                $temperature !== null
+                && $temperature > (float) ($trigger['threshold'] ?? 0)
                 && $this->notOnCooldown("auto:{$deviceId}:temp_above"),
 
             'temperature_below' =>
-                isset($device->attributes['temperature'])
-                && (float) $device->attributes['temperature'] < (float) ($trigger['threshold'] ?? 0)
+                $temperature !== null
+                && $temperature < (float) ($trigger['threshold'] ?? 0)
                 && $this->notOnCooldown("auto:{$deviceId}:temp_below"),
 
             // Luftfeuchtigkeit
@@ -174,6 +177,22 @@ class AutomationEngine
             // Tür-/Fensterkontakt
             'door_open'   => $device->status === 'open'   && $previousStatus !== 'open',
             'door_closed' => $device->status === 'closed' && $previousStatus !== 'closed',
+
+            // Wasser- / Rauchsensor
+            'flood' => $device->status === 'on' && $previousStatus !== 'on',
+            'smoke' => $device->status === 'on' && $previousStatus !== 'on',
+
+            // Batterie niedrig
+            'battery_low' =>
+                isset($device->attributes['battery'])
+                && (float) $device->attributes['battery'] < (float) ($trigger['threshold'] ?? 20)
+                && $this->notOnCooldown("auto:{$deviceId}:battery_low"),
+
+            // Leistungsaufnahme zu hoch
+            'power_above' =>
+                isset($device->attributes['power_w'])
+                && (float) $device->attributes['power_w'] > (float) ($trigger['threshold'] ?? 0)
+                && $this->notOnCooldown("auto:{$deviceId}:power_above"),
 
             default => false,
         };
@@ -204,8 +223,10 @@ class AutomationEngine
                 break;
 
             case 'set_room_devices':
+                // Thermostate bewusst auslassen (Mode/Sollwert nicht per on/off)
                 Device::where('room_id', $action['room_id'] ?? null)
                     ->where('active', true)
+                    ->where('type', '!=', 'thermostat')
                     ->get()
                     ->each(fn ($d) => $this->deviceService->setStatus($d, $action['status'] ?? 'off'));
                 break;
@@ -223,6 +244,25 @@ class AutomationEngine
                 if ($device) {
                     DelayedDeviceAction::dispatch($device->id, 'on')
                         ->delay(now()->addMinutes((int) ($action['minutes'] ?? 10)));
+                }
+                break;
+
+            case 'set_thermostat_setpoint':
+                $device = Device::find($action['device_id'] ?? null);
+                if ($device && $device->type === 'thermostat') {
+                    $setpoint = round((float) ($action['setpoint'] ?? 21), 1);
+                    $setpoint = max(4.0, min(35.0, $setpoint));
+                    $this->deviceService->setStatus($device, (string) $setpoint);
+                }
+                break;
+
+            case 'set_thermostat_mode':
+                $device = Device::find($action['device_id'] ?? null);
+                if ($device && $device->type === 'thermostat') {
+                    $mode = strtolower((string) ($action['mode'] ?? 'heat'));
+                    if (in_array($mode, ['off', 'auto', 'heat'], true)) {
+                        $this->deviceService->setStatus($device, $mode);
+                    }
                 }
                 break;
 
@@ -253,20 +293,39 @@ class AutomationEngine
 
         $deviceName = fn () => optional(Device::find($action['device_id'] ?? null))->name ?? 'Gerät';
 
+        $statusLabel = function () use ($action): string {
+            $status = (string) ($action['status'] ?? '');
+            return match ($status) {
+                'on'    => 'eingeschaltet',
+                'off'   => 'ausgeschaltet',
+                'open'  => 'geöffnet',
+                'close' => 'geschlossen',
+                'stop'  => 'gestoppt',
+                default => $status !== '' ? $status : 'gesetzt',
+            };
+        };
+
         return match ($type) {
-            'set_device_status' => sprintf(
-                '„%s" %s',
-                $deviceName(),
-                ($action['status'] ?? '') === 'on' ? 'eingeschaltet' : 'ausgeschaltet'
-            ),
+            'set_device_status' => sprintf('„%s" %s', $deviceName(), $statusLabel()),
             'toggle_device'     => sprintf('„%s" umgeschaltet', $deviceName()),
             'set_room_devices'  => sprintf(
                 'Raum %s: alle Geräte %s',
                 $action['room_id'] ?? '?',
                 ($action['status'] ?? '') === 'on' ? 'an' : 'aus'
             ),
-            'delayed_off'       => sprintf('„%s" in %d Min. aus', $deviceName(), (int) ($action['minutes'] ?? 0)),
-            'delayed_on'        => sprintf('„%s" in %d Min. an', $deviceName(), (int) ($action['minutes'] ?? 0)),
+            'delayed_off'              => sprintf('„%s" in %d Min. aus', $deviceName(), (int) ($action['minutes'] ?? 0)),
+            'delayed_on'               => sprintf('„%s" in %d Min. an', $deviceName(), (int) ($action['minutes'] ?? 0)),
+            'set_thermostat_setpoint'  => sprintf('„%s" Sollwert %s°C', $deviceName(), $action['setpoint'] ?? '?'),
+            'set_thermostat_mode'      => sprintf(
+                '„%s" Modus %s',
+                $deviceName(),
+                match ((string) ($action['mode'] ?? '')) {
+                    'heat' => 'Heizen',
+                    'off'  => 'Aus',
+                    'auto' => 'Auto',
+                    default => (string) ($action['mode'] ?? '?'),
+                }
+            ),
             'notify'            => (string) ($action['message'] ?? ''),
             default             => $type,
         };
@@ -275,6 +334,29 @@ class AutomationEngine
     // ─────────────────────────────────────────────────────────────────────────
     // Hilfsmethoden
     // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Temperatur aus Sensor- oder Thermostat-Attributen lesen.
+     * Priorität: local_temperature → temperature → numerischer status
+     */
+    private function resolveTemperature(Device $device): ?float
+    {
+        $attrs = $device->attributes ?? [];
+
+        if (isset($attrs['local_temperature']) && is_numeric($attrs['local_temperature'])) {
+            return (float) $attrs['local_temperature'];
+        }
+
+        if (isset($attrs['temperature']) && is_numeric($attrs['temperature'])) {
+            return (float) $attrs['temperature'];
+        }
+
+        if (is_numeric($device->status)) {
+            return (float) $device->status;
+        }
+
+        return null;
+    }
 
     /** Speichert on_since beim Einschalten, entfernt es beim Ausschalten. */
     private function trackOnSince(Device $device, string $previousStatus): void
