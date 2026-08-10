@@ -150,7 +150,7 @@ body.vk-open [data-slot="dialog-overlay"] {
 body.vk-open [data-slot="dialog-content"] {
   top: auto !important;
   /* Weiter unten: nur halbe Tastaturhöhe als Abstand vom unteren Rand */
-  bottom: calc(var(--vk-h, 240px) * 0.5 + 0.5rem) !important;
+  /* bottom: calc(var(--vk-h, 240px) * 0.5 + 0.5rem) !important; */
   left: 50% !important;
   right: auto !important;
   margin: 0 !important;
