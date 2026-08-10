@@ -115,6 +115,17 @@ function scrollInputIntoView(el: HTMLElement) {
   }
 }
 
+function getKeyboardPortalTarget(
+  input: HTMLInputElement | HTMLTextAreaElement | null,
+): HTMLElement | null {
+  if (typeof document === 'undefined') return null;
+  if (input?.closest('[data-slot="dialog-content"]')) {
+    const slot = document.querySelector('[data-slot="dialog-vk-slot"]');
+    if (slot instanceof HTMLElement) return slot;
+  }
+  return document.body;
+}
+
 export default function VirtualKeyboardProvider({
   children,
 }: {
@@ -126,6 +137,7 @@ export default function VirtualKeyboardProvider({
   const [layout, setLayout] = useState<Layout>('default');
   const [mounted, setMounted] = useState(false);
   const [scrollToken, setScrollToken] = useState(0);
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
 
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -136,6 +148,14 @@ export default function VirtualKeyboardProvider({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useLayoutEffect(() => {
+    if (!present) {
+      setPortalTarget(null);
+      return;
+    }
+    setPortalTarget(getKeyboardPortalTarget(inputRef.current) ?? document.body);
+  }, [present, open, scrollToken]);
 
   useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -308,7 +328,7 @@ export default function VirtualKeyboardProvider({
   const rows = LAYOUTS[layout];
 
   const kb =
-    present && mounted
+    present && mounted && portalTarget
       ? createPortal(
           <div
             ref={wrapRef}
@@ -358,7 +378,7 @@ export default function VirtualKeyboardProvider({
               ))}
             </div>
           </div>,
-          document.body,
+          portalTarget,
         )
       : null;
 
