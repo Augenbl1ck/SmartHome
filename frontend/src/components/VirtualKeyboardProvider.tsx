@@ -121,6 +121,8 @@ export default function VirtualKeyboardProvider({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [present, setPresent] = useState(false); // DOM gemountet (inkl. Exit-Animation)
+  const [shown, setShown] = useState(false);     // CSS-Klasse für Slide-In
   const [layout, setLayout] = useState<Layout>('default');
   const [mounted, setMounted] = useState(false);
   const [scrollToken, setScrollToken] = useState(0);
@@ -129,6 +131,7 @@ export default function VirtualKeyboardProvider({
   const wrapRef = useRef<HTMLDivElement>(null);
   const layoutRef = useRef<Layout>('default');
   const pinLock = usePinLockContext();
+  const closingRef = useRef(false);
 
   useEffect(() => {
     setMounted(true);
@@ -137,7 +140,7 @@ export default function VirtualKeyboardProvider({
   useLayoutEffect(() => {
     const el = wrapRef.current;
     if (!open || !el) {
-      document.documentElement.style.removeProperty('--vk-h');
+      if (!present) document.documentElement.style.removeProperty('--vk-h');
       return;
     }
     const measure = () =>
@@ -147,24 +150,45 @@ export default function VirtualKeyboardProvider({
     ro.observe(el);
     return () => {
       ro.disconnect();
-      document.documentElement.style.removeProperty('--vk-h');
     };
-  }, [open]);
+  }, [open, present]);
+
+  // Enter-Animation: erst mounten, dann Klasse setzen
+  useEffect(() => {
+    if (!present || !open) return;
+    closingRef.current = false;
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setShown(true));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [present, open]);
 
   const close = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+
     const el = inputRef.current;
     if (el) restoreInputMode(el);
     inputRef.current = null;
     setOpen(false);
+    setShown(false); // startet Slide-Out
     document.body.classList.remove('vk-open');
     document.documentElement.style.removeProperty('--vk-h');
+
+    // Fallback falls transitionend ausbleibt (reduced-motion etc.)
+    window.setTimeout(() => {
+      if (closingRef.current) setPresent(false);
+    }, 320);
   }, []);
+
+  const onAnimEnd = useCallback((e: React.TransitionEvent<HTMLDivElement>) => {
+    if (e.propertyName !== 'transform') return;
+    if (!open) setPresent(false); // nach Exit unmounten
+  }, [open]);
 
   const openFor = useCallback((el: HTMLInputElement | HTMLTextAreaElement) => {
     if (!shouldUseCustomKeyboard()) return;
-
-    const alreadyOpenForSame =
-      inputRef.current === el && document.body.classList.contains('vk-open');
+    closingRef.current = false;
 
     if (inputRef.current && inputRef.current !== el) restoreInputMode(inputRef.current);
 
@@ -175,16 +199,11 @@ export default function VirtualKeyboardProvider({
     const l = defaultLayout(el);
     layoutRef.current = l;
     setLayout(l);
+    setPresent(true);
     setOpen(true);
     document.body.classList.add('vk-open');
     document.documentElement.style.setProperty('--vk-h', '240px');
-
-    // Immer Scroll anstoßen (auch bei Wechsel auf anderes Feld)
     setScrollToken(n => n + 1);
-
-    if (alreadyOpenForSame) {
-      // nur Scroll neu planen, Layout schon offen
-    }
   }, []);
 
   const press = useCallback(
@@ -282,20 +301,21 @@ export default function VirtualKeyboardProvider({
       if (inputRef.current === el && el.isConnected) {
         scrollInputIntoView(el);
       }
-    }, 1000);
+    }, 200);
     return () => window.clearTimeout(t);
   }, [open, scrollToken]);
 
   const rows = LAYOUTS[layout];
 
   const kb =
-    open && mounted
+    present && mounted
       ? createPortal(
           <div
             ref={wrapRef}
-            className="vk-wrap"
+            className={`vk-wrap${shown ? ' vk-wrap-open' : ''}`}
             data-vk-root
             data-slot="virtual-keyboard"
+            onTransitionEnd={onAnimEnd}
           >
             <div className="vk-toolbar">
               <button
