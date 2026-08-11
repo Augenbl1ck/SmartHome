@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\CalendarController;
 use App\Http\Controllers\Api\PanelSettingsController;
 use App\Http\Controllers\Api\SystemController;
 use App\Http\Controllers\Api\WeatherController;
+use App\Http\Controllers\Api\TransitController;
 use App\Http\Controllers\Api\ZigbeeController;
 use Illuminate\Support\Facades\Route;
 
@@ -65,6 +66,10 @@ Route::prefix('v1')->group(function () {
     // Kalender (FamilyWall / iCal)
     Route::get('calendar/events', [CalendarController::class, 'events']);
 
-    // Wetter (OpenWeatherMap, Stadt aus panel-settings)
+    // Wetter (OpenWeatherMap / Open-Meteo via Frontend; Legacy-Endpoint)
     Route::get('weather', [WeatherController::class, 'show']);
+
+    // Bahn / ÖPNV (v6.db.transport.rest)
+    Route::get('transit/stops', [TransitController::class, 'stops']);
+    Route::get('transit/board', [TransitController::class, 'board']);
 });

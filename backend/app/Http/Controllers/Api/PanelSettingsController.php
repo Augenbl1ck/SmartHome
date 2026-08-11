@@ -18,6 +18,7 @@ class PanelSettingsController extends Controller
         'calendar_ical_url',
         'dashboard_layout',
         'weather',
+        'transit',
         'theme',
         'favorites',
         'scene_snapshots',
@@ -41,6 +42,19 @@ class PanelSettingsController extends Controller
             'weather'           => 'sometimes|nullable|array',
             'weather.city'      => 'sometimes|nullable|string|max:120',
             'weather.unit'      => 'sometimes|nullable|string|in:metric,imperial',
+            'transit'           => 'sometimes|nullable|array',
+            'transit.stations'  => 'sometimes|nullable|array|max:3',
+            'transit.stations.*.id'   => 'required_with:transit.stations|string|max:64',
+            'transit.stations.*.name' => 'required_with:transit.stations|string|max:200',
+            'transit.connections' => 'sometimes|nullable|array|max:3',
+            'transit.connections.*.id' => 'sometimes|nullable|string|max:64',
+            'transit.connections.*.label' => 'sometimes|nullable|string|max:120',
+            'transit.connections.*.from' => 'required_with:transit.connections|array',
+            'transit.connections.*.from.id' => 'required_with:transit.connections|string|max:64',
+            'transit.connections.*.from.name' => 'required_with:transit.connections|string|max:200',
+            'transit.connections.*.to' => 'required_with:transit.connections|array',
+            'transit.connections.*.to.id' => 'required_with:transit.connections|string|max:64',
+            'transit.connections.*.to.name' => 'required_with:transit.connections|string|max:200',
             'theme'             => 'sometimes|nullable|string|in:light,dark,system',
             'favorites'         => 'sometimes|nullable|array',
             'favorites.*'       => 'integer',
@@ -79,6 +93,10 @@ class PanelSettingsController extends Controller
 
         if (array_key_exists('favorites', $data) && is_array($data['favorites'])) {
             $data['favorites'] = array_values(array_unique(array_map('intval', $data['favorites'])));
+        }
+
+        if (array_key_exists('transit', $data)) {
+            $data['transit'] = $this->normalizeTransit(is_array($data['transit']) ? $data['transit'] : null);
         }
 
         foreach (self::KEYS as $key) {
@@ -120,6 +138,9 @@ class PanelSettingsController extends Controller
             $theme = 'system';
         }
 
+        $transitRaw = PanelSetting::getValue('transit');
+        $transit = $this->normalizeTransit(is_array($transitRaw) ? $transitRaw : null);
+
         return [
             'pin_hash'          => PanelSetting::getValue('pin_hash'),
             'pin_enabled'       => (bool) PanelSetting::getValue('pin_enabled', false),
@@ -129,9 +150,69 @@ class PanelSettingsController extends Controller
             'calendar_ical_url' => PanelSetting::getValue('calendar_ical_url') ?: null,
             'dashboard_layout'  => $layout,
             'weather'           => $weather,
+            'transit'           => $transit,
             'theme'             => $theme,
             'favorites'         => array_values(array_map('intval', $favorites)),
             'scene_snapshots'   => $snapshots,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $raw
+     * @return array{
+     *   stations: list<array{id: string, name: string}>,
+     *   connections: list<array{id: string, label: string, from: array{id: string, name: string}, to: array{id: string, name: string}}>
+     * }
+     */
+    private function normalizeTransit(?array $raw): array
+    {
+        if ($raw === null) {
+            return ['stations' => [], 'connections' => []];
+        }
+
+        $stations = [];
+        foreach (array_slice($raw['stations'] ?? [], 0, 3) as $s) {
+            if (!is_array($s)) {
+                continue;
+            }
+            $id = trim((string) ($s['id'] ?? ''));
+            $name = trim((string) ($s['name'] ?? ''));
+            if ($id === '' || $name === '') {
+                continue;
+            }
+            $stations[] = ['id' => $id, 'name' => $name];
+        }
+
+        $connections = [];
+        foreach (array_slice($raw['connections'] ?? [], 0, 3) as $c) {
+            if (!is_array($c)) {
+                continue;
+            }
+            $from = is_array($c['from'] ?? null) ? $c['from'] : [];
+            $to = is_array($c['to'] ?? null) ? $c['to'] : [];
+            $fromId = trim((string) ($from['id'] ?? ''));
+            $fromName = trim((string) ($from['name'] ?? ''));
+            $toId = trim((string) ($to['id'] ?? ''));
+            $toName = trim((string) ($to['name'] ?? ''));
+            if ($fromId === '' || $toId === '' || $fromName === '' || $toName === '') {
+                continue;
+            }
+            $id = trim((string) ($c['id'] ?? ''));
+            if ($id === '') {
+                $id = 'c_' . substr(sha1($fromId . '|' . $toId), 0, 8);
+            }
+            $label = trim((string) ($c['label'] ?? ''));
+            if ($label === '') {
+                $label = $fromName . ' → ' . $toName;
+            }
+            $connections[] = [
+                'id' => $id,
+                'label' => mb_substr($label, 0, 120),
+                'from' => ['id' => $fromId, 'name' => $fromName],
+                'to' => ['id' => $toId, 'name' => $toName],
+            ];
+        }
+
+        return ['stations' => $stations, 'connections' => $connections];
     }
 }

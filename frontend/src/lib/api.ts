@@ -113,6 +113,12 @@ export const api = {
     if (!res.ok) throw new Error(`API error ${res.status}: /api/weather`);
     return res.json() as Promise<WeatherResponse>;
   },
+
+  // Bahn / ÖPNV
+  getTransitStops: (q: string) =>
+    request<{ stops: TransitStop[]; error?: string }>(`/transit/stops?q=${encodeURIComponent(q)}`),
+  getTransitBoard: () =>
+    request<TransitBoardResponse>('/transit/board'),
 };
 
 export interface PanelSettings {
@@ -129,9 +135,80 @@ export interface PanelSettings {
     fields?: { id: string; name: string; deviceIds: number[] }[];
   } | null;
   weather?: { city?: string; unit?: 'metric' | 'imperial' } | null;
+  transit?: TransitConfig | null;
   theme?: 'light' | 'dark' | 'system';
   favorites?: number[];
   scene_snapshots?: Record<string, unknown> | null;
+}
+
+export interface TransitStopRef {
+  id: string;
+  name: string;
+}
+
+export interface TransitStop extends TransitStopRef {
+  type?: string;
+}
+
+export interface TransitConnection {
+  id: string;
+  label: string;
+  from: TransitStopRef;
+  to: TransitStopRef;
+}
+
+export interface TransitConfig {
+  stations: TransitStopRef[];
+  connections: TransitConnection[];
+}
+
+export interface TransitDeparture {
+  line: string;
+  product: string;
+  direction: string;
+  when: string;
+  plannedWhen: string;
+  delay: number | null;
+  cancelled: boolean;
+  platform: string | null;
+}
+
+export interface TransitJourneyLeg {
+  line: string;
+  direction: string;
+  product: string;
+}
+
+export interface TransitJourney {
+  departure: string;
+  arrival: string;
+  durationMin: number | null;
+  changes: number;
+  legs: TransitJourneyLeg[];
+  delay: number | null;
+  cancelled: boolean;
+}
+
+export interface TransitBoardStation {
+  stop: TransitStopRef;
+  departures: TransitDeparture[];
+  error?: string;
+}
+
+export interface TransitBoardConnection {
+  id: string;
+  label: string;
+  from: TransitStopRef;
+  to: TransitStopRef;
+  journeys: TransitJourney[];
+  error?: string;
+}
+
+export interface TransitBoardResponse {
+  configured: boolean;
+  stations: TransitBoardStation[];
+  connections: TransitBoardConnection[];
+  error?: string | null;
 }
 
 export interface CalendarEvent {

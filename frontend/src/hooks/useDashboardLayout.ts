@@ -7,7 +7,7 @@ const FAVORITES_KEY = 'smarthome_favorites';
 const LEGACY_WIDGETS_KEY = 'smarthome_dashboard_widgets';
 const LAYOUT_EVENT = 'smarthome-dashboard-layout';
 
-export type BuiltInSectionId = 'weather' | 'calendar' | 'scenes' | 'rooms';
+export type BuiltInSectionId = 'weather' | 'calendar' | 'transit' | 'scenes' | 'rooms';
 export type SectionId = BuiltInSectionId | `field:${string}`;
 
 export interface DashboardField {
@@ -25,11 +25,11 @@ export interface DashboardLayout {
 
 const DEFAULT_FIELD_ID = 'default-quickaccess';
 
-const BUILTIN_SECTIONS: BuiltInSectionId[] = ['weather', 'calendar', 'scenes', 'rooms'];
+const BUILTIN_SECTIONS: BuiltInSectionId[] = ['weather', 'calendar', 'transit', 'scenes', 'rooms'];
 
 const DEFAULT: DashboardLayout = {
   roomOrder: [],
-  sectionOrder: ['weather', 'calendar', 'scenes', 'rooms', `field:${DEFAULT_FIELD_ID}`],
+  sectionOrder: ['weather', 'calendar', 'transit', 'scenes', 'rooms', `field:${DEFAULT_FIELD_ID}`],
   hiddenSections: [],
   fields: [{ id: DEFAULT_FIELD_ID, name: 'Schnellzugriff', deviceIds: [] }],
 };
@@ -78,9 +78,15 @@ function migrateLegacy(parsed: Partial<DashboardLayout> & { sectionOrder?: strin
     return false;
   }) as SectionId[];
 
-  for (const builtin of ['weather', 'calendar'] as const) {
+  for (const builtin of ['weather', 'calendar', 'transit'] as const) {
     if (!sectionOrder.includes(builtin)) {
-      sectionOrder.unshift(builtin);
+      if (builtin === 'transit') {
+        const calIdx = sectionOrder.indexOf('calendar');
+        if (calIdx >= 0) sectionOrder.splice(calIdx + 1, 0, builtin);
+        else sectionOrder.unshift(builtin);
+      } else {
+        sectionOrder.unshift(builtin);
+      }
     }
   }
 
@@ -217,6 +223,7 @@ export function parseFieldSectionId(sectionId: SectionId): string | null {
 export function sectionLabel(sectionId: SectionId, fields: DashboardField[]): string {
   if (sectionId === 'weather') return 'Wetter';
   if (sectionId === 'calendar') return 'Kalender';
+  if (sectionId === 'transit') return 'Bahn';
   if (sectionId === 'scenes') return 'Szenen';
   if (sectionId === 'rooms') return 'Räume';
   const fieldId = parseFieldSectionId(sectionId);

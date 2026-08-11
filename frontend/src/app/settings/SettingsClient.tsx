@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useTransition, useCallback, useMemo } from 'react';
-import { api, Device, DeviceType, Room, ZigbeeDevice } from '@/lib/api';
+import { api, Device, DeviceType, Room, ZigbeeDevice, type TransitConfig, type TransitConnection, type TransitStop, type TransitStopRef } from '@/lib/api';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { deviceLabels, CUSTOM_COLORS } from '@/lib/devices';
 import { getEcho } from '@/lib/echo';
@@ -17,7 +17,7 @@ import {
   Pencil, Plus, Trash2, Wifi, LockKeyhole, LockKeyholeOpen, Timer,
   ChevronDown, Home, Cpu, Cloud, LayoutDashboard, Search, Loader2, Radio,
   ChevronUp, X, ChevronRight, ArrowLeft, Clapperboard, Zap, Monitor, RefreshCw, Check, Bell, Activity,
-  Eye, EyeOff,
+  Eye, EyeOff, TrainFront,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePinLockContext } from '@/components/PinLockProvider';
@@ -371,7 +371,7 @@ function deviceToForm(d: Device): DeviceForm {
 // ─────────────────────────────────────────────────────────────────
 
 function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms: Room[] }) {
-  const [sectionOrder, setSectionOrder] = useState<SectionId[]>(['weather', 'calendar', 'scenes', 'rooms']);
+  const [sectionOrder, setSectionOrder] = useState<SectionId[]>(['weather', 'calendar', 'transit', 'scenes', 'rooms']);
   const [hiddenSections, setHiddenSections] = useState<SectionId[]>([]);
   const [roomOrder, setRoomOrder] = useState<number[]>([]);
   const [fields, setFields] = useState<DashboardField[]>([]);
@@ -849,11 +849,309 @@ function CalendarSection() {
   );
 }
 
+function newConnectionId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'c_' + Math.random().toString(36).slice(2, 10);
+}
+
+function StationSearch({
+  label,
+  placeholder,
+  onPick,
+  excludeIds,
+}: {
+  label: string;
+  placeholder?: string;
+  onPick: (stop: TransitStopRef) => void;
+  excludeIds?: string[];
+}) {
+  const [q, setQ] = useState('');
+  const [hits, setHits] = useState<TransitStop[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [err, setErr] = useState('');
+  const excludeKey = (excludeIds ?? []).join('|');
+
+  useEffect(() => {
+    const query = q.trim();
+    if (query.length < 2) {
+      setHits([]);
+      setErr('');
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      setSearching(true);
+      setErr('');
+      api.getTransitStops(query)
+        .then(res => {
+          if (cancelled) return;
+          const ex = new Set(excludeKey ? excludeKey.split('|') : []);
+          setHits((res.stops ?? []).filter(s => !ex.has(s.id)));
+          if (res.error) setErr(res.error);
+        })
+        .catch(e => {
+          if (cancelled) return;
+          setHits([]);
+          setErr(e instanceof Error ? e.message : 'Suche fehlgeschlagen');
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [q, excludeKey]);
+
+  return (
+    <div className="space-y-1">
+      <label className="block text-sm font-medium">{label}</label>
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+        <input
+          className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2.5 text-base ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          placeholder={placeholder ?? 'Station suchen…'}
+        />
+        {searching && (
+          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+        )}
+      </div>
+      {err && <p className="text-xs text-destructive">{err}</p>}
+      {hits.length > 0 && (
+        <ul className="rounded-lg border bg-background overflow-hidden max-h-48 overflow-y-auto">
+          {hits.map(h => (
+            <li key={h.id}>
+              <button
+                type="button"
+                className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors"
+                onClick={() => {
+                  onPick({ id: h.id, name: h.name });
+                  setQ('');
+                  setHits([]);
+                }}
+              >
+                {h.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function TransitSection() {
+  const [stations, setStations] = useState<TransitStopRef[]>([]);
+  const [connections, setConnections] = useState<TransitConnection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
+
+  const [from, setFrom] = useState<TransitStopRef | null>(null);
+  const [to, setTo] = useState<TransitStopRef | null>(null);
+  const [label, setLabel] = useState('');
+
+  useEffect(() => {
+    api.getPanelSettings()
+      .then(s => {
+        const t = s.transit;
+        setStations(t?.stations ?? []);
+        setConnections(t?.connections ?? []);
+      })
+      .catch(() => setError('Einstellungen konnten nicht geladen werden'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const persist = async (next: TransitConfig) => {
+    setSaving(true);
+    setError('');
+    try {
+      const res = await api.updatePanelSettings({ transit: next });
+      setStations(res.transit?.stations ?? next.stations);
+      setConnections(res.transit?.connections ?? next.connections);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Speichern fehlgeschlagen');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addStation = (stop: TransitStopRef) => {
+    if (stations.some(s => s.id === stop.id)) return;
+    if (stations.length >= 3) {
+      setError('Maximal 3 Stationen');
+      return;
+    }
+    void persist({ stations: [...stations, stop], connections });
+  };
+
+  const removeStation = (id: string) => {
+    void persist({ stations: stations.filter(s => s.id !== id), connections });
+  };
+
+  const moveStation = (idx: number, dir: -1 | 1) => {
+    const j = idx + dir;
+    if (j < 0 || j >= stations.length) return;
+    const next = stations.slice();
+    const tmp = next[idx]!;
+    next[idx] = next[j]!;
+    next[j] = tmp;
+    void persist({ stations: next, connections });
+  };
+
+  const addConnection = () => {
+    if (!from || !to) {
+      setError('Von und Nach wählen');
+      return;
+    }
+    if (connections.length >= 3) {
+      setError('Maximal 3 Verbindungen');
+      return;
+    }
+    const conn: TransitConnection = {
+      id: newConnectionId(),
+      label: label.trim() || `${from.name} → ${to.name}`,
+      from,
+      to,
+    };
+    void persist({ stations, connections: [...connections, conn] }).then(() => {
+      setFrom(null);
+      setTo(null);
+      setLabel('');
+    });
+  };
+
+  const removeConnection = (id: string) => {
+    void persist({ stations, connections: connections.filter(c => c.id !== id) });
+  };
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl border bg-card p-5 animate-pulse space-y-3">
+        <div className="h-4 bg-muted rounded w-40" />
+        <div className="h-10 bg-muted rounded w-full" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="divide-y rounded-2xl border bg-card overflow-hidden">
+      <div className="px-4 py-3 space-y-3">
+        <div className="flex items-center gap-2">
+          <TrainFront className="h-4 w-4 text-red-600 dark:text-red-400" />
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Bahn / ÖPNV</p>
+        </div>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Stationen für Abfahrtstafeln und gespeicherte Verbindungen (Von→Nach). Max. 3 je Typ. Daten über DB-Fahrplan-API.
+        </p>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        {saved && <p className="text-sm text-emerald-600">✓ Gespeichert</p>}
+      </div>
+
+      <div className="px-4 py-3 space-y-3">
+        <p className="text-sm font-medium">Stationen (Abfahrten)</p>
+        {stations.length > 0 && (
+          <ul className="space-y-1.5">
+            {stations.map((s, i) => (
+              <li key={s.id} className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2">
+                <span className="text-sm flex-1 truncate">{s.name}</span>
+                <button type="button" className="p-1 text-muted-foreground hover:text-foreground" disabled={i === 0 || saving}
+                  onClick={() => moveStation(i, -1)} aria-label="Nach oben">
+                  <ChevronUp className="h-4 w-4" />
+                </button>
+                <button type="button" className="p-1 text-muted-foreground hover:text-foreground" disabled={i === stations.length - 1 || saving}
+                  onClick={() => moveStation(i, 1)} aria-label="Nach unten">
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+                <button type="button" className="p-1 text-destructive" disabled={saving}
+                  onClick={() => removeStation(s.id)} aria-label="Entfernen">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {stations.length < 3 ? (
+          <StationSearch
+            label="Station hinzufügen"
+            placeholder="z.B. Frankfurt Hbf"
+            onPick={addStation}
+            excludeIds={stations.map(s => s.id)}
+          />
+        ) : (
+          <p className="text-xs text-muted-foreground">Maximum von 3 Stationen erreicht</p>
+        )}
+      </div>
+
+      <div className="px-4 py-3 space-y-3">
+        <p className="text-sm font-medium">Verbindungen</p>
+        {connections.length > 0 && (
+          <ul className="space-y-1.5">
+            {connections.map(c => (
+              <li key={c.id} className="flex items-start gap-2 rounded-lg border bg-background px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{c.label}</p>
+                  <p className="text-xs text-muted-foreground truncate">{c.from.name} → {c.to.name}</p>
+                </div>
+                <button type="button" className="p-1 text-destructive shrink-0" disabled={saving}
+                  onClick={() => removeConnection(c.id)} aria-label="Entfernen">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {connections.length < 3 ? (
+          <div className="space-y-3">
+            {from ? (
+              <div className="flex items-center gap-2 text-sm rounded-lg border px-3 py-2 bg-background">
+                <span className="text-muted-foreground shrink-0">Von</span>
+                <span className="flex-1 truncate font-medium">{from.name}</span>
+                <button type="button" onClick={() => setFrom(null)} className="p-1 text-muted-foreground" aria-label="Löschen">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <StationSearch label="Von" placeholder="Startstation" onPick={setFrom} />
+            )}
+            {to ? (
+              <div className="flex items-center gap-2 text-sm rounded-lg border px-3 py-2 bg-background">
+                <span className="text-muted-foreground shrink-0">Nach</span>
+                <span className="flex-1 truncate font-medium">{to.name}</span>
+                <button type="button" onClick={() => setTo(null)} className="p-1 text-muted-foreground" aria-label="Löschen">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <StationSearch label="Nach" placeholder="Zielstation" onPick={setTo} />
+            )}
+            <Field label="Kurzlabel (optional)" value={label} onChange={setLabel} placeholder="z.B. Zur Arbeit" />
+            <Button onClick={addConnection} size="sm" disabled={saving || !from || !to}>
+              {saving ? 'Speichern…' : 'Verbindung speichern'}
+            </Button>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">Maximum von 3 Verbindungen erreicht</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function WidgetsSection() {
   return (
     <div className="space-y-4">
       <WeatherSection />
       <CalendarSection />
+      <TransitSection />
     </div>
   );
 }
@@ -1345,7 +1643,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     if (typeof window === 'undefined') return null;
     try {
       const v = new URLSearchParams(window.location.search).get('view');
-      if (v === 'weather' || v === 'calendar') return 'widgets';
+      if (v === 'weather' || v === 'calendar' || v === 'transit') return 'widgets';
       return v;
     } catch {
       return null;
@@ -1571,7 +1869,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     { id: 'scenes',   icon: Clapperboard, color: 'text-amber-500  bg-amber-500/10',  label: 'Szenen',           desc: 'Szenen verwalten',         href: '/scenes' },
     { id: 'automat',  icon: Zap,          color: 'text-green-500  bg-green-500/10',  label: 'Automationen',     desc: 'Regeln & Zeitpl\u00e4ne',        href: '/automations' },
     { id: 'dashboard',icon: LayoutDashboard, color: 'text-indigo-500 bg-indigo-500/10',label: 'Dashboard',      desc: 'Felder & Anordnung' },
-    { id: 'widgets',  icon: Cloud,        color: 'text-sky-500    bg-sky-500/10',    label: 'Widgets',         desc: 'Wetter & Kalender' },
+    { id: 'widgets',  icon: Cloud,        color: 'text-sky-500    bg-sky-500/10',    label: 'Widgets',         desc: 'Wetter, Kalender & Bahn' },
     { id: 'system',   icon: Activity,     color: 'text-emerald-500 bg-emerald-500/10', label: 'System',         desc: 'CPU-Temp & Status' },
     { id: 'security', icon: LockKeyhole,  color: 'text-orange-500 bg-orange-500/10', label: 'Sicherheit',       desc: 'PIN & Bildschirmsperre' },
     { id: 'kiosk',    icon: Monitor,      color: 'text-teal-500   bg-teal-500/10',   label: 'Kiosk-Modus',      desc: 'Wandbildschirm einrichten' },

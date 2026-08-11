@@ -1,4 +1,4 @@
-import { Automation, AutomationLog, CalendarEventsResponse, Device, PanelSettings, Room, Scene, WeatherResponse } from './api';
+import { Automation, AutomationLog, CalendarEventsResponse, Device, PanelSettings, Room, Scene, TransitBoardResponse, WeatherResponse } from './api';
 import { fetchWeatherData } from './weather-fetch';
 
 const API_BASE = process.env.API_URL ?? 'http://localhost:8000/api/v1';
@@ -57,4 +57,5 @@ export const serverApi = {
     const settings = await serverApi.getPanelSettings();
     return fetchWeatherData(settings);
   },
+  getTransitBoard: () => serverFetch<TransitBoardResponse>('/transit/board'),
 };
