@@ -80,15 +80,54 @@ class DeviceController extends Controller
         $status = $data['status'];
         $this->deviceService->setStatus($device, $status);
 
-        // Thermostat: Solltemperatur gehört in attributes.setpoint,
-        // status bleibt der Modus (off/auto/heat) — sonst zeigt die UI immer "Aktiv".
-        if ($device->type === 'thermostat' && is_numeric($status)) {
+        // Thermostat: Solltemperatur → attributes.setpoint; Caps → attributes; Mode → status
+        if ($device->type === 'thermostat') {
             $attrs = $device->attributes ?? [];
-            $attrs['setpoint'] = (float) $status;
-            $device->update([
-                'attributes' => $attrs,
-                'last_seen'  => now(),
-            ]);
+
+            if (is_numeric($status)) {
+                $attrs['setpoint'] = (float) $status;
+                $device->update([
+                    'attributes' => $attrs,
+                    'last_seen'  => now(),
+                ]);
+            } elseif (str_starts_with($status, 'cap:')) {
+                $cap = \App\Services\ThermostatCapabilities::parseCapStatus($status);
+                if ($cap !== null) {
+                    [$name, $value] = $cap;
+                    if ($name === 'child_lock') {
+                        $attrs['child_lock'] = strtoupper($value);
+                    } elseif ($name === 'open_window') {
+                        $attrs['open_window'] = strtoupper($value);
+                    } elseif ($name === 'local_temperature_calibration' && is_numeric($value)) {
+                        $attrs['local_temperature_calibration'] = (float) $value;
+                    } elseif ($name === 'frost_protection_temperature' && is_numeric($value)) {
+                        $attrs['frost_protection_temperature'] = (float) $value;
+                    }
+                }
+                $device->update([
+                    'attributes' => $attrs,
+                    'last_seen'  => now(),
+                ]);
+            } elseif (in_array(strtolower($status), ['lock', 'unlock'], true)) {
+                $attrs['child_lock'] = strtolower($status) === 'lock' ? 'LOCK' : 'UNLOCK';
+                $device->update([
+                    'attributes' => $attrs,
+                    'last_seen'  => now(),
+                ]);
+            } elseif (in_array(strtolower($status), ['open_window_on', 'open_window_off'], true)) {
+                $attrs['open_window'] = strtolower($status) === 'open_window_on' ? 'ON' : 'OFF';
+                $device->update([
+                    'attributes' => $attrs,
+                    'last_seen'  => now(),
+                ]);
+            } elseif (in_array(strtolower($status), ['off', 'auto', 'heat'], true)) {
+                $device->update([
+                    'status'    => strtolower($status),
+                    'last_seen' => now(),
+                ]);
+            } else {
+                $device->update(['last_seen' => now()]);
+            }
         } else {
             $device->update([
                 'status'    => strtolower($status),

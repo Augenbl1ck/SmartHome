@@ -6,7 +6,7 @@ import { api, Device, Room } from '@/lib/api';
 import { shellyBle, BleState } from '@/lib/bluetooth';
 import { deviceIcons, isSensor, isToggleable, getDeviceColors, getDeviceEmoji } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
-import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Star, ChevronUp, ChevronDown, Square, Minus, Plus, PowerOff, Loader2, Power } from 'lucide-react';
+import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Star, ChevronUp, ChevronDown, Square, Minus, Plus, PowerOff, Loader2, Power, Lock, Unlock, Wind } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import DeviceHistory from '@/components/DeviceHistory';
 import SensorChart from '@/components/SensorChart';
@@ -14,6 +14,15 @@ import ShellyPlugPanel from '@/components/ShellyPlugPanel';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { getEcho } from '@/lib/echo';
 import BleScanDialog from '@/components/BleScanDialog';
+import {
+  encodeCapStatus,
+  isChildLockOn,
+  isOpenWindowOn,
+  getCalibration,
+  getFrostProtection,
+  getRunningStateLabel,
+} from '@/lib/thermostat-capabilities';
+import { Switch } from '@/components/ui/switch';
 
 // Tile-Hintergrundfarbe wenn Gerät aktiv ist (nach Typ)
 function getActiveTileClasses(device: Device): string {
@@ -239,6 +248,24 @@ export default function RoomClient({ room, initialDevices }: Props) {
       setDevices(prev => prev.map(d => d.id === device.id ? { ...d, ...updated } : d));
     } catch {
       setSetpoints(m => new Map(m).set(device.id, current));
+    }
+  };
+
+  const handleThermostatCap = async (device: Device, status: string, optimisticAttrs: Record<string, unknown>) => {
+    if (pending.has(device.id)) return;
+    setPending(p => new Set(p).add(device.id));
+    setDevices(prev => prev.map(d =>
+      d.id === device.id
+        ? { ...d, attributes: { ...(d.attributes ?? {}), ...optimisticAttrs } }
+        : d
+    ));
+    try {
+      const updated = await api.setDeviceStatus(device.id, status);
+      setDevices(prev => prev.map(d => d.id === device.id ? { ...d, ...updated } : d));
+    } catch {
+      setDevices(prev => prev.map(d => d.id === device.id ? device : d));
+    } finally {
+      setPending(p => { const n = new Set(p); n.delete(device.id); return n; });
     }
   };
 
@@ -628,7 +655,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
                   </>
                 )}
 
-                {/* Thermostat: nur Solltemperatur, An/Aus über Header-Button */}
+                {/* Thermostat: Solltemperatur + Capabilities */}
                 {isTherm && (
                   <div className="mt-4 space-y-3">
                     {typeof device.attributes?.local_temperature === 'number' && (
@@ -637,6 +664,11 @@ export default function RoomClient({ room, initialDevices }: Props) {
                         <span className="font-semibold text-foreground">
                           {(device.attributes.local_temperature as number).toFixed(1)}°C
                         </span>
+                        {getRunningStateLabel(device.attributes) && (
+                          <span className="ml-2 text-xs">
+                            ({getRunningStateLabel(device.attributes)})
+                          </span>
+                        )}
                       </p>
                     )}
                     <div>
@@ -654,6 +686,99 @@ export default function RoomClient({ room, initialDevices }: Props) {
                           className="cursor-pointer h-12 w-12 rounded-xl bg-muted hover:bg-accent flex items-center justify-center transition-colors shrink-0" aria-label="+0.5°C">
                           <Plus className="h-5 w-5" />
                         </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 pt-1">
+                      <div className="flex items-center justify-between gap-3 rounded-xl bg-muted/50 px-3 py-2.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {isChildLockOn(device.attributes) ? (
+                            <Lock className="h-4 w-4 text-orange-500 shrink-0" />
+                          ) : (
+                            <Unlock className="h-4 w-4 text-muted-foreground shrink-0" />
+                          )}
+                          <span className="text-sm font-medium truncate">Kindersicherung</span>
+                        </div>
+                        <Switch
+                          checked={isChildLockOn(device.attributes)}
+                          disabled={isDisabled}
+                          onCheckedChange={(on) =>
+                            handleThermostatCap(
+                              device,
+                              encodeCapStatus('child_lock', on ? 'LOCK' : 'UNLOCK'),
+                              { child_lock: on ? 'LOCK' : 'UNLOCK' },
+                            )
+                          }
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3 rounded-xl bg-muted/50 px-3 py-2.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Wind className="h-4 w-4 text-sky-500 shrink-0" />
+                          <span className="text-sm font-medium truncate">Offenes Fenster</span>
+                        </div>
+                        <Switch
+                          checked={isOpenWindowOn(device.attributes)}
+                          disabled={isDisabled}
+                          onCheckedChange={(on) =>
+                            handleThermostatCap(
+                              device,
+                              encodeCapStatus('open_window', on ? 'ON' : 'OFF'),
+                              { open_window: on ? 'ON' : 'OFF' },
+                            )
+                          }
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-xl bg-muted/50 px-3 py-2.5 space-y-1">
+                          <p className="text-xs text-muted-foreground">Kalibrierung (°C)</p>
+                          <input
+                            type="number"
+                            step={0.2}
+                            min={-12.7}
+                            max={12.7}
+                            disabled={isDisabled}
+                            className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm tabular-nums"
+                            defaultValue={getCalibration(device.attributes)}
+                            key={`cal-${device.id}-${getCalibration(device.attributes)}`}
+                            onBlur={(e) => {
+                              const raw = Number(e.target.value);
+                              if (!Number.isFinite(raw)) return;
+                              const val = Math.round(Math.min(12.7, Math.max(-12.7, raw)) * 5) / 5;
+                              if (val === getCalibration(device.attributes)) return;
+                              handleThermostatCap(
+                                device,
+                                encodeCapStatus('local_temperature_calibration', String(val)),
+                                { local_temperature_calibration: val },
+                              );
+                            }}
+                          />
+                        </div>
+                        <div className="rounded-xl bg-muted/50 px-3 py-2.5 space-y-1">
+                          <p className="text-xs text-muted-foreground">Frostschutz (°C)</p>
+                          <input
+                            type="number"
+                            step={0.5}
+                            min={4}
+                            max={35}
+                            disabled={isDisabled}
+                            className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm tabular-nums"
+                            defaultValue={getFrostProtection(device.attributes)}
+                            key={`frost-${device.id}-${getFrostProtection(device.attributes)}`}
+                            onBlur={(e) => {
+                              const raw = Number(e.target.value);
+                              if (!Number.isFinite(raw)) return;
+                              const val = Math.round(Math.min(35, Math.max(4, raw)) * 2) / 2;
+                              if (val === getFrostProtection(device.attributes)) return;
+                              handleThermostatCap(
+                                device,
+                                encodeCapStatus('frost_protection_temperature', String(val)),
+                                { frost_protection_temperature: val },
+                              );
+                            }}
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>

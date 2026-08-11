@@ -236,6 +236,23 @@ class MqttSubscribe extends Command
         if (isset($data['running_state'])) {
             $attrs['running_state'] = strtolower((string) $data['running_state']);
         }
+        if (isset($data['child_lock'])) {
+            $attrs['child_lock'] = strtoupper((string) $data['child_lock']);
+        }
+        if (isset($data['open_window'])) {
+            $ow = $data['open_window'];
+            if (is_bool($ow)) {
+                $attrs['open_window'] = $ow ? 'ON' : 'OFF';
+            } else {
+                $attrs['open_window'] = strtoupper((string) $ow);
+            }
+        }
+        if (isset($data['local_temperature_calibration']) && is_numeric($data['local_temperature_calibration'])) {
+            $attrs['local_temperature_calibration'] = round((float) $data['local_temperature_calibration'], 1);
+        }
+        if (isset($data['frost_protection_temperature']) && is_numeric($data['frost_protection_temperature'])) {
+            $attrs['frost_protection_temperature'] = round((float) $data['frost_protection_temperature'], 1);
+        }
 
         // Tür-/Fensterkontakt
         if (isset($data['contact'])) {

@@ -13,11 +13,10 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
- * AutomationEngine – prüft Auslöser, optionale AND/OR-Bedingungen und führt Aktionen aus.
+ * AutomationEngine – Conditions (AND/OR) + Legacy-Trigger, Aktionen.
  *
- * Wird aufgerufen:
- *   - aus MqttSubscribe nach jedem Gerätestatus-Update (Geräte-Trigger)
- *   - aus dem Scheduler jede Minute (Zeit- + Dauertrigger)
+ * Conditions-Automationen: Auswertung bei Geräte-Update und jede Minute (Rising Edge).
+ * Legacy: klassische Trigger + optionale Conditions.
  */
 class AutomationEngine
 {
@@ -30,15 +29,19 @@ class AutomationEngine
     // Einstiegspunkte
     // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Wird nach jedem Geräteupdate aus MqttSubscribe aufgerufen.
-     */
     public function onDeviceUpdated(Device $device, string $previousStatus): void
     {
         $this->trackOnSince($device, $previousStatus);
 
+        // Neue Conditions-only Automationen
+        $this->evaluateConditionsAutomations();
+
+        // Legacy-Trigger (nicht type=conditions)
         foreach (Automation::where('enabled', true)->get() as $automation) {
-            if (!$this->deviceTriggerFires($automation->trigger, $device, $previousStatus)) {
+            if ($this->isConditionsOnly($automation)) {
+                continue;
+            }
+            if (!$this->deviceTriggerFires($automation->trigger ?? [], $device, $previousStatus)) {
                 continue;
             }
             if (!$this->conditionsPass($automation->conditions)) {
@@ -49,16 +52,20 @@ class AutomationEngine
         }
     }
 
-    /**
-     * Zeitbasierte Trigger – jede Minute vom Scheduler aufgerufen.
-     */
     public function runTimeTriggers(): void
     {
+        // Conditions-only jede Minute
+        $this->evaluateConditionsAutomations();
+
         $time    = now()->format('H:i');
-        $weekday = (int) now()->format('w'); // 0 = Sonntag
+        $weekday = (int) now()->format('w');
 
         foreach (Automation::where('enabled', true)->get() as $automation) {
-            $trigger = $automation->trigger;
+            if ($this->isConditionsOnly($automation)) {
+                continue;
+            }
+
+            $trigger = $automation->trigger ?? [];
             $type    = $trigger['type'] ?? '';
 
             if ($type === 'time' && ($trigger['time'] ?? '') === $time) {
@@ -76,7 +83,7 @@ class AutomationEngine
 
             if ($type === 'weekday_time'
                 && ($trigger['time'] ?? '') === $time
-                && in_array($weekday, $trigger['weekdays'] ?? [])
+                && in_array($weekday, $trigger['weekdays'] ?? [], true)
             ) {
                 $cacheKey = "automation:{$automation->id}:fired:{$time}:{$weekday}";
                 if (Cache::has($cacheKey)) {
@@ -92,9 +99,6 @@ class AutomationEngine
         }
     }
 
-    /**
-     * Prüft "Gerät ist zu lange eingeschaltet"-Trigger – jede Minute.
-     */
     public function checkOnDurationTriggers(): void
     {
         $automations = Automation::where('enabled', true)->get()->filter(
@@ -122,7 +126,7 @@ class AutomationEngine
             }
 
             if ($attrs['on_duration_fired'] ?? false) {
-                continue; // schon ausgelöst, wird bei nächstem Ausschalten zurückgesetzt
+                continue;
             }
 
             $elapsed = (int) now()->diffInMinutes($onSince);
@@ -138,8 +142,47 @@ class AutomationEngine
         }
     }
 
+    /**
+     * Conditions-only: Rising Edge wenn Bedingungen wahr werden.
+     */
+    public function evaluateConditionsAutomations(): void
+    {
+        foreach (Automation::where('enabled', true)->get() as $automation) {
+            if (!$this->isConditionsOnly($automation) || !$this->hasConditionItems($automation)) {
+                continue;
+            }
+
+            $cacheKey = "automation:{$automation->id}:cond_met";
+            $pass     = $this->conditionsPass($automation->conditions);
+
+            if (!$pass) {
+                Cache::forget($cacheKey);
+                continue;
+            }
+
+            if (Cache::has($cacheKey)) {
+                continue;
+            }
+
+            Cache::put($cacheKey, true, now()->addDays(7));
+            Log::info("[AutomationEngine] Conditions-Automation '{$automation->name}' ausgelöst");
+            $this->executeAction($automation->action, $automation->name);
+        }
+    }
+
+    private function isConditionsOnly(Automation $automation): bool
+    {
+        return ($automation->trigger['type'] ?? '') === 'conditions';
+    }
+
+    private function hasConditionItems(Automation $automation): bool
+    {
+        $items = $automation->conditions['items'] ?? null;
+        return is_array($items) && count($items) > 0;
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
-    // Bedingungen (AND/OR) – Zustandsprüfungen, keine Edge-Trigger
+    // Bedingungen (AND/OR)
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
@@ -148,7 +191,7 @@ class AutomationEngine
     public function conditionsPass(?array $conditions): bool
     {
         if (!$conditions || empty($conditions['items']) || !is_array($conditions['items'])) {
-            return true;
+            return true; // Legacy: keine Conditions = ok
         }
 
         $logic = strtolower((string) ($conditions['logic'] ?? 'and'));
@@ -163,7 +206,6 @@ class AutomationEngine
             return false;
         }
 
-        // Default: AND
         foreach ($items as $item) {
             if (!is_array($item) || !$this->evaluateCondition($item)) {
                 return false;
@@ -184,7 +226,11 @@ class AutomationEngine
             'door_closed' => $this->conditionDeviceEquals($condition, 'closed'),
             'motion' => $this->conditionDeviceEquals($condition, 'on'),
             'time_between' => $this->conditionTimeBetween($condition),
+            'time_at' => $this->conditionTimeAt($condition),
             'weekday' => $this->conditionWeekday($condition),
+            'child_lock' => $this->conditionAttrEquals($condition, 'child_lock', strtoupper((string) ($condition['value'] ?? 'LOCK'))),
+            'open_window' => $this->conditionAttrEquals($condition, 'open_window', strtoupper((string) ($condition['value'] ?? 'ON'))),
+            'running_state' => $this->conditionAttrEquals($condition, 'running_state', strtolower((string) ($condition['value'] ?? 'heat'))),
             default => false,
         };
     }
@@ -202,6 +248,20 @@ class AutomationEngine
     {
         $device = Device::find($condition['device_id'] ?? null);
         return $device && $device->status === $status;
+    }
+
+    private function conditionAttrEquals(array $condition, string $attr, string $expected): bool
+    {
+        $device = Device::find($condition['device_id'] ?? null);
+        if (!$device) {
+            return false;
+        }
+        $actual = $device->attributes[$attr] ?? null;
+        if ($actual === null) {
+            return false;
+        }
+        return strtoupper((string) $actual) === strtoupper($expected)
+            || strtolower((string) $actual) === strtolower($expected);
     }
 
     private function conditionTemperature(array $condition, bool $above): bool
@@ -239,12 +299,20 @@ class AutomationEngine
 
         $now = now()->format('H:i');
 
-        // Über Mitternacht: z.B. 22:00–06:00
         if ($from > $to) {
             return $now >= $from || $now <= $to;
         }
 
         return $now >= $from && $now <= $to;
+    }
+
+    private function conditionTimeAt(array $condition): bool
+    {
+        $time = (string) ($condition['time'] ?? '');
+        if ($time === '') {
+            return false;
+        }
+        return now()->format('H:i') === $time;
     }
 
     private function conditionWeekday(array $condition): bool
@@ -258,7 +326,7 @@ class AutomationEngine
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Trigger-Prüfung
+    // Trigger-Prüfung (Legacy)
     // ─────────────────────────────────────────────────────────────────────────
 
     private function deviceTriggerFires(array $trigger, Device $device, string $previousStatus): bool
@@ -266,7 +334,6 @@ class AutomationEngine
         $type     = $trigger['type'] ?? '';
         $deviceId = (int) ($trigger['device_id'] ?? 0);
 
-        // Gerätespezifische Trigger: Gerät muss übereinstimmen
         $deviceTriggers = [
             'device_status', 'temperature_above', 'temperature_below',
             'humidity_above', 'humidity_below', 'motion', 'door_open', 'door_closed',
@@ -279,12 +346,10 @@ class AutomationEngine
         $temperature = $this->resolveTemperature($device);
 
         return match ($type) {
-            // Gerät ein-/ausgeschaltet (nur bei Zustandswechsel)
             'device_status' =>
                 $device->status === ($trigger['status'] ?? '')
                 && $previousStatus !== ($trigger['status'] ?? ''),
 
-            // Temperatur (Sensor oder Thermostat local_temperature)
             'temperature_above' =>
                 $temperature !== null
                 && $temperature > (float) ($trigger['threshold'] ?? 0)
@@ -295,7 +360,6 @@ class AutomationEngine
                 && $temperature < (float) ($trigger['threshold'] ?? 0)
                 && $this->notOnCooldown("auto:{$deviceId}:temp_below"),
 
-            // Luftfeuchtigkeit
             'humidity_above' =>
                 isset($device->attributes['humidity'])
                 && (float) $device->attributes['humidity'] > (float) ($trigger['threshold'] ?? 0)
@@ -306,25 +370,20 @@ class AutomationEngine
                 && (float) $device->attributes['humidity'] < (float) ($trigger['threshold'] ?? 0)
                 && $this->notOnCooldown("auto:{$deviceId}:hum_below"),
 
-            // Bewegungsmelder (nur beim Einschalten)
             'motion' =>
                 $device->status === 'on' && $previousStatus !== 'on',
 
-            // Tür-/Fensterkontakt
             'door_open'   => $device->status === 'open'   && $previousStatus !== 'open',
             'door_closed' => $device->status === 'closed' && $previousStatus !== 'closed',
 
-            // Wasser- / Rauchsensor
             'flood' => $device->status === 'on' && $previousStatus !== 'on',
             'smoke' => $device->status === 'on' && $previousStatus !== 'on',
 
-            // Batterie niedrig
             'battery_low' =>
                 isset($device->attributes['battery'])
                 && (float) $device->attributes['battery'] < (float) ($trigger['threshold'] ?? 20)
                 && $this->notOnCooldown("auto:{$deviceId}:battery_low"),
 
-            // Leistungsaufnahme zu hoch
             'power_above' =>
                 isset($device->attributes['power_w'])
                 && (float) $device->attributes['power_w'] > (float) ($trigger['threshold'] ?? 0)
@@ -359,7 +418,6 @@ class AutomationEngine
                 break;
 
             case 'set_room_devices':
-                // Thermostate bewusst auslassen (Mode/Sollwert nicht per on/off)
                 Device::where('room_id', $action['room_id'] ?? null)
                     ->where('active', true)
                     ->where('type', '!=', 'thermostat')
@@ -402,6 +460,52 @@ class AutomationEngine
                 }
                 break;
 
+            case 'set_thermostat_child_lock':
+                $device = Device::find($action['device_id'] ?? null);
+                if ($device && $device->type === 'thermostat') {
+                    $locked = (bool) ($action['locked'] ?? true);
+                    $this->deviceService->setStatus(
+                        $device,
+                        ThermostatCapabilities::encodeCapStatus('child_lock', $locked ? 'LOCK' : 'UNLOCK')
+                    );
+                }
+                break;
+
+            case 'set_thermostat_open_window':
+                $device = Device::find($action['device_id'] ?? null);
+                if ($device && $device->type === 'thermostat') {
+                    $on = (bool) ($action['enabled'] ?? true);
+                    $this->deviceService->setStatus(
+                        $device,
+                        ThermostatCapabilities::encodeCapStatus('open_window', $on ? 'ON' : 'OFF')
+                    );
+                }
+                break;
+
+            case 'set_thermostat_calibration':
+                $device = Device::find($action['device_id'] ?? null);
+                if ($device && $device->type === 'thermostat') {
+                    $val = round((float) ($action['value'] ?? 0), 1);
+                    $val = max(-12.7, min(12.7, $val));
+                    $this->deviceService->setStatus(
+                        $device,
+                        ThermostatCapabilities::encodeCapStatus('local_temperature_calibration', (string) $val)
+                    );
+                }
+                break;
+
+            case 'set_thermostat_frost_protection':
+                $device = Device::find($action['device_id'] ?? null);
+                if ($device && $device->type === 'thermostat') {
+                    $val = round((float) ($action['value'] ?? 5), 1);
+                    $val = max(4.0, min(35.0, $val));
+                    $this->deviceService->setStatus(
+                        $device,
+                        ThermostatCapabilities::encodeCapStatus('frost_protection_temperature', (string) $val)
+                    );
+                }
+                break;
+
             case 'activate_scene':
                 $scene = Scene::find($action['scene_id'] ?? null);
                 if ($scene) {
@@ -429,7 +533,6 @@ class AutomationEngine
         }
     }
 
-    /** Erzeugt eine lesbare Aktionsbeschreibung für die Frontend-Benachrichtigung. */
     private function describeAction(array $action): string
     {
         $type = $action['type'] ?? '';
@@ -469,6 +572,26 @@ class AutomationEngine
                     default => (string) ($action['mode'] ?? '?'),
                 }
             ),
+            'set_thermostat_child_lock' => sprintf(
+                '„%s" Kindersicherung %s',
+                $deviceName(),
+                ($action['locked'] ?? true) ? 'an' : 'aus'
+            ),
+            'set_thermostat_open_window' => sprintf(
+                '„%s" Offenes-Fenster %s',
+                $deviceName(),
+                ($action['enabled'] ?? true) ? 'an' : 'aus'
+            ),
+            'set_thermostat_calibration' => sprintf(
+                '„%s" Kalibrierung %s°C',
+                $deviceName(),
+                $action['value'] ?? '?'
+            ),
+            'set_thermostat_frost_protection' => sprintf(
+                '„%s" Frostschutz %s°C',
+                $deviceName(),
+                $action['value'] ?? '?'
+            ),
             'activate_scene' => sprintf(
                 'Szene „%s" aktiviert',
                 optional(Scene::find($action['scene_id'] ?? null))->name ?? '?'
@@ -478,14 +601,6 @@ class AutomationEngine
         };
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Hilfsmethoden
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Temperatur aus Sensor- oder Thermostat-Attributen lesen.
-     * Priorität: local_temperature → temperature → numerischer status
-     */
     private function resolveTemperature(Device $device): ?float
     {
         $attrs = $device->attributes ?? [];
@@ -505,7 +620,6 @@ class AutomationEngine
         return null;
     }
 
-    /** Speichert on_since beim Einschalten, entfernt es beim Ausschalten. */
     private function trackOnSince(Device $device, string $previousStatus): void
     {
         $attrs = $device->attributes ?? [];
@@ -520,7 +634,6 @@ class AutomationEngine
         }
     }
 
-    /** Prüft Cooldown für Sensor-Trigger (verhindert Dauerfeuern). 5-Minuten-Sperre. */
     private function notOnCooldown(string $key): bool
     {
         if (Cache::has($key)) {

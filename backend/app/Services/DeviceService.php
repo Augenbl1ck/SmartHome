@@ -136,9 +136,37 @@ class DeviceService
         }
 
         if ($protocol === 'zigbee2mqtt') {
-            // Thermostat / TRV (z.B. SONOFF TRVZB): system_mode + occupied_heating_setpoint
+            // Thermostat / TRV (z.B. SONOFF TRVZB)
             if ($device->type === 'thermostat') {
-                $mode = strtolower($status);
+                // Generisches Capability-Schema: cap:<name>:<value>
+                $cap = ThermostatCapabilities::parseCapStatus($status);
+                if ($cap !== null) {
+                    [$name, $value] = $cap;
+                    $payload = ThermostatCapabilities::mqttPayload($name, $value);
+                    if ($payload !== null) {
+                        return [$base . '/set', json_encode($payload)];
+                    }
+                }
+
+                // Kurzformen
+                $lower = strtolower($status);
+                if ($lower === 'lock' || $lower === 'unlock') {
+                    return [
+                        $base . '/set',
+                        json_encode(ThermostatCapabilities::mqttPayload('child_lock', $lower === 'lock' ? 'LOCK' : 'UNLOCK')),
+                    ];
+                }
+                if ($lower === 'open_window_on' || $lower === 'open_window_off') {
+                    return [
+                        $base . '/set',
+                        json_encode(ThermostatCapabilities::mqttPayload(
+                            'open_window',
+                            $lower === 'open_window_on' ? 'ON' : 'OFF'
+                        )),
+                    ];
+                }
+
+                $mode = $lower;
                 if (in_array($mode, ['off', 'auto', 'heat'], true)) {
                     return [
                         $base . '/set',

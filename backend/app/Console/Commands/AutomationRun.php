@@ -8,7 +8,7 @@ use Illuminate\Console\Command;
 class AutomationRun extends Command
 {
     protected $signature   = 'automations:run';
-    protected $description = 'Zeitbasierte Automationen ausführen (wird jede Minute vom Scheduler aufgerufen)';
+    protected $description = 'Automationen ausführen (Conditions + Legacy-Zeit/Dauer, jede Minute)';
 
     public function handle(AutomationEngine $engine): void
     {
