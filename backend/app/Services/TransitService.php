@@ -5,15 +5,37 @@ namespace App\Services;
 use App\Models\PanelSetting;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use RuntimeException;
 
+/**
+ * DB Navigator / Vendo APIs (app.services-bahn.de).
+ * The public v6.db.transport.rest proxy often returns 503 after HAFAS shutdown.
+ */
 class TransitService
 {
-    private const BASE = 'https://v6.db.transport.rest';
+    private const LOCATIONS_URL = 'https://app.services-bahn.de/mob/location/search';
+
+    private const DEPARTURES_URL = 'https://app.services-bahn.de/mob/bahnhofstafel/abfahrt';
+
+    private const JOURNEYS_URL = 'https://app.services-bahn.de/mob/angebote/fahrplan';
 
     private const LOCATIONS_TTL = 300;
 
     private const BOARD_TTL = 60;
+
+    private const PRODUCTS = [
+        'HOCHGESCHWINDIGKEITSZUEGE',
+        'INTERCITYUNDEUROCITYZUEGE',
+        'INTERREGIOUNDSCHNELLZUEGE',
+        'NAHVERKEHRSONSTIGEZUEGE',
+        'SBAHNEN',
+        'BUSSE',
+        'SCHIFFE',
+        'UBAHN',
+        'STRASSENBAHN',
+        'ANRUFPFLICHTIGEVERKEHRE',
+    ];
 
     /**
      * @return list<array{id: string, name: string, type: string}>
@@ -25,18 +47,18 @@ class TransitService
             return [];
         }
 
-        $cacheKey = 'transit_loc_' . sha1(mb_strtolower($query));
+        $cacheKey = 'transit_loc_v2_' . sha1(mb_strtolower($query));
 
         return Cache::remember($cacheKey, self::LOCATIONS_TTL, function () use ($query) {
-            $res = Http::timeout(15)
-                ->acceptJson()
-                ->get(self::BASE . '/locations', [
-                    'query' => $query,
-                    'results' => 8,
-                    'stops' => 'true',
-                    'addresses' => 'false',
-                    'poi' => 'false',
-                ]);
+            $res = $this->vendoPost(
+                self::LOCATIONS_URL,
+                'application/x.db.vendo.mob.location.v3+json',
+                [
+                    'locationTypes' => ['ST'],
+                    'searchTerm' => $query,
+                    'maxResults' => 8,
+                ],
+            );
 
             if (!$res->successful()) {
                 throw new RuntimeException('Stationssuche fehlgeschlagen (HTTP ' . $res->status() . ')');
@@ -52,16 +74,12 @@ class TransitService
                 if (!is_array($item)) {
                     continue;
                 }
-                $type = (string) ($item['type'] ?? '');
-                if (!in_array($type, ['stop', 'station'], true)) {
-                    continue;
-                }
-                $id = (string) ($item['id'] ?? '');
-                $name = (string) ($item['name'] ?? '');
+                $id = trim((string) ($item['evaNr'] ?? ''));
+                $name = trim((string) ($item['name'] ?? ''));
                 if ($id === '' || $name === '') {
                     continue;
                 }
-                $out[] = ['id' => $id, 'name' => $name, 'type' => $type];
+                $out[] = ['id' => $id, 'name' => $name, 'type' => 'station'];
             }
 
             return $out;
@@ -78,22 +96,27 @@ class TransitService
             return [];
         }
 
-        $cacheKey = 'transit_dep_' . sha1($stopId);
+        $cacheKey = 'transit_dep_v2_' . sha1($stopId);
 
         return Cache::remember($cacheKey, self::BOARD_TTL, function () use ($stopId) {
-            $res = Http::timeout(20)
-                ->acceptJson()
-                ->get(self::BASE . '/stops/' . rawurlencode($stopId) . '/departures', [
-                    'duration' => 60,
-                    'results' => 6,
-                ]);
+            $now = now('Europe/Berlin');
+            $res = $this->vendoPost(
+                self::DEPARTURES_URL,
+                'application/x.db.vendo.mob.bahnhofstafeln.v2+json',
+                [
+                    'anfragezeit' => $now->format('H:i'),
+                    'datum' => $now->format('Y-m-d'),
+                    'ursprungsBahnhofId' => $this->stationLid($stopId),
+                    'verkehrsmittel' => self::PRODUCTS,
+                ],
+            );
 
             if (!$res->successful()) {
                 throw new RuntimeException('Abfahrten nicht ladbar (HTTP ' . $res->status() . ')');
             }
 
             $body = $res->json();
-            $list = is_array($body) ? ($body['departures'] ?? $body) : [];
+            $list = is_array($body) ? ($body['bahnhofstafelAbfahrtPositionen'] ?? []) : [];
             if (!is_array($list)) {
                 return [];
             }
@@ -124,24 +147,49 @@ class TransitService
             return [];
         }
 
-        $cacheKey = 'transit_jny_' . sha1($fromId . '|' . $toId);
+        $cacheKey = 'transit_jny_v2_' . sha1($fromId . '|' . $toId);
 
         return Cache::remember($cacheKey, self::BOARD_TTL, function () use ($fromId, $toId) {
-            $res = Http::timeout(25)
-                ->acceptJson()
-                ->get(self::BASE . '/journeys', [
-                    'from' => $fromId,
-                    'to' => $toId,
-                    'results' => 3,
-                    'stopovers' => 'false',
-                ]);
+            $when = now('Europe/Berlin')->format('Y-m-d\TH:i:s');
+            $res = $this->vendoPost(
+                self::JOURNEYS_URL,
+                'application/x.db.vendo.mob.verbindungssuche.v9+json',
+                [
+                    'autonomeReservierung' => false,
+                    'einstiegsTypList' => ['STANDARD'],
+                    'fahrverguenstigungen' => [
+                        'deutschlandTicketVorhanden' => false,
+                        'nurDeutschlandTicketVerbindungen' => false,
+                    ],
+                    'klasse' => 'KLASSE_2',
+                    'reisendenProfil' => [
+                        'reisende' => [[
+                            'ermaessigungen' => ['KEINE_ERMAESSIGUNG KLASSE_2'],
+                            'reisendenTyp' => 'ERWACHSENER',
+                        ]],
+                    ],
+                    'reservierungsKontingenteVorhanden' => false,
+                    'reiseHin' => [
+                        'wunsch' => [
+                            'abgangsLocationId' => $this->stationLid($fromId),
+                            'zielLocationId' => $this->stationLid($toId),
+                            'alternativeHalteBerechnung' => true,
+                            'verkehrsmittel' => self::PRODUCTS,
+                            'zeitWunsch' => [
+                                'reiseDatum' => $when,
+                                'zeitPunktArt' => 'ABFAHRT',
+                            ],
+                        ],
+                    ],
+                ],
+            );
 
             if (!$res->successful()) {
                 throw new RuntimeException('Verbindungen nicht ladbar (HTTP ' . $res->status() . ')');
             }
 
             $body = $res->json();
-            $list = is_array($body) ? ($body['journeys'] ?? []) : [];
+            $list = is_array($body) ? ($body['verbindungen'] ?? []) : [];
             if (!is_array($list)) {
                 return [];
             }
@@ -151,7 +199,8 @@ class TransitService
                 if (!is_array($row)) {
                     continue;
                 }
-                $mapped = $this->mapJourney($row);
+                $conn = is_array($row['verbindung'] ?? null) ? $row['verbindung'] : $row;
+                $mapped = $this->mapJourney($conn);
                 if ($mapped !== null) {
                     $out[] = $mapped;
                 }
@@ -162,8 +211,6 @@ class TransitService
     }
 
     /**
-     * Board from panel-settings.transit
-     *
      * @return array{
      *   configured: bool,
      *   stations: list<array<string, mixed>>,
@@ -295,40 +342,80 @@ class TransitService
     }
 
     /**
+     * @param  array<string, mixed>  $body
+     */
+    private function vendoPost(string $url, string $contentType, array $body): \Illuminate\Http\Client\Response
+    {
+        return Http::timeout(25)
+            ->withHeaders([
+                'Accept' => $contentType,
+                'Content-Type' => $contentType,
+                'X-Correlation-ID' => (string) Str::uuid() . '_' . (string) Str::uuid(),
+                'User-Agent' => 'SmartHomePanel/1.0',
+            ])
+            ->withBody(json_encode($body, JSON_UNESCAPED_UNICODE), $contentType)
+            ->post($url);
+    }
+
+    private function stationLid(string $evaOrLid): string
+    {
+        if (str_contains($evaOrLid, '@') || str_starts_with($evaOrLid, 'A=')) {
+            return $evaOrLid;
+        }
+
+        return 'A=1@L=' . $evaOrLid . '@';
+    }
+
+    /**
      * @param  array<string, mixed>  $row
      * @return array<string, mixed>|null
      */
     private function mapDeparture(array $row): ?array
     {
-        $line = $row['line'] ?? null;
-        $lineName = '';
-        $product = '';
-        if (is_array($line)) {
-            $lineName = (string) ($line['name'] ?? $line['fahrtNr'] ?? '');
-            $product = (string) ($line['product'] ?? '');
-        }
-        $when = $row['when'] ?? $row['plannedWhen'] ?? null;
+        $planned = $row['abgangsDatum'] ?? null;
+        $when = $row['ezAbgangsDatum'] ?? $planned;
         if (!is_string($when) || $when === '') {
             return null;
         }
-        $planned = is_string($row['plannedWhen'] ?? null) ? $row['plannedWhen'] : $when;
-        $delay = isset($row['delay']) && is_numeric($row['delay']) ? (int) $row['delay'] : null;
-        $cancelled = (bool) ($row['cancelled'] ?? false);
-        $platform = $row['platform'] ?? $row['plannedPlatform'] ?? null;
-        $direction = (string) ($row['direction'] ?? '');
-        if ($direction === '' && is_array($row['destination'] ?? null)) {
-            $direction = (string) ($row['destination']['name'] ?? '');
+        if (!is_string($planned) || $planned === '') {
+            $planned = $when;
         }
 
+        $delay = null;
+        $plannedTs = strtotime($planned);
+        $whenTs = strtotime($when);
+        if ($plannedTs && $whenTs) {
+            $delay = $whenTs - $plannedTs;
+        }
+
+        $line = trim((string) ($row['mitteltext'] ?? $row['kurztext'] ?? ''));
+        if ($line === '') {
+            $line = 'Zug';
+        }
+
+        $notes = $row['echtzeitNotizen'] ?? [];
+        $cancelled = false;
+        if (is_array($notes)) {
+            foreach ($notes as $n) {
+                $text = is_array($n) ? (string) ($n['text'] ?? '') : (string) $n;
+                if (stripos($text, 'entfällt') !== false || stripos($text, 'cancelled') !== false) {
+                    $cancelled = true;
+                    break;
+                }
+            }
+        }
+
+        $platform = $row['gleis'] ?? $row['plattform'] ?? null;
+
         return [
-            'line' => $lineName !== '' ? $lineName : 'Zug',
-            'product' => $product,
-            'direction' => $direction,
+            'line' => $line,
+            'product' => (string) ($row['produktGattung'] ?? $row['kurztext'] ?? ''),
+            'direction' => (string) ($row['richtung'] ?? ''),
             'when' => $when,
             'plannedWhen' => $planned,
             'delay' => $delay,
             'cancelled' => $cancelled,
-            'platform' => $platform !== null ? (string) $platform : null,
+            'platform' => $platform !== null && $platform !== '' ? (string) $platform : null,
         ];
     }
 
@@ -338,67 +425,87 @@ class TransitService
      */
     private function mapJourney(array $row): ?array
     {
-        $legs = is_array($row['legs'] ?? null) ? $row['legs'] : [];
-        if ($legs === []) {
-            return null;
-        }
-
-        $first = $legs[0];
-        $last = $legs[count($legs) - 1];
-        if (!is_array($first) || !is_array($last)) {
-            return null;
-        }
-
-        $departure = $first['departure'] ?? $first['plannedDeparture'] ?? null;
-        $arrival = $last['arrival'] ?? $last['plannedArrival'] ?? null;
-        if (!is_string($departure) || !is_string($arrival)) {
-            return null;
-        }
-
-        $depTs = strtotime($departure);
-        $arrTs = strtotime($arrival);
-        $durationMin = ($depTs && $arrTs && $arrTs >= $depTs)
-            ? (int) round(($arrTs - $depTs) / 60)
-            : null;
-
-        $walkingOrChange = 0;
+        $sections = is_array($row['verbindungsAbschnitte'] ?? null) ? $row['verbindungsAbschnitte'] : [];
+        $firstPt = null;
+        $lastPt = null;
         $legSummaries = [];
-        $delay = null;
-        $cancelled = false;
 
-        foreach ($legs as $leg) {
-            if (!is_array($leg)) {
+        foreach ($sections as $sec) {
+            if (!is_array($sec)) {
                 continue;
             }
-            if (!empty($leg['walking'])) {
-                $walkingOrChange++;
+            $typ = (string) ($sec['typ'] ?? '');
+            if ($typ !== '' && $typ !== 'FAHRZEUG') {
                 continue;
             }
-            $line = is_array($leg['line'] ?? null) ? $leg['line'] : [];
-            $lineName = (string) ($line['name'] ?? '');
-            $dir = (string) ($leg['direction'] ?? '');
-            if ($dir === '' && is_array($leg['destination'] ?? null)) {
-                $dir = (string) ($leg['destination']['name'] ?? '');
+            if ($firstPt === null) {
+                $firstPt = $sec;
             }
+            $lastPt = $sec;
+            $lineName = trim((string) ($sec['mitteltext'] ?? $sec['kurztext'] ?? ''));
             if ($lineName !== '') {
                 $legSummaries[] = [
                     'line' => $lineName,
-                    'direction' => $dir,
-                    'product' => (string) ($line['product'] ?? ''),
+                    'direction' => (string) ($sec['richtung'] ?? ''),
+                    'product' => (string) ($sec['produktGattung'] ?? $sec['kurztext'] ?? ''),
                 ];
-            }
-            if (isset($leg['departureDelay']) && is_numeric($leg['departureDelay'])) {
-                $d = (int) $leg['departureDelay'];
-                $delay = $delay === null ? $d : max($delay, $d);
-            }
-            if (!empty($leg['cancelled'])) {
-                $cancelled = true;
             }
         }
 
-        // changes ≈ public transport legs - 1
-        $ptLegs = count($legSummaries);
-        $changes = max(0, $ptLegs - 1);
+        $plannedDep = is_string($row['abgangsDatum'] ?? null)
+            ? $row['abgangsDatum']
+            : (is_array($firstPt) ? ($firstPt['abgangsDatum'] ?? null) : null);
+        $actualDep = is_string($row['ezAbgangsDatum'] ?? null)
+            ? $row['ezAbgangsDatum']
+            : (is_array($firstPt) ? ($firstPt['ezAbgangsDatum'] ?? $plannedDep) : $plannedDep);
+        $plannedArr = is_string($row['ankunftsDatum'] ?? null)
+            ? $row['ankunftsDatum']
+            : (is_array($lastPt) ? ($lastPt['ankunftsDatum'] ?? null) : null);
+        $actualArr = is_string($row['ezAnkunftsDatum'] ?? null)
+            ? $row['ezAnkunftsDatum']
+            : (is_array($lastPt) ? ($lastPt['ezAnkunftsDatum'] ?? $plannedArr) : $plannedArr);
+
+        $departure = is_string($actualDep) && $actualDep !== '' ? $actualDep : (is_string($plannedDep) ? $plannedDep : null);
+        $arrival = is_string($actualArr) && $actualArr !== '' ? $actualArr : (is_string($plannedArr) ? $plannedArr : null);
+        if ($departure === null || $arrival === null) {
+            return null;
+        }
+
+        $durationMin = null;
+        if (isset($row['reiseDauer']) && is_numeric($row['reiseDauer'])) {
+            $durationMin = (int) round(((int) $row['reiseDauer']) / 60);
+        } else {
+            $depTs = strtotime($departure);
+            $arrTs = strtotime($arrival);
+            if ($depTs && $arrTs && $arrTs >= $depTs) {
+                $durationMin = (int) round(($arrTs - $depTs) / 60);
+            }
+        }
+
+        $changes = isset($row['umstiegeAnzahl']) && is_numeric($row['umstiegeAnzahl'])
+            ? (int) $row['umstiegeAnzahl']
+            : max(0, count($legSummaries) - 1);
+
+        $delay = null;
+        if (is_string($plannedDep) && is_string($actualDep)) {
+            $p = strtotime($plannedDep);
+            $a = strtotime($actualDep);
+            if ($p && $a) {
+                $delay = $a - $p;
+            }
+        }
+
+        $cancelled = false;
+        $notes = $row['echtzeitNotizen'] ?? [];
+        if (is_array($notes)) {
+            foreach ($notes as $n) {
+                $text = is_array($n) ? (string) ($n['text'] ?? '') : (string) $n;
+                if (stripos($text, 'entfällt') !== false || stripos($text, 'cancelled') !== false) {
+                    $cancelled = true;
+                    break;
+                }
+            }
+        }
 
         return [
             'departure' => $departure,
