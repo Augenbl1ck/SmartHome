@@ -170,10 +170,6 @@ export default function WeatherClient({ initial }: Props) {
           </ul>
         </div>
       )}
-
-      <p className="text-[11px] text-center text-muted-foreground pb-2">
-        Wetterdaten: <a href="https://open-meteo.com/" className="underline underline-offset-2" target="_blank" rel="noreferrer">Open-Meteo</a>
-      </p>
     </div>
   );
 }
