@@ -115,7 +115,12 @@ export interface PanelSettings {
   screen_timeout: number;
   kiosk_mode: boolean;
   calendar_ical_url?: string | null;
-  dashboard_layout?: Record<string, unknown> | null;
+  dashboard_layout?: {
+    roomOrder?: number[];
+    sectionOrder?: string[];
+    hiddenSections?: string[];
+    fields?: { id: string; name: string; deviceIds: number[] }[];
+  } | null;
   weather?: { city?: string; unit?: 'metric' | 'imperial' } | null;
   theme?: 'light' | 'dark' | 'system';
   favorites?: number[];

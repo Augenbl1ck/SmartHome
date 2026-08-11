@@ -384,7 +384,12 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
         const s = await api.getPanelSettings();
         if (cancelled) return;
         if (s.dashboard_layout) {
-          await saveDashboardLayout(s.dashboard_layout as unknown as DashboardLayout);
+          await saveDashboardLayout({
+            roomOrder: s.dashboard_layout.roomOrder ?? [],
+            sectionOrder: (s.dashboard_layout.sectionOrder ?? []) as SectionId[],
+            hiddenSections: (s.dashboard_layout.hiddenSections ?? []) as SectionId[],
+            fields: s.dashboard_layout.fields ?? [],
+          });
         }
       } catch { /* */ }
       if (cancelled) return;
