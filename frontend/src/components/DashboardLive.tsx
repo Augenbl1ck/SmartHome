@@ -150,6 +150,9 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes, in
 
   const startEdit = () => {
     try { navigator.vibrate?.(30); } catch { /* */ }
+    // #region agent log
+    fetch('http://127.0.0.1:7707/ingest/a119e08c-94ad-4d21-bb0e-add8dc402a79',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ce13fd'},body:JSON.stringify({sessionId:'ce13fd',runId:'pre-fix',hypothesisId:'B-E',location:'DashboardLive.tsx:startEdit',message:'edit mode entered',data:{pageIndex,pageWidgets:page?.widgets?.length??0,cols},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     setEditing(true);
   };
 
@@ -213,6 +216,9 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes, in
     const dx = e.changedTouches[0].clientX - swipeStart.current.x;
     const dy = e.changedTouches[0].clientY - swipeStart.current.y;
     swipeStart.current = null;
+    // #region agent log
+    fetch('http://127.0.0.1:7707/ingest/a119e08c-94ad-4d21-bb0e-add8dc402a79',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ce13fd'},body:JSON.stringify({sessionId:'ce13fd',runId:'pre-fix',hypothesisId:'B',location:'DashboardLive.tsx:onSwipeEnd',message:'swipe end',data:{dx,dy,editing,pageIndex,pages:layout.pages.length},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy)) return;
     if (dx < 0) goPage(1);
     else goPage(-1);
@@ -345,11 +351,11 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes, in
 
       <div
         ref={pageRef}
-        onTouchStart={onSwipeStart}
-        onTouchEnd={onSwipeEnd}
-        onPointerDown={onBgPointerDown}
-        onPointerUp={onBgPointerUp}
-        onPointerLeave={onBgPointerLeave}
+        onTouchStart={editing ? undefined : onSwipeStart}
+        onTouchEnd={editing ? undefined : onSwipeEnd}
+        onPointerDown={editing ? undefined : onBgPointerDown}
+        onPointerUp={editing ? undefined : onBgPointerUp}
+        onPointerLeave={editing ? undefined : onBgPointerLeave}
       >
         <DashboardGrid
           widgets={page.widgets}

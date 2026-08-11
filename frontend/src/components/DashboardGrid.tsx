@@ -88,6 +88,18 @@ export default function DashboardGrid({
 }: Props) {
   const layout = useMemo(() => toLayout(widgets, cols), [widgets, cols]);
 
+  // #region agent log
+  if (typeof window !== 'undefined') {
+    const el = typeof document !== 'undefined' ? document.querySelector('.react-grid-layout') as HTMLElement | null : null;
+    const firstItem = typeof document !== 'undefined' ? document.querySelector('.react-grid-item') as HTMLElement | null : null;
+    const cssLoaded = typeof document !== 'undefined' && [...document.styleSheets].some(s => {
+      try { return (s.href || '').includes('react-grid-layout') || [...(s.cssRules || [])].some(r => (r as CSSStyleRule).selectorText?.includes('react-grid-item')); }
+      catch { return false; }
+    });
+    fetch('http://127.0.0.1:7707/ingest/a119e08c-94ad-4d21-bb0e-add8dc402a79',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ce13fd'},body:JSON.stringify({sessionId:'ce13fd',runId:'pre-fix',hypothesisId:'A-D',location:'DashboardGrid.tsx:render',message:'grid render state',data:{editable,cols,rowHeight,widgetCount:widgets.length,layoutSample:layout.slice(0,3),widgetsSample:widgets.slice(0,3).map(w=>({id:w.id,x:w.x,y:w.y,w:w.w,h:w.h})),containerWidth:el?.offsetWidth??null,containerHeight:el?.offsetHeight??null,firstItemTransform:firstItem?.style?.transform||null,firstItemWidth:firstItem?.offsetWidth??null,firstItemHeight:firstItem?.offsetHeight??null,cssLoaded,hasReactGridClass:!!el},timestamp:Date.now()})}).catch(()=>{});
+  }
+  // #endregion
+
   const renderBody = (w: GridWidget) => {
     switch (w.kind) {
       case 'clock': return renderers.clock();
@@ -115,13 +127,22 @@ export default function DashboardGrid({
         preventCollision={false}
         useCSSTransforms
         onLayoutChange={(next) => {
+          // #region agent log
+          const first = next[0];
+          fetch('http://127.0.0.1:7707/ingest/a119e08c-94ad-4d21-bb0e-add8dc402a79',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ce13fd'},body:JSON.stringify({sessionId:'ce13fd',runId:'post-fix',hypothesisId:'E',location:'DashboardGrid.tsx:onLayoutChange',message:'layout change after wiggle fix',data:{editable,cols,firstXY:first?{i:first.i,x:first.x,y:first.y,w:first.w,h:first.h}:null,itemCount:next.length,domTransforms:[...document.querySelectorAll('.react-grid-item')].slice(0,4).map(el=>(el as HTMLElement).style.transform||getComputedStyle(el).transform)},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           if (!editable || !onLayoutChange) return;
           onLayoutChange(fromLayout(next, widgets, cols));
+        }}
+        onDragStart={() => {
+          // #region agent log
+          fetch('http://127.0.0.1:7707/ingest/a119e08c-94ad-4d21-bb0e-add8dc402a79',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ce13fd'},body:JSON.stringify({sessionId:'ce13fd',runId:'pre-fix',hypothesisId:'B',location:'DashboardGrid.tsx:onDragStart',message:'drag started',data:{editable,cols},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
         }}
         draggableCancel=".no-drag"
       >
         {widgets.map(w => (
-          <div key={w.id} className={cn(editable && 'animate-[wiggle_0.4s_ease-in-out_infinite]')}>
+          <div key={w.id}>
             <DashboardWidgetChrome
               editable={editable}
               label={widgetLabel(w.kind, fields, w.fieldId)}
