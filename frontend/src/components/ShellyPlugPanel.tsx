@@ -76,7 +76,6 @@ const DEFAULT_CONFIG: Config = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ShellyPlugPanel({ deviceId, mode = 'ble' }: Props) {
-  const [powerExpanded, setPowerExpanded] = useState(false);
   const [expanded,      setExpanded]      = useState(false);
   const [loadingPower,  setLoadingPower]  = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(false);
@@ -195,11 +194,29 @@ export default function ShellyPlugPanel({ deviceId, mode = 'ble' }: Props) {
     }
   };
 
-  const handlePowerExpand = async () => {
-    const next = !powerExpanded;
-    setPowerExpanded(next);
-    if (next && !power) await fetchPower();
-  };
+  // Verbrauch immer laden und periodisch aktualisieren
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async (showSpinner: boolean) => {
+      if (cancelled) return;
+      if (showSpinner) setLoadingPower(true);
+      setPowerError(null);
+      try {
+        const res = await rpc('Switch.GetStatus', { id: 0 });
+        if (!cancelled) setPower(res.result as PowerStatus);
+      } catch (e) {
+        if (!cancelled) setPowerError(e instanceof Error ? e.message : 'Fehler');
+      } finally {
+        if (!cancelled && showSpinner) setLoadingPower(false);
+      }
+    };
+    void tick(true);
+    const id = setInterval(() => { void tick(false); }, 10_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [rpc]);
 
   const fetchConfig = async () => {
     if (configLoaded) return;
@@ -315,40 +332,35 @@ export default function ShellyPlugPanel({ deviceId, mode = 'ble' }: Props) {
   return (
     <div className="mt-2 border-t pt-2 space-y-1">
 
-      {/* ── Verbrauch (eigene Sektion) ───────────────────────────────── */}
-      <button type="button" onClick={handlePowerExpand}
-        className="cursor-pointer flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+      {/* ── Verbrauch (immer sichtbar, Auto-Refresh) ───────────────── */}
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">
         <Zap className="h-3 w-3" />
         Verbrauch
-        {loadingPower
-          ? <Loader2 className="h-3 w-3 animate-spin" />
-          : powerExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-      </button>
+        {loadingPower && !power && <Loader2 className="h-3 w-3 animate-spin" />}
+      </div>
 
-      {powerExpanded && (
-        <div className="mt-1 mb-2">
-          {powerError && (
-            <p className="text-xs text-destructive bg-destructive/10 rounded px-2 py-1 mb-1">{powerError}</p>
-          )}
-          {loadingPower && !power ? (
-            <Spinner label="Verbinde…" />
-          ) : power ? (
-            <div className="grid grid-cols-2 gap-1">
-              <Stat label="Leistung" value={`${power.apower.toFixed(1)} W`} highlight={power.apower > 0} />
-              <Stat label="Spannung" value={`${power.voltage.toFixed(0)} V`} />
-              <Stat label="Strom"    value={`${(power.current * 1000).toFixed(0)} mA`} />
-              {power.temperature && (
-                <Stat label="Chip-Temp" value={`${power.temperature.tC.toFixed(1)} °C`} />
-              )}
-              <button type="button" onClick={fetchPower} disabled={loadingPower}
-                className="cursor-pointer col-span-2 flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-40 mt-0.5">
-                <RefreshCw className={cn('h-2.5 w-2.5', loadingPower && 'animate-spin')} />
-                Aktualisieren
-              </button>
-            </div>
-          ) : null}
-        </div>
-      )}
+      <div className="mt-1 mb-2">
+        {powerError && (
+          <p className="text-xs text-destructive bg-destructive/10 rounded px-2 py-1 mb-1">{powerError}</p>
+        )}
+        {loadingPower && !power ? (
+          <Spinner label="Verbinde…" />
+        ) : power ? (
+          <div className="grid grid-cols-2 gap-1">
+            <Stat label="Leistung" value={`${power.apower.toFixed(1)} W`} highlight={power.apower > 0} />
+            <Stat label="Spannung" value={`${power.voltage.toFixed(0)} V`} />
+            <Stat label="Strom"    value={`${(power.current * 1000).toFixed(0)} mA`} />
+            {power.temperature && (
+              <Stat label="Chip-Temp" value={`${power.temperature.tC.toFixed(1)} °C`} />
+            )}
+            <button type="button" onClick={fetchPower} disabled={loadingPower}
+              className="cursor-pointer col-span-2 flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-40 mt-0.5">
+              <RefreshCw className={cn('h-2.5 w-2.5', loadingPower && 'animate-spin')} />
+              Aktualisieren
+            </button>
+          </div>
+        ) : null}
+      </div>
 
       {/* ── Konfiguration ───────────────────────────────────────────── */}
       <button type="button" onClick={handleExpand}
