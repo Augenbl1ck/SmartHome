@@ -1,7 +1,7 @@
 /**
  * Thermostat-Capabilities (Spiegel zum Backend ThermostatCapabilities).
  * Status-Schema für setDeviceStatus: cap:<name>:<value>
- * Komplex (Boost/Wochenplan/Ventil): api.setThermostatCommand
+ * Boost: api.setThermostatCommand
  */
 
 export type ThermostatCapName =
@@ -44,19 +44,4 @@ export function getRunningStateLabel(attrs?: Record<string, unknown> | null): st
 export function getBoostRemainingMinutes(attrs?: Record<string, unknown> | null): number {
   const n = Number(attrs?.temporary_mode_duration);
   return Number.isFinite(n) && n > 0 ? n : 0;
-}
-
-export function getScheduleDay(
-  attrs: Record<string, unknown> | null | undefined,
-  day: string,
-): string {
-  const key = `weekly_schedule_${day}`;
-  const flat = attrs?.[key];
-  if (typeof flat === 'string') return flat;
-  const nested = attrs?.weekly_schedule;
-  if (nested && typeof nested === 'object' && nested !== null) {
-    const v = (nested as Record<string, unknown>)[day];
-    if (typeof v === 'string') return v;
-  }
-  return '';
 }

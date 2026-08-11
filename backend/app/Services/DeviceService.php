@@ -169,34 +169,6 @@ class DeviceService
                 ];
                 break;
 
-            case 'schedule_day':
-                $day = strtolower((string) ($command['day'] ?? ''));
-                $allowed = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-                if (!in_array($day, $allowed, true)) {
-                    throw new \InvalidArgumentException('Ungültiger Wochentag');
-                }
-                $transitions = trim((string) ($command['transitions'] ?? ''));
-                if ($transitions === '') {
-                    throw new \InvalidArgumentException('transitions erforderlich');
-                }
-                $key = 'weekly_schedule_' . $day;
-                $payload = [$key => $transitions];
-                $attrsPatch = [$key => $transitions];
-                break;
-
-            case 'valve':
-                $opening = max(0, min(100, (int) ($command['opening'] ?? 100)));
-                $closing = max(0, min(100, (int) ($command['closing'] ?? 100)));
-                $payload = [
-                    'valve_opening_degree' => $opening,
-                    'valve_closing_degree' => $closing,
-                ];
-                $attrsPatch = [
-                    'valve_opening_degree' => $opening,
-                    'valve_closing_degree' => $closing,
-                ];
-                break;
-
             default:
                 throw new \InvalidArgumentException('Unbekannter Thermostat-Befehl');
         }

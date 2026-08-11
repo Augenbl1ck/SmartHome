@@ -145,13 +145,9 @@ class DeviceController extends Controller
         }
 
         $data = $request->validate([
-            'command'      => 'required|string|in:boost,timer,clear_boost,schedule_day,valve',
+            'command'      => 'required|string|in:boost,timer,clear_boost',
             'duration'     => 'nullable|integer|min:0|max:1440',
             'temperature'  => 'nullable|numeric|min:4|max:35',
-            'day'          => 'nullable|string|in:sunday,monday,tuesday,wednesday,thursday,friday,saturday',
-            'transitions'  => 'nullable|string|max:255',
-            'opening'      => 'nullable|integer|min:0|max:100',
-            'closing'      => 'nullable|integer|min:0|max:100',
         ]);
 
         try {
