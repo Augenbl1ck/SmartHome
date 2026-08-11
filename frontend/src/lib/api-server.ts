@@ -1,4 +1,5 @@
-import { Automation, AutomationLog, CalendarEventsResponse, Device, Room, Scene } from './api';
+import { Automation, AutomationLog, CalendarEventsResponse, Device, PanelSettings, Room, Scene, WeatherResponse } from './api';
+import { fetchWeatherData } from './weather-fetch';
 
 const API_BASE = process.env.API_URL ?? 'http://localhost:8000/api/v1';
 
@@ -27,6 +28,7 @@ export const serverApi = {
   getAutomations: () => serverFetch<Automation[]>('/automations'),
   getAutomationLogs: () => serverFetch<AutomationLog[]>('/automation-logs'),
   getScenes: () => serverFetch<Scene[]>('/scenes'),
+  getPanelSettings: () => serverFetch<PanelSettings>('/panel-settings'),
   getCalendarEvents: (params?: { from?: string; to?: string }) => {
     const q = new URLSearchParams();
     if (params?.from) q.set('from', params.from);
@@ -49,5 +51,10 @@ export const serverApi = {
     const to = new Date(year, month + 1, 0);
     to.setDate(to.getDate() + 7);
     return serverApi.getCalendarEvents({ from: isoDate(from), to: isoDate(to) });
+  },
+  /** Wetter via OpenWeather + panel-settings (nutzt NEXT_PUBLIC_WEATHER_API_KEY) */
+  getWeather: async (): Promise<WeatherResponse> => {
+    const settings = await serverApi.getPanelSettings();
+    return fetchWeatherData(settings);
   },
 };

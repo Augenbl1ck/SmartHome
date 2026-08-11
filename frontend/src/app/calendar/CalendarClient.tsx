@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api, type CalendarEvent, type CalendarEventsResponse } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -61,6 +62,7 @@ interface Props {
 }
 
 export default function CalendarClient({ initialYear, initialMonth, initial }: Props) {
+  const router = useRouter();
   const today = startOfLocalDay(new Date());
   const [year, setYear] = useState(initialYear);
   const [month, setMonth] = useState(initialMonth);
@@ -127,11 +129,26 @@ export default function CalendarClient({ initialYear, initialMonth, initial }: P
 
   return (
     <div className="max-w-3xl mx-auto flex flex-col gap-4">
+      <div className="sticky top-0 z-30 -mx-4 md:-mx-6 px-4 md:px-6 py-2 flex items-center gap-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <button
+          type="button"
+          onClick={() => router.push('/')}
+          className="cursor-pointer h-14 w-14 rounded-full flex items-center justify-center bg-muted hover:bg-accent transition-colors shrink-0 active:scale-90"
+          aria-label="Zurück"
+        >
+          <ArrowLeft className="h-6 w-6" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-2xl font-bold leading-tight truncate">Kalender</h1>
+          <p className="text-sm text-muted-foreground capitalize truncate">{monthTitle}</p>
+        </div>
+      </div>
+
       <div className="flex items-center gap-2">
         <Button variant="outline" size="icon" onClick={() => goMonth(-1)} aria-label="Vorheriger Monat">
           <ChevronLeft className="h-5 w-5" />
         </Button>
-        <h1 className="flex-1 text-center text-xl font-bold capitalize">{monthTitle}</h1>
+        <p className="flex-1 text-center text-base font-semibold capitalize">{monthTitle}</p>
         <Button variant="outline" size="icon" onClick={() => goMonth(1)} aria-label="Nächster Monat">
           <ChevronRight className="h-5 w-5" />
         </Button>

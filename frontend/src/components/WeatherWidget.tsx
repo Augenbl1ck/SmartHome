@@ -1,39 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Cloud, CloudRain, CloudSnow, Sun, Wind, Droplets, Thermometer, Settings } from 'lucide-react';
 import Link from 'next/link';
+import { Cloud, CloudRain, CloudSnow, Sun, Wind, Droplets, Thermometer } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { api } from '@/lib/api';
-
-const STORAGE_KEY = 'smarthome_weather_cfg';
-const ENV_KEY     = process.env.NEXT_PUBLIC_WEATHER_API_KEY ?? '';
-
-interface WeatherConfig { apiKey: string; city: string; unit: 'metric' | 'imperial' }
-interface WeatherData {
-  temp: number;
-  feelsLike: number;
-  humidity: number;
-  windSpeed: number;
-  description: string;
-  icon: string;
-  city: string;
-}
-
-function configFromStored(stored: { city?: string; unit?: 'metric' | 'imperial' } | null): WeatherConfig | null {
-  const apiKey = ENV_KEY;
-  const city = stored?.city?.trim() ?? '';
-  if (!apiKey) return null;
-  return { apiKey, city, unit: stored?.unit ?? 'metric' };
-}
-
-function loadLocalConfig(): WeatherConfig | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const stored = raw ? JSON.parse(raw) as { city?: string; unit?: 'metric' | 'imperial' } : {};
-    return configFromStored(stored);
-  } catch { return null; }
-}
+import { api, type WeatherCurrent, type WeatherResponse } from '@/lib/api';
 
 function WeatherIcon({ icon, className }: { icon: string; className?: string }) {
   const cls = cn('shrink-0', className);
@@ -44,69 +15,42 @@ function WeatherIcon({ icon, className }: { icon: string; className?: string }) 
   return <Cloud className={cls} />;
 }
 
-export default function WeatherWidget({ compact = false }: { compact?: boolean }) {
-  const [cfg, setCfg]     = useState<WeatherConfig | null>(null);
-  const [data, setData]   = useState<WeatherData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [mounted, setMounted] = useState(false);
+export { WeatherIcon };
+
+interface Props {
+  initial?: WeatherResponse | null;
+  compact?: boolean;
+}
+
+function unitSymbol(unit: string): string {
+  return unit === 'imperial' ? '°F' : '°C';
+}
+
+function windLabel(unit: string): string {
+  return unit === 'imperial' ? 'mph' : 'km/h';
+}
+
+export default function WeatherWidget({ initial = null, compact = false }: Props) {
+  const [weather, setWeather] = useState<WeatherResponse | null>(initial);
 
   useEffect(() => {
-    setMounted(true);
-    setCfg(loadLocalConfig());
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const s = await api.getPanelSettings();
-        if (cancelled) return;
-        if (s.weather && (s.weather.city || s.weather.unit)) {
-          const next = configFromStored(s.weather);
-          if (next) {
-            try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ city: next.city, unit: next.unit })); } catch { /* */ }
-            setCfg(next);
-          }
-          return;
-        }
-        const local = loadLocalConfig();
-        if (local?.city) {
-          await api.updatePanelSettings({ weather: { city: local.city, unit: local.unit } });
-        }
-      } catch { /* keep local */ }
-    })();
-
-    return () => { cancelled = true; };
-  }, []);
+    if (initial) setWeather(initial);
+  }, [initial]);
 
   useEffect(() => {
-    if (!cfg?.apiKey || !cfg?.city) return;
-    setLoading(true);
-    setError(null);
+    const refresh = () => {
+      void api.getWeather().then(setWeather).catch(() => {});
+    };
+    if (!initial) refresh();
+    const t = setInterval(refresh, 10 * 60_000);
+    return () => clearInterval(t);
+  }, [initial]);
 
-    const unit = cfg.unit ?? 'metric';
-    fetch(
-      `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(cfg.city)}&appid=${cfg.apiKey}&units=${unit}&lang=de`
-    )
-      .then(r => {
-        if (!r.ok) throw new Error(r.status === 401 ? 'Ungültiger API-Key' : r.status === 404 ? 'Stadt nicht gefunden' : `Fehler ${r.status}`);
-        return r.json();
-      })
-      .then(d => setData({
-        temp:        Math.round(d.main.temp),
-        feelsLike:   Math.round(d.main.feels_like),
-        humidity:    d.main.humidity,
-        windSpeed:   Math.round(d.wind.speed * 3.6),
-        description: d.weather[0].description,
-        icon:        d.weather[0].icon,
-        city:        d.name,
-      }))
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [cfg]);
-
-  if (!mounted) return null;
-
-  const unit = cfg?.unit === 'imperial' ? '°F' : '°C';
+  const configured = weather?.configured ?? false;
+  const error = weather?.error ?? null;
+  const data: WeatherCurrent | null = weather?.current ?? null;
+  const unit = unitSymbol(weather?.unit ?? 'metric');
+  const wUnit = windLabel(weather?.unit ?? 'metric');
 
   if (compact) {
     if (!data) return null;
@@ -119,9 +63,9 @@ export default function WeatherWidget({ compact = false }: { compact?: boolean }
     );
   }
 
-  if (!cfg?.apiKey || !cfg?.city) {
+  if (!configured) {
     return (
-      <div className="rounded-xl border bg-card p-4 flex items-center gap-3 text-muted-foreground">
+      <div className="rounded-2xl border bg-card p-4 flex items-center gap-3 text-muted-foreground">
         <Cloud className="h-8 w-8 opacity-30 shrink-0" />
         <div className="min-w-0">
           <p className="text-sm font-medium">Stadt noch nicht eingestellt</p>
@@ -133,7 +77,15 @@ export default function WeatherWidget({ compact = false }: { compact?: boolean }
     );
   }
 
-  if (loading) {
+  if (error && !data) {
+    return (
+      <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5">
+        <p className="text-sm text-destructive">{error}</p>
+      </div>
+    );
+  }
+
+  if (!data) {
     return (
       <div className="rounded-2xl border bg-card p-5 flex items-center gap-3 animate-pulse">
         <Cloud className="h-8 w-8 text-muted-foreground/30 shrink-0" />
@@ -145,23 +97,11 @@ export default function WeatherWidget({ compact = false }: { compact?: boolean }
     );
   }
 
-  if (error) {
-    return (
-      <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5 flex items-center justify-between gap-3">
-        <p className="text-sm text-destructive">{error}</p>
-        <Link href="/settings?view=widgets" className="shrink-0">
-          <Settings className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-        </Link>
-      </div>
-    );
-  }
-
-  if (!data) return null;
-
-  const windUnit = cfg?.unit === 'imperial' ? 'mph' : 'km/h';
-
   return (
-    <div className="rounded-2xl border bg-card p-5">
+    <Link
+      href="/weather"
+      className="block rounded-2xl border bg-card p-5 transition-colors hover:bg-accent/40 active:scale-[0.99]"
+    >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
           <WeatherIcon icon={data.icon} className="h-10 w-10 text-amber-500" />
@@ -186,10 +126,10 @@ export default function WeatherWidget({ compact = false }: { compact?: boolean }
           </span>
           <span className="flex items-center gap-1">
             <Wind className="h-3 w-3" />
-            {data.windSpeed} {windUnit}
+            {data.windSpeed} {wUnit}
           </span>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }

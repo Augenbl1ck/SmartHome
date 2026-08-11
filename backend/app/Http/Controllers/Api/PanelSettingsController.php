@@ -66,6 +66,15 @@ class PanelSettingsController extends Controller
                 'city' => isset($data['weather']['city']) ? trim((string) $data['weather']['city']) : '',
                 'unit' => ($data['weather']['unit'] ?? 'metric') === 'imperial' ? 'imperial' : 'metric',
             ];
+            $oldWeather = PanelSetting::getValue('weather');
+            if (is_array($oldWeather)) {
+                $oldCity = trim((string) ($oldWeather['city'] ?? ''));
+                $oldUnit = ($oldWeather['unit'] ?? '') === 'imperial' ? 'imperial' : 'metric';
+                \Illuminate\Support\Facades\Cache::forget('weather_full_' . sha1($oldCity . '|' . $oldUnit));
+            }
+            \Illuminate\Support\Facades\Cache::forget(
+                'weather_full_' . sha1($data['weather']['city'] . '|' . $data['weather']['unit'])
+            );
         }
 
         if (array_key_exists('favorites', $data) && is_array($data['favorites'])) {

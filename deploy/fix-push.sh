@@ -46,6 +46,15 @@ NEXT_PUBLIC_REVERB_HOST=smarthome.local
 NEXT_PUBLIC_VAPID_PUBLIC_KEY=${VAPID_PUB}
 EOF
 
+# Backend-Key spiegeln (SSR/Proxy), falls noch nicht gesetzt
+if ! grep -q "^WEATHER_API_KEY=" backend/.env 2>/dev/null; then
+  echo "WEATHER_API_KEY=a9fbbe7975b1f0ec04c36f83a1ce3ff1" >> backend/.env
+  echo "✅ WEATHER_API_KEY in backend/.env ergänzt"
+elif grep -q '^WEATHER_API_KEY=$' backend/.env 2>/dev/null; then
+  sed -i 's/^WEATHER_API_KEY=.*/WEATHER_API_KEY=a9fbbe7975b1f0ec04c36f83a1ce3ff1/' backend/.env
+  echo "✅ WEATHER_API_KEY in backend/.env gesetzt"
+fi
+
 echo "✅ frontend/.env.local aktualisiert"
 
 echo ""

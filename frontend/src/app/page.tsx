@@ -1,9 +1,9 @@
 import { serverApi } from '@/lib/api-server';
 import DashboardLive from '@/components/DashboardLive';
-import type { CalendarEventsResponse } from '@/lib/api';
+import type { CalendarEventsResponse, WeatherResponse } from '@/lib/api';
 
 export default async function DashboardPage() {
-  const [rooms, devices, scenes, calendar] = await Promise.all([
+  const [rooms, devices, scenes, calendar, weather] = await Promise.all([
     serverApi.getRooms(),
     serverApi.getDevices(),
     serverApi.getScenes(),
@@ -11,6 +11,11 @@ export default async function DashboardPage() {
       events: [],
       configured: false,
       error: 'Kalender nicht erreichbar',
+    })),
+    serverApi.getWeather().catch((): WeatherResponse => ({
+      configured: false,
+      unit: 'metric',
+      error: 'Wetter nicht erreichbar',
     })),
   ]);
 
@@ -20,6 +25,7 @@ export default async function DashboardPage() {
       rooms={rooms}
       initialScenes={scenes}
       initialCalendar={calendar}
+      initialWeather={weather}
     />
   );
 }

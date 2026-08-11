@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { api, Device, DeviceType, Room, Scene, type CalendarEventsResponse } from '@/lib/api';
+import { api, Device, DeviceType, Room, Scene, type CalendarEventsResponse, type WeatherResponse } from '@/lib/api';
 import { isToggleable } from '@/lib/devices';
 import { DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { getEcho } from '@/lib/echo';
@@ -18,13 +18,14 @@ interface Props {
   rooms: Room[];
   initialScenes: Scene[];
   initialCalendar: CalendarEventsResponse;
+  initialWeather: WeatherResponse;
 }
 
 function getFormattedDate(): string {
   return new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
-export default function DashboardLive({ initialDevices, rooms, initialScenes, initialCalendar }: Props) {
+export default function DashboardLive({ initialDevices, rooms, initialScenes, initialCalendar, initialWeather }: Props) {
   // Server-Daten sofort nutzen → keine Farbverzögerung beim ersten Render
   const [devices,  setDevices]  = useState<Device[]>(initialDevices);
   const [mounted,  setMounted]  = useState(false);
@@ -161,7 +162,7 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes, in
 
         if (sectionId === 'weather') return (
           <div key="weather">
-            <WeatherWidget />
+            <WeatherWidget initial={initialWeather} />
           </div>
         );
 

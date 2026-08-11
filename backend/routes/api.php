@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\ShellyRpcController;
 use App\Http\Controllers\Api\CalendarController;
 use App\Http\Controllers\Api\PanelSettingsController;
 use App\Http\Controllers\Api\SystemController;
+use App\Http\Controllers\Api\WeatherController;
 use App\Http\Controllers\Api\ZigbeeController;
 use Illuminate\Support\Facades\Route;
 
@@ -63,4 +64,7 @@ Route::prefix('v1')->group(function () {
 
     // Kalender (FamilyWall / iCal)
     Route::get('calendar/events', [CalendarController::class, 'events']);
+
+    // Wetter (OpenWeatherMap, Stadt aus panel-settings)
+    Route::get('weather', [WeatherController::class, 'show']);
 });

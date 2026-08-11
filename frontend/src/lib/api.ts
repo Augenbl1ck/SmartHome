@@ -106,6 +106,13 @@ export const api = {
     const qs = q.toString();
     return request<CalendarEventsResponse>(`/calendar/events${qs ? `?${qs}` : ''}`);
   },
+
+  // Wetter (Next.js Route → OpenWeather mit NEXT_PUBLIC_WEATHER_API_KEY)
+  getWeather: async () => {
+    const res = await fetch('/api/weather', { cache: 'no-store', headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new Error(`API error ${res.status}: /api/weather`);
+    return res.json() as Promise<WeatherResponse>;
+  },
 };
 
 export interface PanelSettings {
@@ -138,6 +145,54 @@ export interface CalendarEvent {
 export interface CalendarEventsResponse {
   events: CalendarEvent[];
   configured: boolean;
+  error?: string;
+}
+
+export interface WeatherCurrent {
+  temp: number;
+  feelsLike: number;
+  tempMin: number;
+  tempMax: number;
+  humidity: number;
+  pressure: number;
+  windSpeed: number;
+  windDeg: number | null;
+  clouds: number;
+  visibility: number | null;
+  description: string;
+  icon: string;
+  city: string;
+  sunrise: string | null;
+  sunset: string | null;
+}
+
+export interface WeatherHourly {
+  time: string;
+  temp: number;
+  icon: string;
+  description: string;
+  pop: number;
+  humidity: number;
+  windSpeed: number;
+}
+
+export interface WeatherDaily {
+  date: string;
+  tempMin: number;
+  tempMax: number;
+  icon: string;
+  description: string;
+  pop: number;
+  humidity: number;
+  windSpeed: number;
+}
+
+export interface WeatherResponse {
+  configured: boolean;
+  unit: 'metric' | 'imperial' | string;
+  current?: WeatherCurrent;
+  hourly?: WeatherHourly[];
+  daily?: WeatherDaily[];
   error?: string;
 }
 
