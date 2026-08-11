@@ -333,10 +333,21 @@ export default function ShellyPlugPanel({ deviceId, mode = 'ble' }: Props) {
     <div className="mt-2 border-t pt-2 space-y-1">
 
       {/* ── Verbrauch (immer sichtbar, Auto-Refresh) ───────────────── */}
-      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Zap className="h-3 w-3" />
-        Verbrauch
-        {loadingPower && !power && <Loader2 className="h-3 w-3 animate-spin" />}
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <Zap className="h-3 w-3" />
+          Verbrauch
+          {loadingPower && !power && <Loader2 className="h-3 w-3 animate-spin" />}
+        </span>
+        <button
+          type="button"
+          onClick={fetchPower}
+          disabled={loadingPower}
+          className="cursor-pointer flex items-center gap-1 text-[10px] hover:text-foreground disabled:opacity-40"
+        >
+          <RefreshCw className={cn('h-2.5 w-2.5', loadingPower && 'animate-spin')} />
+          Aktualisieren
+        </button>
       </div>
 
       <div className="mt-1 mb-2">
@@ -353,11 +364,6 @@ export default function ShellyPlugPanel({ deviceId, mode = 'ble' }: Props) {
             {power.temperature && (
               <Stat label="Chip-Temp" value={`${power.temperature.tC.toFixed(1)} °C`} />
             )}
-            <button type="button" onClick={fetchPower} disabled={loadingPower}
-              className="cursor-pointer col-span-2 flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-40 mt-0.5">
-              <RefreshCw className={cn('h-2.5 w-2.5', loadingPower && 'animate-spin')} />
-              Aktualisieren
-            </button>
           </div>
         ) : null}
       </div>

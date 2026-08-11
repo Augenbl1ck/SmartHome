@@ -917,9 +917,10 @@ export default function RoomClient({ room, initialDevices }: Props) {
               {/* ── Bottom: History + Timestamp (immer unten) ──── */}
               {(toggleable && !sensor && !isCover || !!device.last_seen) && (
                 <div className="mt-auto pt-2" onClick={e => e.stopPropagation()}>
-                  {toggleable && !sensor && !isCover && (
+                  {/* Verlauf auf Raumseite ausgeblendet */}
+                  {/* {toggleable && !sensor && !isCover && (
                     <DeviceHistory deviceId={device.id} deviceName={device.name} />
-                  )}
+                  )} */}
                   {device.last_seen && (
                     <p className="text-xs text-muted-foreground/50 mt-1 select-none">
                       {formatLastSeen(device.last_seen)}
