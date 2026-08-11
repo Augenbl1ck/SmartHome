@@ -16,6 +16,14 @@ function isSameDay(a: Date, b: Date): boolean {
     && a.getDate() === b.getDate();
 }
 
+/** Local YYYY-MM-DD — toISOString() shifts the day in CET/CEST. */
+function isoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
@@ -52,8 +60,8 @@ export default function CalendarWidget({ initial = null }: Props) {
       const to = new Date(from);
       to.setDate(to.getDate() + 14);
       const res = await api.getCalendarEvents({
-        from: from.toISOString().slice(0, 10),
-        to: to.toISOString().slice(0, 10),
+        from: isoDate(from),
+        to: isoDate(to),
       });
       setConfigured(res.configured);
       setError(res.error ?? null);
@@ -68,18 +76,30 @@ export default function CalendarWidget({ initial = null }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!initial) load();
+    // Always refresh on mount so RRULE expansions from the API are not stuck on stale SSR.
+    void load();
     const t = setInterval(load, 15 * 60_000);
     return () => clearInterval(t);
-  }, [load, initial]);
+  }, [load]);
 
   const now = new Date();
+  const today = startOfLocalDay(now);
+  const horizon = new Date(today);
+  horizon.setDate(horizon.getDate() + 14);
+  horizon.setHours(23, 59, 59, 999);
+
+  // Like the full calendar: include all of today (even if already ended) + upcoming in range.
   const upcoming = events.filter(ev => {
-    const end = ev.end ? new Date(ev.end) : new Date(ev.start);
-    return end >= now || (ev.all_day && isSameDay(new Date(ev.start), startOfLocalDay(now)));
+    const start = new Date(ev.start);
+    const end = ev.end ? new Date(ev.end) : start;
+    return end >= today && start <= horizon;
   });
-  const todayEvents = upcoming.filter(ev => isSameDay(new Date(ev.start), startOfLocalDay(now)));
-  const nextUp = upcoming.slice(0, 6);
+  const todayEvents = upcoming.filter(ev => {
+    const start = startOfLocalDay(new Date(ev.start));
+    const end = ev.end ? startOfLocalDay(new Date(ev.end)) : start;
+    return start <= today && end >= today;
+  });
+  const nextUp = upcoming.slice(0, 8);
 
   if (!configured) {
     return (
@@ -143,7 +163,7 @@ export default function CalendarWidget({ initial = null }: Props) {
                 )}
                 <div className={cn(
                   'flex items-start gap-3 rounded-xl px-2.5 py-2',
-                  isSameDay(day, startOfLocalDay(now)) && 'bg-violet-500/8',
+                  isSameDay(day, today) && 'bg-violet-500/8',
                 )}>
                   <span className="text-xs tabular-nums text-muted-foreground w-[4.5rem] shrink-0 pt-0.5">
                     {eventTimeLabel(ev)}

@@ -246,7 +246,7 @@ class CalendarService
     private function expandRrule(Carbon $dtStart, array $rrule, Carbon $from, Carbon $to, array $exdates): array
     {
         $occurrences = [];
-        $countLimit = $rrule['count'] ?? 500;
+        $countLimit = $rrule['count'] ?? PHP_INT_MAX;
         $until = $rrule['until'];
         $interval = $rrule['interval'];
         $freq = $rrule['freq'];
@@ -256,16 +256,19 @@ class CalendarService
             $windowEnd = $until->copy();
         }
 
-        // Don't expand infinitely before window
         $cursor = $dtStart->copy();
-        $emitted = 0;
-        $guard = 0;
-        $maxGuard = 2000;
+        // Jump close to the visible window so old series still expand in short ranges (widget = 14 Tage).
+        $this->fastForwardCursor($cursor, $dtStart, $from, $freq, $interval);
 
-        while ($emitted < $countLimit && $guard < $maxGuard) {
+        $inWindow = 0;
+        $guard = 0;
+        $maxGuard = 5000;
+        $maxInWindow = 500;
+
+        while ($inWindow < $maxInWindow && $guard < $maxGuard) {
             $guard++;
 
-            if ($cursor->gt($windowEnd)) {
+            if ($cursor->gt($windowEnd->copy()->addWeek())) {
                 break;
             }
 
@@ -287,16 +290,19 @@ class CalendarService
 
                 // COUNT applies to series from DTSTART, including before window
                 $seriesIndex = $this->estimateSeriesIndex($dtStart, $cand, $freq, $interval, $rrule['byday']);
-                if ($rrule['count'] !== null && $seriesIndex >= $rrule['count']) {
+                if ($countLimit !== PHP_INT_MAX && $seriesIndex >= $countLimit) {
                     continue;
                 }
 
-                if ($cand->lte($to) && ($cand->copy()->endOfDay()->gte($from) || $cand->gte($from))) {
-                    $key = $cand->format('YmdHis');
-                    if (!isset($occurrences[$key])) {
-                        $occurrences[$key] = $cand->copy();
-                        $emitted++;
-                    }
+                $overlapsWindow = $cand->lte($to) && ($cand->copy()->endOfDay()->gte($from) || $cand->gte($from));
+                if (!$overlapsWindow) {
+                    continue;
+                }
+
+                $key = $cand->format('YmdHis');
+                if (!isset($occurrences[$key])) {
+                    $occurrences[$key] = $cand->copy();
+                    $inWindow++;
                 }
             }
 
@@ -310,20 +316,60 @@ class CalendarService
             } else {
                 $cursor->addDays($interval);
             }
-
-            // Skip far past if still before window (optimization)
-            if ($cursor->copy()->endOfDay()->lt($from) && $freq === 'DAILY') {
-                $days = $from->diffInDays($cursor);
-                if ($days > $interval) {
-                    $steps = intdiv((int) $days, $interval);
-                    $cursor->addDays($steps * $interval);
-                }
-            }
         }
 
         ksort($occurrences);
 
         return array_values($occurrences);
+    }
+
+    /**
+     * Move cursor forward in INTERVAL steps to just before $from (keeps alignment with DTSTART).
+     */
+    private function fastForwardCursor(Carbon $cursor, Carbon $dtStart, Carbon $from, string $freq, int $interval): void
+    {
+        if (!$cursor->copy()->endOfDay()->lt($from)) {
+            return;
+        }
+
+        $interval = max(1, $interval);
+
+        if ($freq === 'WEEKLY') {
+            $weeks = (int) floor($dtStart->diffInDays($from) / 7);
+            $steps = intdiv(max(0, $weeks - 1), $interval);
+            if ($steps > 0) {
+                $cursor->addWeeks($steps * $interval);
+            }
+
+            return;
+        }
+
+        if ($freq === 'MONTHLY') {
+            $months = ($from->year - $dtStart->year) * 12 + ($from->month - $dtStart->month);
+            $steps = intdiv(max(0, $months - 1), $interval);
+            if ($steps > 0) {
+                $cursor->addMonthsNoOverflow($steps * $interval);
+            }
+
+            return;
+        }
+
+        if ($freq === 'YEARLY') {
+            $years = $from->year - $dtStart->year;
+            $steps = intdiv(max(0, $years - 1), $interval);
+            if ($steps > 0) {
+                $cursor->addYears($steps * $interval);
+            }
+
+            return;
+        }
+
+        // DAILY (default)
+        $days = (int) $dtStart->diffInDays($from);
+        $steps = intdiv(max(0, $days - 1), $interval);
+        if ($steps > 0) {
+            $cursor->addDays($steps * $interval);
+        }
     }
 
     /**
