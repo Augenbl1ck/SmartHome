@@ -32,6 +32,8 @@ export interface DashboardPage {
 
 export interface DashboardLayout {
   version: 2;
+  /** Canonical column count used for stored widget coords (always GRID_COLS). */
+  gridCols: number;
   cols: { sm: number; md: number };
   activePageId: string;
   pages: DashboardPage[];
@@ -46,24 +48,29 @@ type SectionId = BuiltInSectionId | `field:${string}`;
 const DEFAULT_FIELD_ID = 'default-quickaccess';
 const HOME_PAGE_ID = 'page-home';
 
+/** Fine Android-like home grid (stored + rendered). */
+export const GRID_COLS = 12;
+export const GRID_ROW_HEIGHT = 40;
+export const GRID_MARGIN: [number, number] = [6, 6];
+
 export const WIDGET_SIZE_LIMITS: Record<WidgetKind, { minW: number; minH: number; maxW: number; maxH: number }> = {
-  clock: { minW: 2, minH: 1, maxW: 8, maxH: 3 },
-  weather: { minW: 2, minH: 2, maxW: 4, maxH: 3 },
-  calendar: { minW: 2, minH: 2, maxW: 4, maxH: 5 },
-  scenes: { minW: 2, minH: 2, maxW: 8, maxH: 3 },
-  rooms: { minW: 2, minH: 3, maxW: 8, maxH: 8 },
-  field: { minW: 2, minH: 2, maxW: 8, maxH: 6 },
+  clock: { minW: 4, minH: 2, maxW: 12, maxH: 5 },
+  weather: { minW: 3, minH: 3, maxW: 8, maxH: 6 },
+  calendar: { minW: 3, minH: 4, maxW: 8, maxH: 12 },
+  scenes: { minW: 4, minH: 3, maxW: 12, maxH: 6 },
+  rooms: { minW: 4, minH: 5, maxW: 12, maxH: 16 },
+  field: { minW: 3, minH: 3, maxW: 12, maxH: 12 },
 };
 
 export function defaultWidgetsForPage(fields: DashboardField[]): GridWidget[] {
   const widgets: GridWidget[] = [
-    { id: 'clock', kind: 'clock', x: 0, y: 0, w: 4, h: 2 },
-    { id: 'weather', kind: 'weather', x: 0, y: 2, w: 2, h: 2 },
-    { id: 'calendar', kind: 'calendar', x: 2, y: 2, w: 2, h: 3 },
-    { id: 'scenes', kind: 'scenes', x: 0, y: 5, w: 4, h: 2 },
-    { id: 'rooms', kind: 'rooms', x: 0, y: 7, w: 4, h: 4 },
+    { id: 'clock', kind: 'clock', x: 0, y: 0, w: 12, h: 3 },
+    { id: 'weather', kind: 'weather', x: 0, y: 3, w: 6, h: 4 },
+    { id: 'calendar', kind: 'calendar', x: 6, y: 3, w: 6, h: 5 },
+    { id: 'scenes', kind: 'scenes', x: 0, y: 8, w: 12, h: 3 },
+    { id: 'rooms', kind: 'rooms', x: 0, y: 11, w: 12, h: 7 },
   ];
-  let y = 11;
+  let y = 18;
   for (const f of fields) {
     widgets.push({
       id: `field:${f.id}`,
@@ -71,10 +78,10 @@ export function defaultWidgetsForPage(fields: DashboardField[]): GridWidget[] {
       fieldId: f.id,
       x: 0,
       y,
-      w: 4,
-      h: 3,
+      w: 12,
+      h: 5,
     });
-    y += 3;
+    y += 5;
   }
   return widgets;
 }
@@ -90,11 +97,50 @@ function createDefaultLayout(): DashboardLayout {
   };
   return {
     version: 2,
-    cols: { sm: 4, md: 8 },
+    gridCols: GRID_COLS,
+    cols: { sm: GRID_COLS, md: GRID_COLS },
     activePageId: HOME_PAGE_ID,
     pages: [page],
     fields,
     roomOrder: [],
+  };
+}
+
+/** Scale legacy 4-col layouts to 12-col + finer rows (h/y ×2). */
+function scaleWidgetsToGridCols(widgets: GridWidget[], fromCols: number): GridWidget[] {
+  if (fromCols === GRID_COLS) return widgets;
+  const sx = GRID_COLS / fromCols;
+  const sy = 2;
+  return widgets.map(w => {
+    const limits = WIDGET_SIZE_LIMITS[w.kind] ?? { minW: 1, minH: 1, maxW: GRID_COLS, maxH: 20 };
+    return {
+      ...w,
+      x: Math.min(GRID_COLS - 1, Math.round(w.x * sx)),
+      y: Math.round(w.y * sy),
+      w: Math.min(GRID_COLS, Math.max(limits.minW, Math.round(w.w * sx))),
+      h: Math.max(limits.minH, Math.round(w.h * sy)),
+    };
+  });
+}
+
+function ensureFineGrid(layout: DashboardLayout): DashboardLayout {
+  // Stored coords were always 4-col until gridCols was introduced; ignore legacy cols.md=8 (display-only).
+  const fromCols = layout.gridCols ?? 4;
+  if (fromCols === GRID_COLS) {
+    return {
+      ...layout,
+      gridCols: GRID_COLS,
+      cols: { sm: GRID_COLS, md: GRID_COLS },
+    };
+  }
+  return {
+    ...layout,
+    gridCols: GRID_COLS,
+    cols: { sm: GRID_COLS, md: GRID_COLS },
+    pages: layout.pages.map(p => ({
+      ...p,
+      widgets: scaleWidgetsToGridCols(p.widgets, fromCols),
+    })),
   };
 }
 
@@ -134,7 +180,7 @@ function migrateFromV1(parsed: Record<string, unknown>): DashboardLayout {
     y += h;
   };
 
-  // Always include clock first
+  // Always include clock first (legacy 4-col sizes; scaled in ensureFineGrid)
   place('clock', 'clock', 4, 2);
 
   const order = sectionOrder.length > 0
@@ -166,14 +212,15 @@ function migrateFromV1(parsed: Record<string, unknown>): DashboardLayout {
   }
 
   const page: DashboardPage = { id: HOME_PAGE_ID, name: 'Home', widgets };
-  return {
+  return ensureFineGrid({
     version: 2,
-    cols: { sm: 4, md: 8 },
+    gridCols: 4,
+    cols: { sm: 4, md: 4 },
     activePageId: HOME_PAGE_ID,
     pages: [page],
     fields,
     roomOrder: Array.isArray(parsed.roomOrder) ? parsed.roomOrder as number[] : [],
-  };
+  });
 }
 
 function normalizeV2(parsed: Partial<DashboardLayout>): DashboardLayout {
@@ -186,14 +233,15 @@ function normalizeV2(parsed: Partial<DashboardLayout>): DashboardLayout {
     ? (parsed.activePageId as string)
     : pages[0].id;
 
-  return {
+  return ensureFineGrid({
     version: 2,
-    cols: parsed.cols ?? base.cols,
+    gridCols: parsed.gridCols ?? 4,
+    cols: parsed.cols ?? { sm: 4, md: 8 },
     activePageId,
     pages,
     fields,
     roomOrder: Array.isArray(parsed.roomOrder) ? parsed.roomOrder : [],
-  };
+  });
 }
 
 function load(): DashboardLayout {
@@ -202,7 +250,12 @@ function load(): DashboardLayout {
     if (!raw) return createDefaultLayout();
     const p = JSON.parse(raw) as Record<string, unknown>;
     if (p.version === 2 && Array.isArray(p.pages)) {
-      return normalizeV2(p as Partial<DashboardLayout>);
+      const next = normalizeV2(p as Partial<DashboardLayout>);
+      // Persist migration so coords stay stable across reloads
+      if ((p as { gridCols?: number }).gridCols !== GRID_COLS) {
+        try { localStorage.setItem(DASHBOARD_LAYOUT_KEY, JSON.stringify(next)); } catch { /* */ }
+      }
+      return next;
     }
     return migrateFromV1(p);
   } catch {

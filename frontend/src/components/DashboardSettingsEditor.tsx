@@ -46,19 +46,11 @@ export default function DashboardSettingsEditor({
   const [pageId, setPageId] = useState<string>('');
   const [expandedField, setExpandedField] = useState<string | null>(null);
   const [renamingPage, setRenamingPage] = useState(false);
-  const [cols, setCols] = useState(4);
 
   useEffect(() => {
     const l = loadDashboardLayout();
     setLayout(l);
     setPageId(l.activePageId || l.pages[0]?.id || '');
-  }, []);
-
-  useEffect(() => {
-    const onResize = () => setCols(window.innerWidth >= 768 ? 8 : 4);
-    onResize();
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   const persist = (next: DashboardLayout) => {
@@ -85,13 +77,22 @@ export default function DashboardSettingsEditor({
     if (!layout || !page) return;
     if (kindAlreadyOnPage(page.widgets, kind)) return;
     const limits = WIDGET_SIZE_LIMITS[kind];
+    const defaults: Record<WidgetKind, { w: number; h: number }> = {
+      clock: { w: 12, h: 3 },
+      weather: { w: 6, h: 4 },
+      calendar: { w: 6, h: 5 },
+      scenes: { w: 12, h: 3 },
+      rooms: { w: 12, h: 7 },
+      field: { w: 12, h: 5 },
+    };
+    const d = defaults[kind];
     const w: GridWidget = {
       id: kind,
       kind,
       x: 0,
       y: nextY(page.widgets),
-      w: Math.min(4, limits.maxW),
-      h: limits.minH,
+      w: Math.min(Math.max(d.w, limits.minW), limits.maxW),
+      h: Math.min(Math.max(d.h, limits.minH), limits.maxH),
     };
     updatePageWidgets([...page.widgets, w]);
   };
@@ -106,8 +107,8 @@ export default function DashboardSettingsEditor({
       fieldId: id,
       x: 0,
       y: nextY(page.widgets),
-      w: 4,
-      h: 3,
+      w: 12,
+      h: 5,
     };
     persist({
       ...layout,
@@ -133,6 +134,27 @@ export default function DashboardSettingsEditor({
       activePageId: id,
     });
     setPageId(id);
+  };
+
+  const resetPageLayout = () => {
+    if (!layout || !page) return;
+    const widgets = defaultWidgetsForPage(
+      layout.fields.filter(f => page.widgets.some(w => w.fieldId === f.id || w.id === `field:${f.id}`)),
+    );
+    // Keep field widgets that exist on this page; rebuild builtins
+    const fieldWidgets = page.widgets.filter(w => w.kind === 'field');
+    let y = 0;
+    const builtins = defaultWidgetsForPage([]).filter(w => w.kind !== 'field').map(w => {
+      const next = { ...w, y };
+      y += w.h;
+      return next;
+    });
+    for (const fw of fieldWidgets) {
+      const h = Math.max(fw.h, 5);
+      builtins.push({ ...fw, x: 0, y, w: 12, h });
+      y += h;
+    }
+    updatePageWidgets(builtins.length ? builtins : widgets);
   };
 
   const deletePage = (id: string) => {
@@ -177,9 +199,9 @@ export default function DashboardSettingsEditor({
         <p className="text-xs text-muted-foreground ml-3">Uhr-Widget</p>
       </div>
     ),
-    weather: () => <div className="p-1"><WeatherWidget /></div>,
+    weather: () => <WeatherWidget />,
     calendar: () => (
-      <div className="p-3 text-sm text-muted-foreground">Kalender-Widget</div>
+      <div className="h-full rounded-xl bg-card/90 p-3 text-sm text-muted-foreground">Kalender-Widget</div>
     ),
     scenes: () => (
       <div className="p-3 text-sm text-muted-foreground">Szenen-Leiste</div>
@@ -251,6 +273,9 @@ export default function DashboardSettingsEditor({
               <Trash2 className="h-3.5 w-3.5 mr-1" /> Seite löschen
             </Button>
           )}
+          <Button size="sm" variant="outline" onClick={resetPageLayout}>
+            Layout zurücksetzen
+          </Button>
         </div>
       </div>
 
@@ -260,13 +285,11 @@ export default function DashboardSettingsEditor({
         <p className="text-xs text-muted-foreground mb-3">
           Widgets ziehen und an der Ecke vergrößern — wie auf dem Home-Bildschirm.
         </p>
-        <div className="rounded-2xl border bg-muted/30 p-3 overflow-hidden">
+        <div className="rounded-2xl border bg-muted/30 p-3 overflow-x-hidden overflow-y-auto max-h-[70vh]">
           <DashboardGrid
             widgets={page.widgets}
             fields={layout.fields}
             editable
-            cols={cols}
-            rowHeight={64}
             onLayoutChange={updatePageWidgets}
             onRemoveWidget={removeWidget}
             renderers={renderers}

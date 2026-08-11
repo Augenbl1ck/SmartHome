@@ -52,8 +52,8 @@ body.kiosk-active main {
   width: 100%;
 }
 .react-grid-item.react-grid-placeholder {
-  background: color-mix(in oklch, var(--primary) 25%, transparent);
-  border-radius: 1rem;
+  background: color-mix(in oklch, var(--primary) 22%, transparent);
+  border-radius: 0.75rem;
   opacity: 1;
 }
 .react-resizable-handle {

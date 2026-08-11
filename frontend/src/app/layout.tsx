@@ -76,7 +76,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <VirtualKeyboardProvider>
             <KioskProvider>
               <NavBar />
-              <main className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6 max-w-6xl mx-auto w-full pb-24 md:pb-8">
+              <main className="flex-1 min-h-0 overflow-y-auto px-1 md:px-1.5 py-2 md:py-3 max-w-[1600px] mx-auto w-full pb-24 md:pb-8">
                 {children}
               </main>
               <AutomationRunnerProvider />

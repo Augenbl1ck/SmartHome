@@ -6,6 +6,9 @@ import type { LayoutItem } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import {
+  GRID_COLS,
+  GRID_MARGIN,
+  GRID_ROW_HEIGHT,
   WIDGET_SIZE_LIMITS,
   widgetLabel,
   type DashboardField,
@@ -39,27 +42,23 @@ interface Props {
 }
 
 function toLayout(widgets: GridWidget[], cols: number): LayoutItem[] {
-  const scale = cols >= 8 ? 2 : 1;
   return widgets.map(w => {
     const limits = WIDGET_SIZE_LIMITS[w.kind];
-    const rawW = w.w * scale;
-    const rawX = w.x * scale;
     return {
       i: w.id,
-      x: Math.min(rawX, Math.max(0, cols - 1)),
-      y: w.y,
-      w: Math.min(Math.max(rawW, limits.minW * scale), Math.min(limits.maxW * scale, cols)),
+      x: Math.min(Math.max(0, w.x), Math.max(0, cols - 1)),
+      y: Math.max(0, w.y),
+      w: Math.min(Math.max(w.w, limits.minW), Math.min(limits.maxW, cols)),
       h: Math.min(Math.max(w.h, limits.minH), limits.maxH),
-      minW: Math.min(limits.minW * scale, cols),
+      minW: Math.min(limits.minW, cols),
       minH: limits.minH,
-      maxW: Math.min(limits.maxW * scale, cols),
+      maxW: Math.min(limits.maxW, cols),
       maxH: limits.maxH,
     };
   });
 }
 
-function fromLayout(layout: readonly LayoutItem[], widgets: GridWidget[], cols: number): GridWidget[] {
-  const scale = cols >= 8 ? 2 : 1;
+function fromLayout(layout: readonly LayoutItem[], widgets: GridWidget[]): GridWidget[] {
   const byId = new Map(widgets.map(w => [w.id, w]));
   return layout.map(l => {
     const prev = byId.get(l.i);
@@ -67,10 +66,10 @@ function fromLayout(layout: readonly LayoutItem[], widgets: GridWidget[], cols: 
       id: l.i,
       kind: prev?.kind ?? 'field',
       fieldId: prev?.fieldId,
-      x: Math.round(l.x / scale),
+      x: l.x,
       y: l.y,
-      w: Math.max(1, Math.round(l.w / scale)),
-      h: l.h,
+      w: Math.max(1, l.w),
+      h: Math.max(1, l.h),
     };
   });
 }
@@ -79,8 +78,8 @@ export default function DashboardGrid({
   widgets,
   fields,
   editable,
-  cols = 4,
-  rowHeight = 80,
+  cols = GRID_COLS,
+  rowHeight = GRID_ROW_HEIGHT,
   onLayoutChange,
   onRemoveWidget,
   renderers,
@@ -92,11 +91,9 @@ export default function DashboardGrid({
   if (typeof window !== 'undefined') {
     const el = typeof document !== 'undefined' ? document.querySelector('.react-grid-layout') as HTMLElement | null : null;
     const firstItem = typeof document !== 'undefined' ? document.querySelector('.react-grid-item') as HTMLElement | null : null;
-    const cssLoaded = typeof document !== 'undefined' && [...document.styleSheets].some(s => {
-      try { return (s.href || '').includes('react-grid-layout') || [...(s.cssRules || [])].some(r => (r as CSSStyleRule).selectorText?.includes('react-grid-item')); }
-      catch { return false; }
-    });
-    fetch('http://127.0.0.1:7707/ingest/a119e08c-94ad-4d21-bb0e-add8dc402a79',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ce13fd'},body:JSON.stringify({sessionId:'ce13fd',runId:'pre-fix',hypothesisId:'A-D',location:'DashboardGrid.tsx:render',message:'grid render state',data:{editable,cols,rowHeight,widgetCount:widgets.length,layoutSample:layout.slice(0,3),widgetsSample:widgets.slice(0,3).map(w=>({id:w.id,x:w.x,y:w.y,w:w.w,h:w.h})),containerWidth:el?.offsetWidth??null,containerHeight:el?.offsetHeight??null,firstItemTransform:firstItem?.style?.transform||null,firstItemWidth:firstItem?.offsetWidth??null,firstItemHeight:firstItem?.offsetHeight??null,cssLoaded,hasReactGridClass:!!el},timestamp:Date.now()})}).catch(()=>{});
+    const mainEl = typeof document !== 'undefined' ? document.querySelector('main') as HTMLElement | null : null;
+    const mainPad = mainEl ? getComputedStyle(mainEl) : null;
+    fetch('http://127.0.0.1:7707/ingest/a119e08c-94ad-4d21-bb0e-add8dc402a79',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ce13fd'},body:JSON.stringify({sessionId:'ce13fd',runId:'ux-grid-v3',hypothesisId:'G-H-I',location:'DashboardGrid.tsx:render',message:'fine grid render',data:{editable,cols,rowHeight,margin:GRID_MARGIN,compactType:null,preventCollision:true,widgetCount:widgets.length,layoutSample:layout.slice(0,3),widgetsSample:widgets.slice(0,3).map(w=>({id:w.id,x:w.x,y:w.y,w:w.w,h:w.h})),containerWidth:el?.offsetWidth??null,firstItemTransform:firstItem?.style?.transform||null,firstItemWidth:firstItem?.offsetWidth??null,mainPaddingLeft:mainPad?.paddingLeft??null,mainPaddingRight:mainPad?.paddingRight??null},timestamp:Date.now()})}).catch(()=>{});
   }
   // #endregion
 
@@ -119,24 +116,26 @@ export default function DashboardGrid({
         layout={layout}
         cols={cols}
         rowHeight={rowHeight}
-        margin={[12, 12] as [number, number]}
+        margin={GRID_MARGIN}
         containerPadding={[0, 0] as [number, number]}
         isDraggable={editable}
         isResizable={editable}
-        compactType="vertical"
-        preventCollision={false}
+        compactType={null}
+        preventCollision
+        allowOverlap={false}
         useCSSTransforms
         onLayoutChange={(next) => {
           // #region agent log
-          const first = next[0];
-          fetch('http://127.0.0.1:7707/ingest/a119e08c-94ad-4d21-bb0e-add8dc402a79',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ce13fd'},body:JSON.stringify({sessionId:'ce13fd',runId:'post-fix',hypothesisId:'E',location:'DashboardGrid.tsx:onLayoutChange',message:'layout change after wiggle fix',data:{editable,cols,firstXY:first?{i:first.i,x:first.x,y:first.y,w:first.w,h:first.h}:null,itemCount:next.length,domTransforms:[...document.querySelectorAll('.react-grid-item')].slice(0,4).map(el=>(el as HTMLElement).style.transform||getComputedStyle(el).transform)},timestamp:Date.now()})}).catch(()=>{});
+          const ys = next.map(i => i.y).sort((a, b) => a - b);
+          const gaps = ys.length > 1 ? ys.some((y, i) => i > 0 && y > ys[i - 1] + 1) : false;
+          fetch('http://127.0.0.1:7707/ingest/a119e08c-94ad-4d21-bb0e-add8dc402a79',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ce13fd'},body:JSON.stringify({sessionId:'ce13fd',runId:'ux-grid-v3',hypothesisId:'I',location:'DashboardGrid.tsx:onLayoutChange',message:'layout change nocompact',data:{editable,cols,itemCount:next.length,positions:next.map(i=>({i:i.i,x:i.x,y:i.y,w:i.w,h:i.h})),possibleVerticalGaps:gaps},timestamp:Date.now()})}).catch(()=>{});
           // #endregion
           if (!editable || !onLayoutChange) return;
-          onLayoutChange(fromLayout(next, widgets, cols));
+          onLayoutChange(fromLayout(next, widgets));
         }}
         onDragStart={() => {
           // #region agent log
-          fetch('http://127.0.0.1:7707/ingest/a119e08c-94ad-4d21-bb0e-add8dc402a79',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ce13fd'},body:JSON.stringify({sessionId:'ce13fd',runId:'pre-fix',hypothesisId:'B',location:'DashboardGrid.tsx:onDragStart',message:'drag started',data:{editable,cols},timestamp:Date.now()})}).catch(()=>{});
+          fetch('http://127.0.0.1:7707/ingest/a119e08c-94ad-4d21-bb0e-add8dc402a79',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ce13fd'},body:JSON.stringify({sessionId:'ce13fd',runId:'ux-grid-v3',hypothesisId:'I',location:'DashboardGrid.tsx:onDragStart',message:'drag started',data:{editable,cols},timestamp:Date.now()})}).catch(()=>{});
           // #endregion
         }}
         draggableCancel=".no-drag"
@@ -145,6 +144,7 @@ export default function DashboardGrid({
           <div key={w.id}>
             <DashboardWidgetChrome
               editable={editable}
+              kind={w.kind}
               label={widgetLabel(w.kind, fields, w.fieldId)}
               onRemove={editable && onRemoveWidget ? () => onRemoveWidget(w.id) : undefined}
             >

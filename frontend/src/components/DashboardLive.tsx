@@ -11,6 +11,7 @@ import DeviceFieldPanel from '@/components/DeviceFieldPanel';
 import {
   useDashboardLayoutState,
   saveDashboardLayout,
+  GRID_COLS,
   type GridWidget,
   type DashboardLayout,
 } from '@/hooks/useDashboardLayout';
@@ -42,7 +43,7 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes, in
   const [layout, setLayout] = useDashboardLayoutState();
   const [pageIndex, setPageIndex] = useState(0);
   const [editing, setEditing] = useState(false);
-  const [cols, setCols] = useState(4);
+  const [cols, setCols] = useState(GRID_COLS);
 
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressStart = useRef<{ x: number; y: number } | null>(null);
@@ -90,7 +91,7 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes, in
       console.warn('[WebSocket] Reverb nicht erreichbar, nur Polling aktiv', err);
     }
 
-    const onResize = () => setCols(window.innerWidth >= 768 ? 8 : 4);
+    const onResize = () => setCols(GRID_COLS);
     onResize();
     window.addEventListener('resize', onResize);
 
@@ -226,7 +227,7 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes, in
 
   const renderers = {
     clock: () => (
-      <div className="h-full flex items-center gap-4 p-4">
+      <div className="h-full flex items-center gap-3 px-3 py-2">
         <div className="min-w-0 flex-1">
           <p className="text-4xl sm:text-5xl font-bold tabular-nums leading-none tracking-tight" suppressHydrationWarning>
             {time || '\u00a0'}
@@ -236,7 +237,7 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes, in
           </p>
         </div>
         <div className={cn(
-          'flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-xl transition-colors shrink-0',
+          'flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors shrink-0',
           activeDevices > 0
             ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
             : 'text-muted-foreground',
@@ -252,10 +253,10 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes, in
         </div>
       </div>
     ),
-    weather: () => <div className="p-1 h-full"><WeatherWidget /></div>,
-    calendar: () => <div className="p-1 h-full"><CalendarWidget initial={initialCalendar} /></div>,
+    weather: () => <WeatherWidget />,
+    calendar: () => <CalendarWidget initial={initialCalendar} />,
     scenes: () => (
-      <div className="flex gap-3 overflow-x-auto p-3 h-full items-stretch scrollbar-none">
+      <div className="flex gap-2.5 overflow-x-auto px-2 py-2 h-full items-stretch scrollbar-none">
         {initialScenes.length === 0 ? (
           <p className="text-sm text-muted-foreground self-center">Keine Szenen</p>
         ) : initialScenes.map(scene => {
@@ -268,11 +269,11 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes, in
               onClick={() => activateScene(scene)}
               disabled={editing || isRunning}
               className={cn(
-                'flex-shrink-0 flex flex-col items-center gap-2 rounded-2xl border p-3 min-w-[96px]',
+                'flex-shrink-0 flex flex-col items-center gap-2 rounded-xl border p-3 min-w-[88px]',
                 'transition-all duration-200 active:scale-[0.95] cursor-pointer no-drag',
                 isDone
                   ? 'bg-green-500/15 border-green-400/40 text-green-600 dark:text-green-400'
-                  : 'bg-background border-border hover:bg-accent/60',
+                  : 'bg-card/90 border-border/70 hover:bg-accent/60',
                 (isRunning || editing) && 'opacity-60 cursor-not-allowed',
               )}
             >
@@ -286,21 +287,21 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes, in
       </div>
     ),
     rooms: () => (
-      <div className="grid grid-cols-2 gap-3 p-3 h-full overflow-auto content-start">
+      <div className="grid grid-cols-2 gap-2.5 p-2 h-full overflow-auto content-start">
         {orderedRooms.map(room => {
           const roomDevices = list.filter(d => d.room_id === room.id);
           const active = roomDevices.filter(d => d.status === 'on' && isToggleable(d.type as DeviceType)).length;
           const inner = (
             <div className={cn(
-              'rounded-2xl border p-4 flex flex-col gap-2 min-h-[120px]',
+              'rounded-xl border p-3 flex flex-col gap-2 min-h-[100px]',
               'transition-all duration-300',
               active > 0
                 ? 'bg-amber-500/15 border-amber-400/40'
-                : 'bg-background border-border',
+                : 'bg-card border-border/70',
               !editing && 'hover:bg-accent/40 active:scale-[0.97] cursor-pointer',
             )}>
               <div className={cn(
-                'w-11 h-11 rounded-xl flex items-center justify-center text-2xl select-none',
+                'w-10 h-10 rounded-lg flex items-center justify-center text-2xl select-none',
                 active > 0 ? 'bg-amber-500/20' : 'bg-muted',
               )}>
                 {room.icon ?? '🏠'}
@@ -343,7 +344,7 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes, in
   return (
     <div className="flex flex-col gap-3">
       {editing && (
-        <div className="sticky top-0 z-40 -mx-4 md:-mx-6 px-4 md:px-6 py-2 bg-background/95 backdrop-blur border-b flex items-center gap-3">
+        <div className="sticky top-0 z-40 -mx-1 md:-mx-1.5 px-1 md:px-1.5 py-2 bg-background/95 backdrop-blur border-b flex items-center gap-3">
           <p className="text-sm font-medium flex-1">Layout bearbeiten — ziehen & Größe ändern</p>
           <Button size="sm" onClick={finishEdit}>Fertig</Button>
         </div>
