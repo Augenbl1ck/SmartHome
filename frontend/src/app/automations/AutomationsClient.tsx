@@ -52,6 +52,8 @@ type ConditionType =
   | 'motion'
   | 'time_between'
   | 'time_at'
+  | 'sunrise'
+  | 'sunset'
   | 'weekday'
   | 'child_lock'
   | 'open_window';
@@ -72,6 +74,7 @@ interface ConditionFormItem {
   useDates: boolean;
   fromDate: string;
   toDate: string;
+  offsetMinutes: string;
 }
 
 interface ActionFormItem {
@@ -108,6 +111,7 @@ const newCondition = (): ConditionFormItem => ({
   useDates: false,
   fromDate: '',
   toDate: '',
+  offsetMinutes: '0',
 });
 
 const newAction = (): ActionFormItem => ({
@@ -166,6 +170,7 @@ function conditionFromJson(item: Record<string, unknown>): ConditionFormItem {
     useDates,
     fromDate,
     toDate,
+    offsetMinutes: item.offset_minutes != null ? String(item.offset_minutes) : '0',
   };
 }
 
@@ -329,6 +334,9 @@ function buildConditions(f: FormState): { logic: ConditionLogic; items: Record<s
       }
       case 'time_at':
         return { type: 'time_at', time: c.time };
+      case 'sunrise':
+      case 'sunset':
+        return { type: c.type, offset_minutes: Number(c.offsetMinutes) || 0 };
       case 'weekday':
         return { type: 'weekday', weekdays: c.weekdays };
       case 'child_lock':
@@ -389,6 +397,13 @@ function describeConditionItem(item: Record<string, unknown>, devices: Device[])
     }
     case 'time_at':
       return `Uhrzeit ${item.time}`;
+    case 'sunrise':
+    case 'sunset': {
+      const off = Number(item.offset_minutes ?? 0);
+      const label = item.type === 'sunrise' ? 'Sonnenaufgang' : 'Sonnenuntergang';
+      if (!off) return label;
+      return `${label} ${off > 0 ? '+' : ''}${off} Min`;
+    }
     case 'weekday': {
       const days = ((item.weekdays as number[]) ?? [])
         .sort()
@@ -519,7 +534,7 @@ function describeAction(
 }
 
 function getTriggerIcon(type: string) {
-  if (type === 'time' || type === 'weekday_time' || type === 'time_at') return Clock;
+  if (type === 'time' || type === 'weekday_time' || type === 'time_at' || type === 'sunrise' || type === 'sunset') return Clock;
   if (type === 'temperature_above' || type === 'temperature_below') return Thermometer;
   if (type === 'humidity_above' || type === 'humidity_below') return Droplets;
   if (type === 'motion') return Activity;
@@ -751,6 +766,11 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
       }
       if (c.type === 'time_at' && !c.time)
         return `${label}: bitte eine Uhrzeit angeben.`;
+      if ((c.type === 'sunrise' || c.type === 'sunset')) {
+        const off = Number(c.offsetMinutes);
+        if (!Number.isFinite(off) || off < -120 || off > 120)
+          return `${label}: Offset muss zwischen -120 und +120 Minuten liegen.`;
+      }
       if ((c.type === 'child_lock' || c.type === 'open_window') && !c.value)
         return `${label}: bitte einen Wert waehlen.`;
     }
@@ -1070,6 +1090,7 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
                           if (type === 'temperature_above' || type === 'temperature_below') patch.threshold = '22';
                           if (type === 'humidity_above' || type === 'humidity_below') patch.threshold = '70';
                           if (type === 'time_at') patch.time = '08:00';
+                          if (type === 'sunrise' || type === 'sunset') patch.offsetMinutes = '0';
                           if (type === 'child_lock') patch.value = 'LOCK';
                           if (type === 'open_window') patch.value = 'ON';
                           patchCond(patch);
@@ -1082,6 +1103,8 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
                             <SelectItem value="time_at">Uhrzeit (HH:MM)</SelectItem>
                             <SelectItem value="time_between">Zeitfenster</SelectItem>
                             <SelectItem value="weekday">Wochentag</SelectItem>
+                            <SelectItem value="sunrise">Sonnenaufgang</SelectItem>
+                            <SelectItem value="sunset">Sonnenuntergang</SelectItem>
                           </SelectGroup>
                           <SelectGroup>
                             <SelectLabel>Geraet / Sensor</SelectLabel>
@@ -1160,6 +1183,20 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
                         <input type="time"
                           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                           value={cond.time} onChange={(e) => patchCond({ time: e.target.value })} />
+                      </div>
+                    )}
+
+                    {(cond.type === 'sunrise' || cond.type === 'sunset') && (
+                      <div className="space-y-1">
+                        <FieldLabel>Offset (Minuten)</FieldLabel>
+                        <TextInput
+                          type="number"
+                          value={cond.offsetMinutes}
+                          onChange={(v) => patchCond({ offsetMinutes: v })}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Negativ = früher, positiv = später (−120…+120). Stadt aus Wetter-Einstellungen.
+                        </p>
                       </div>
                     )}
 

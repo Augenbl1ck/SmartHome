@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { api, Device, DeviceType, Room, Scene, type CalendarEventsResponse, type TransitBoardResponse, type WeatherResponse } from '@/lib/api';
+import { api, Device, DeviceType, Room, Scene, type CalendarEventsResponse, type EnergyOverview, type TransitBoardResponse, type WeatherResponse } from '@/lib/api';
 import { isToggleable } from '@/lib/devices';
 import { DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { getEcho } from '@/lib/echo';
@@ -13,6 +13,7 @@ import DashboardActions from '@/components/DashboardActions';
 import WeatherWidget from '@/components/WeatherWidget';
 import CalendarWidget from '@/components/CalendarWidget';
 import TransitWidget from '@/components/TransitWidget';
+import EnergyWidget from '@/components/EnergyWidget';
 
 interface Props {
   initialDevices: Device[];
@@ -21,13 +22,14 @@ interface Props {
   initialCalendar: CalendarEventsResponse;
   initialWeather: WeatherResponse;
   initialTransit: TransitBoardResponse;
+  initialEnergy: EnergyOverview;
 }
 
 function getFormattedDate(): string {
   return new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
-export default function DashboardLive({ initialDevices, rooms, initialScenes, initialCalendar, initialWeather, initialTransit }: Props) {
+export default function DashboardLive({ initialDevices, rooms, initialScenes, initialCalendar, initialWeather, initialTransit, initialEnergy }: Props) {
   // Server-Daten sofort nutzen → keine Farbverzögerung beim ersten Render
   const [devices,  setDevices]  = useState<Device[]>(initialDevices);
   const [mounted,  setMounted]  = useState(false);
@@ -105,7 +107,7 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes, in
 
   const sectionOrder: SectionId[] = layout.sectionOrder.length > 0
     ? layout.sectionOrder
-    : ['weather', 'calendar', 'transit', 'scenes', 'rooms'];
+    : ['weather', 'calendar', 'transit', 'energy', 'scenes', 'rooms'];
   const hiddenSections = new Set(layout.hiddenSections);
   const fieldsById = useMemo(
     () => new Map(layout.fields.map(f => [f.id, f])),
@@ -177,6 +179,12 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes, in
         if (sectionId === 'transit') return (
           <div key="transit">
             <TransitWidget initial={initialTransit} />
+          </div>
+        );
+
+        if (sectionId === 'energy') return (
+          <div key="energy">
+            <EnergyWidget initial={initialEnergy} />
           </div>
         );
 

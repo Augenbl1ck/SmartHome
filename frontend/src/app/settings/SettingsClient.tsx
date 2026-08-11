@@ -371,7 +371,7 @@ function deviceToForm(d: Device): DeviceForm {
 // ─────────────────────────────────────────────────────────────────
 
 function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms: Room[] }) {
-  const [sectionOrder, setSectionOrder] = useState<SectionId[]>(['weather', 'calendar', 'transit', 'scenes', 'rooms']);
+  const [sectionOrder, setSectionOrder] = useState<SectionId[]>(['weather', 'calendar', 'transit', 'energy', 'scenes', 'rooms']);
   const [hiddenSections, setHiddenSections] = useState<SectionId[]>([]);
   const [roomOrder, setRoomOrder] = useState<number[]>([]);
   const [fields, setFields] = useState<DashboardField[]>([]);
@@ -1153,6 +1153,76 @@ function WidgetsSection() {
       <WeatherSection />
       <CalendarSection />
       <TransitSection />
+      <EnergySection />
+    </div>
+  );
+}
+
+function EnergySection() {
+  const [price, setPrice] = useState('0.30');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    api.getPanelSettings()
+      .then(s => {
+        const p = s.energy?.price_per_kwh;
+        if (typeof p === 'number' && Number.isFinite(p)) setPrice(String(p));
+      })
+      .catch(() => setError('Einstellungen konnten nicht geladen werden'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    setError('');
+    const n = Number(price.replace(',', '.'));
+    if (!Number.isFinite(n) || n < 0 || n > 10) {
+      setError('Preis muss zwischen 0 und 10 €/kWh liegen');
+      setSaving(false);
+      return;
+    }
+    try {
+      await api.updatePanelSettings({ energy: { price_per_kwh: n } });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Speichern fehlgeschlagen');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl border bg-card p-5 animate-pulse space-y-3">
+        <div className="h-4 bg-muted rounded w-40" />
+        <div className="h-10 bg-muted rounded w-full" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="divide-y rounded-2xl border bg-card overflow-hidden">
+      <div className="px-4 py-3 space-y-3">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Energie</p>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Strompreis für die Kosten-Schätzung im Energie-Widget. Verbrauch wird alle 5 Minuten aus Stecker-/Zählerdaten gesampelt.
+        </p>
+        <Field
+          label="Preis (€/kWh)"
+          value={price}
+          onChange={setPrice}
+          placeholder="0.30"
+          inputMode="decimal"
+        />
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <Button onClick={save} size="sm" disabled={saving}>
+          {saving ? 'Speichern…' : saved ? '✓ Gespeichert' : 'Speichern'}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -1644,7 +1714,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     if (typeof window === 'undefined') return null;
     try {
       const v = new URLSearchParams(window.location.search).get('view');
-      if (v === 'weather' || v === 'calendar' || v === 'transit') return 'widgets';
+      if (v === 'weather' || v === 'calendar' || v === 'transit' || v === 'energy') return 'widgets';
       return v;
     } catch {
       return null;
@@ -1870,7 +1940,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     { id: 'scenes',   icon: Clapperboard, color: 'text-amber-500  bg-amber-500/10',  label: 'Szenen',           desc: 'Szenen verwalten',         href: '/scenes' },
     { id: 'automat',  icon: Zap,          color: 'text-green-500  bg-green-500/10',  label: 'Automationen',     desc: 'Regeln & Zeitpl\u00e4ne',        href: '/automations' },
     { id: 'dashboard',icon: LayoutDashboard, color: 'text-indigo-500 bg-indigo-500/10',label: 'Dashboard',      desc: 'Felder & Anordnung' },
-    { id: 'widgets',  icon: Cloud,        color: 'text-sky-500    bg-sky-500/10',    label: 'Widgets',         desc: 'Wetter, Kalender & Bahn' },
+    { id: 'widgets',  icon: Cloud,        color: 'text-sky-500    bg-sky-500/10',    label: 'Widgets',         desc: 'Wetter, Kalender, Bahn & Energie' },
     { id: 'system',   icon: Activity,     color: 'text-emerald-500 bg-emerald-500/10', label: 'System',         desc: 'CPU-Temp & Status' },
     { id: 'security', icon: LockKeyhole,  color: 'text-orange-500 bg-orange-500/10', label: 'Sicherheit',       desc: 'PIN & Bildschirmsperre' },
     { id: 'kiosk',    icon: Monitor,      color: 'text-teal-500   bg-teal-500/10',   label: 'Kiosk-Modus',      desc: 'Wandbildschirm einrichten' },

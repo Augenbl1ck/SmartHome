@@ -10,3 +10,6 @@ Artisan::command('inspire', function () {
 
 // Automationen jede Minute prüfen
 Schedule::command('automations:run')->everyMinute();
+
+// Energie-Samples alle 5 Minuten
+Schedule::command('energy:sample')->everyFiveMinutes();

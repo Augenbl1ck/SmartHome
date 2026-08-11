@@ -224,12 +224,27 @@ class AutomationEngine
             'motion' => $this->conditionDeviceEquals($condition, 'on'),
             'time_between' => $this->conditionTimeBetween($condition),
             'time_at' => $this->conditionTimeAt($condition),
+            'sunrise' => $this->conditionSunEvent('sunrise', $condition),
+            'sunset' => $this->conditionSunEvent('sunset', $condition),
             'weekday' => $this->conditionWeekday($condition),
             'child_lock' => $this->conditionAttrEquals($condition, 'child_lock', strtoupper((string) ($condition['value'] ?? 'LOCK'))),
             'open_window' => $this->conditionAttrEquals($condition, 'open_window', strtoupper((string) ($condition['value'] ?? 'ON'))),
             'running_state' => $this->conditionAttrEquals($condition, 'running_state', strtolower((string) ($condition['value'] ?? 'heat'))),
             default => false,
         };
+    }
+
+    private function conditionSunEvent(string $event, array $condition): bool
+    {
+        $offset = (int) ($condition['offset_minutes'] ?? 0);
+        if ($offset < -120) {
+            $offset = -120;
+        }
+        if ($offset > 120) {
+            $offset = 120;
+        }
+
+        return app(SunTimesService::class)->matchesNow($event, $offset);
     }
 
     private function conditionDeviceStatus(array $condition): bool

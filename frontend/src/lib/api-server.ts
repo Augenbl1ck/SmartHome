@@ -1,4 +1,4 @@
-import { Automation, AutomationLog, CalendarEventsResponse, Device, PanelSettings, Room, Scene, TransitBoardResponse, WeatherResponse } from './api';
+import { Automation, AutomationLog, CalendarEventsResponse, Device, EnergyHistoryResponse, EnergyOverview, PanelSettings, Room, Scene, TransitBoardResponse, WeatherResponse } from './api';
 import { fetchWeatherData } from './weather-fetch';
 
 const API_BASE = process.env.API_URL ?? 'http://localhost:8000/api/v1';
@@ -36,7 +36,6 @@ export const serverApi = {
     const qs = q.toString();
     return serverFetch<CalendarEventsResponse>(`/calendar/events${qs ? `?${qs}` : ''}`);
   },
-  /** Nächste 14 Tage ab heute (Dashboard-Widget) */
   getDashboardCalendar: () => {
     const from = new Date();
     from.setHours(0, 0, 0, 0);
@@ -44,7 +43,6 @@ export const serverApi = {
     to.setDate(to.getDate() + 14);
     return serverApi.getCalendarEvents({ from: isoDate(from), to: isoDate(to) });
   },
-  /** Events für einen Monat inkl. angrenzender Wochen-Tage */
   getMonthCalendar: (year: number, month: number) => {
     const from = new Date(year, month, 1);
     from.setDate(from.getDate() - 7);
@@ -52,10 +50,12 @@ export const serverApi = {
     to.setDate(to.getDate() + 7);
     return serverApi.getCalendarEvents({ from: isoDate(from), to: isoDate(to) });
   },
-  /** Wetter via OpenWeather + panel-settings (nutzt NEXT_PUBLIC_WEATHER_API_KEY) */
   getWeather: async (): Promise<WeatherResponse> => {
     const settings = await serverApi.getPanelSettings();
     return fetchWeatherData(settings);
   },
   getTransitBoard: () => serverFetch<TransitBoardResponse>('/transit/board'),
+  getEnergy: () => serverFetch<EnergyOverview>('/energy'),
+  getEnergyHistory: (range: 'day' | 'week' = 'day') =>
+    serverFetch<EnergyHistoryResponse>(`/energy/history?range=${range}`),
 };

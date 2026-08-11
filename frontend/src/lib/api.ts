@@ -119,6 +119,11 @@ export const api = {
     request<{ stops: TransitStop[]; error?: string }>(`/transit/stops?q=${encodeURIComponent(q)}`),
   getTransitBoard: () =>
     request<TransitBoardResponse>('/transit/board'),
+
+  // Energie
+  getEnergy: () => request<EnergyOverview>('/energy'),
+  getEnergyHistory: (range: 'day' | 'week' = 'day') =>
+    request<EnergyHistoryResponse>(`/energy/history?range=${range}`),
 };
 
 export interface PanelSettings {
@@ -136,9 +141,54 @@ export interface PanelSettings {
   } | null;
   weather?: { city?: string; unit?: 'metric' | 'imperial' } | null;
   transit?: TransitConfig | null;
+  energy?: { price_per_kwh?: number } | null;
   theme?: 'light' | 'dark' | 'system';
   favorites?: number[];
   scene_snapshots?: Record<string, unknown> | null;
+}
+
+export interface EnergyDeviceRow {
+  id: number;
+  name: string;
+  type: string;
+  power_w: number;
+  energy_wh: number | null;
+}
+
+export interface EnergyDeviceShare {
+  id: number;
+  name: string;
+  kwh: number;
+  cost: number;
+  share: number;
+}
+
+export interface EnergyOverview {
+  configured: boolean;
+  price_per_kwh: number;
+  live_power_w: number;
+  today_kwh: number;
+  week_kwh: number;
+  today_cost: number;
+  week_cost: number;
+  devices: EnergyDeviceRow[];
+  by_device_today: EnergyDeviceShare[];
+  sampled_at?: string | null;
+  error?: string;
+}
+
+export interface EnergyHistoryBucket {
+  label: string;
+  start: string;
+  kwh: number;
+  avg_w: number;
+  cost: number;
+}
+
+export interface EnergyHistoryResponse {
+  range: 'day' | 'week';
+  buckets: EnergyHistoryBucket[];
+  price_per_kwh: number;
 }
 
 export interface TransitStopRef {

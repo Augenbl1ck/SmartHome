@@ -100,6 +100,22 @@ function evaluateCondition(condition: Record<string, unknown>, devices: Device[]
       const pad = (n: number) => String(n).padStart(2, '0');
       return `${pad(now.getHours())}:${pad(now.getMinutes())}` === time;
     }
+    case 'sunrise':
+    case 'sunset': {
+      // Backend AutomationEngine is primary; client fallback uses last weather fetch if available.
+      const sun = (globalThis as { __smarthomeSun?: { sunrise?: string | null; sunset?: string | null } }).__smarthomeSun;
+      const iso = type === 'sunset' ? sun?.sunset : sun?.sunrise;
+      if (!iso) return false;
+      const offset = Math.max(-120, Math.min(120, Number(condition.offset_minutes ?? 0) || 0));
+      const target = new Date(iso);
+      if (Number.isNaN(target.getTime())) return false;
+      target.setMinutes(target.getMinutes() + offset);
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const want = `${pad(target.getHours())}:${pad(target.getMinutes())}`;
+      const current = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+      return want === current;
+    }
     case 'weekday': {
       const weekdays = (condition.weekdays as number[]) ?? [];
       return weekdays.includes(new Date().getDay());
@@ -294,12 +310,29 @@ function shouldFireConditionsOnly(automation: Automation, devices: Device[]): bo
   return true;
 }
 
+async function refreshSunCache() {
+  try {
+    const w = await api.getWeather();
+    (globalThis as { __smarthomeSun?: { sunrise?: string | null; sunset?: string | null } }).__smarthomeSun = {
+      sunrise: w.current?.sunrise ?? null,
+      sunset: w.current?.sunset ?? null,
+    };
+  } catch { /* weather optional for sun conditions */ }
+}
+
 async function runAutomations() {
   try {
     const [automations, devices] = await Promise.all([
       api.getAutomations(),
       api.getDevices(),
     ]);
+
+    const needsSun = automations.some((a) => {
+      if (!a.enabled) return false;
+      const items = a.conditions?.items ?? [];
+      return items.some((i) => i.type === 'sunrise' || i.type === 'sunset');
+    });
+    if (needsSun) await refreshSunCache();
 
     const key = nowKey();
 

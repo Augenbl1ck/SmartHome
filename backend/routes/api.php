@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\PanelSettingsController;
 use App\Http\Controllers\Api\SystemController;
 use App\Http\Controllers\Api\WeatherController;
 use App\Http\Controllers\Api\TransitController;
+use App\Http\Controllers\Api\EnergyController;
 use App\Http\Controllers\Api\ZigbeeController;
 use Illuminate\Support\Facades\Route;
 
@@ -69,7 +70,11 @@ Route::prefix('v1')->group(function () {
     // Wetter (OpenWeatherMap / Open-Meteo via Frontend; Legacy-Endpoint)
     Route::get('weather', [WeatherController::class, 'show']);
 
-    // Bahn / ÖPNV (v6.db.transport.rest)
+    // Bahn / ÖPNV
     Route::get('transit/stops', [TransitController::class, 'stops']);
     Route::get('transit/board', [TransitController::class, 'board']);
+
+    // Energie
+    Route::get('energy', [EnergyController::class, 'show']);
+    Route::get('energy/history', [EnergyController::class, 'history']);
 });

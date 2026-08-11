@@ -19,6 +19,7 @@ class PanelSettingsController extends Controller
         'dashboard_layout',
         'weather',
         'transit',
+        'energy',
         'theme',
         'favorites',
         'scene_snapshots',
@@ -55,6 +56,8 @@ class PanelSettingsController extends Controller
             'transit.connections.*.to' => 'required_with:transit.connections|array',
             'transit.connections.*.to.id' => 'required_with:transit.connections|string|max:64',
             'transit.connections.*.to.name' => 'required_with:transit.connections|string|max:200',
+            'energy'            => 'sometimes|nullable|array',
+            'energy.price_per_kwh' => 'sometimes|nullable|numeric|min:0|max:10',
             'theme'             => 'sometimes|nullable|string|in:light,dark,system',
             'favorites'         => 'sometimes|nullable|array',
             'favorites.*'       => 'integer',
@@ -99,6 +102,10 @@ class PanelSettingsController extends Controller
             $data['transit'] = $this->normalizeTransit(is_array($data['transit']) ? $data['transit'] : null);
         }
 
+        if (array_key_exists('energy', $data)) {
+            $data['energy'] = $this->normalizeEnergy(is_array($data['energy']) ? $data['energy'] : null);
+        }
+
         foreach (self::KEYS as $key) {
             if (array_key_exists($key, $data)) {
                 PanelSetting::setValue($key, $data[$key]);
@@ -141,6 +148,9 @@ class PanelSettingsController extends Controller
         $transitRaw = PanelSetting::getValue('transit');
         $transit = $this->normalizeTransit(is_array($transitRaw) ? $transitRaw : null);
 
+        $energyRaw = PanelSetting::getValue('energy');
+        $energy = $this->normalizeEnergy(is_array($energyRaw) ? $energyRaw : null);
+
         return [
             'pin_hash'          => PanelSetting::getValue('pin_hash'),
             'pin_enabled'       => (bool) PanelSetting::getValue('pin_enabled', false),
@@ -151,10 +161,28 @@ class PanelSettingsController extends Controller
             'dashboard_layout'  => $layout,
             'weather'           => $weather,
             'transit'           => $transit,
+            'energy'            => $energy,
             'theme'             => $theme,
             'favorites'         => array_values(array_map('intval', $favorites)),
             'scene_snapshots'   => $snapshots,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $raw
+     * @return array{price_per_kwh: float}
+     */
+    private function normalizeEnergy(?array $raw): array
+    {
+        $price = 0.30;
+        if ($raw !== null && isset($raw['price_per_kwh']) && is_numeric($raw['price_per_kwh'])) {
+            $p = (float) $raw['price_per_kwh'];
+            if ($p >= 0 && $p <= 10) {
+                $price = round($p, 4);
+            }
+        }
+
+        return ['price_per_kwh' => $price];
     }
 
     /**
