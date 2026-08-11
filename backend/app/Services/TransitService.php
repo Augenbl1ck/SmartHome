@@ -5,37 +5,21 @@ namespace App\Services;
 use App\Models\PanelSetting;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
- * DB Navigator / Vendo APIs (app.services-bahn.de).
- * The public v6.db.transport.rest proxy often returns 503 after HAFAS shutdown.
+ * Transit via Transitous (MOTIS) — open community API.
+ * DB Vendo (app.services-bahn.de) is often blocked (Akamai TLS / HTTP 452) from server TLS stacks.
  */
 class TransitService
 {
-    private const LOCATIONS_URL = 'https://app.services-bahn.de/mob/location/search';
+    private const BASE = 'https://api.transitous.org/api';
 
-    private const DEPARTURES_URL = 'https://app.services-bahn.de/mob/bahnhofstafel/abfahrt';
-
-    private const JOURNEYS_URL = 'https://app.services-bahn.de/mob/angebote/fahrplan';
+    private const USER_AGENT = 'SmartHomePanel/1.0 (open-source home dashboard; local use)';
 
     private const LOCATIONS_TTL = 300;
 
     private const BOARD_TTL = 60;
-
-    private const PRODUCTS = [
-        'HOCHGESCHWINDIGKEITSZUEGE',
-        'INTERCITYUNDEUROCITYZUEGE',
-        'INTERREGIOUNDSCHNELLZUEGE',
-        'NAHVERKEHRSONSTIGEZUEGE',
-        'SBAHNEN',
-        'BUSSE',
-        'SCHIFFE',
-        'UBAHN',
-        'STRASSENBAHN',
-        'ANRUFPFLICHTIGEVERKEHRE',
-    ];
 
     /**
      * @return list<array{id: string, name: string, type: string}>
@@ -47,18 +31,13 @@ class TransitService
             return [];
         }
 
-        $cacheKey = 'transit_loc_v2_' . sha1(mb_strtolower($query));
+        $cacheKey = 'transit_loc_motis_' . sha1(mb_strtolower($query));
 
         return Cache::remember($cacheKey, self::LOCATIONS_TTL, function () use ($query) {
-            $res = $this->vendoPost(
-                self::LOCATIONS_URL,
-                'application/x.db.vendo.mob.location.v3+json',
-                [
-                    'locationTypes' => ['ST'],
-                    'searchTerm' => $query,
-                    'maxResults' => 8,
-                ],
-            );
+            $res = $this->motisGet('/v1/geocode', [
+                'text' => $query,
+                'type' => 'STOP',
+            ]);
 
             if (!$res->successful()) {
                 throw new RuntimeException('Stationssuche fehlgeschlagen (HTTP ' . $res->status() . ')');
@@ -70,16 +49,27 @@ class TransitService
             }
 
             $out = [];
+            $seen = [];
             foreach ($items as $item) {
                 if (!is_array($item)) {
                     continue;
                 }
-                $id = trim((string) ($item['evaNr'] ?? ''));
+                if (strtoupper((string) ($item['type'] ?? '')) !== 'STOP') {
+                    continue;
+                }
+                $id = $this->preferParentId($item);
                 $name = trim((string) ($item['name'] ?? ''));
                 if ($id === '' || $name === '') {
                     continue;
                 }
+                if (isset($seen[$id])) {
+                    continue;
+                }
+                $seen[$id] = true;
                 $out[] = ['id' => $id, 'name' => $name, 'type' => 'station'];
+                if (count($out) >= 8) {
+                    break;
+                }
             }
 
             return $out;
@@ -89,40 +79,35 @@ class TransitService
     /**
      * @return list<array<string, mixed>>
      */
-    public function departures(string $stopId): array
+    public function departures(string $stopId, ?string $fallbackName = null): array
     {
         $stopId = trim($stopId);
         if ($stopId === '') {
             return [];
         }
 
-        $cacheKey = 'transit_dep_v2_' . sha1($stopId);
+        $resolved = $this->resolveStopId($stopId, $fallbackName);
+        $cacheKey = 'transit_dep_motis_' . sha1($resolved);
 
-        return Cache::remember($cacheKey, self::BOARD_TTL, function () use ($stopId) {
-            $now = now('Europe/Berlin');
-            $res = $this->vendoPost(
-                self::DEPARTURES_URL,
-                'application/x.db.vendo.mob.bahnhofstafeln.v2+json',
-                [
-                    'anfragezeit' => $now->format('H:i'),
-                    'datum' => $now->format('Y-m-d'),
-                    'ursprungsBahnhofId' => $this->stationLid($stopId),
-                    'verkehrsmittel' => self::PRODUCTS,
-                ],
-            );
+        return Cache::remember($cacheKey, self::BOARD_TTL, function () use ($resolved) {
+            $res = $this->motisGet('/v5/stoptimes', [
+                'stopId' => $resolved,
+                'n' => 8,
+                'arriveBy' => 'false',
+            ]);
 
             if (!$res->successful()) {
                 throw new RuntimeException('Abfahrten nicht ladbar (HTTP ' . $res->status() . ')');
             }
 
             $body = $res->json();
-            $list = is_array($body) ? ($body['bahnhofstafelAbfahrtPositionen'] ?? []) : [];
+            $list = is_array($body) ? ($body['stopTimes'] ?? []) : [];
             if (!is_array($list)) {
                 return [];
             }
 
             $out = [];
-            foreach (array_slice($list, 0, 6) as $row) {
+            foreach ($list as $row) {
                 if (!is_array($row)) {
                     continue;
                 }
@@ -130,6 +115,9 @@ class TransitService
                 if ($mapped !== null) {
                     $out[] = $mapped;
                 }
+                if (count($out) >= 6) {
+                    break;
+                }
             }
 
             return $out;
@@ -139,7 +127,7 @@ class TransitService
     /**
      * @return list<array<string, mixed>>
      */
-    public function journeys(string $fromId, string $toId): array
+    public function journeys(string $fromId, string $toId, ?string $fromName = null, ?string $toName = null): array
     {
         $fromId = trim($fromId);
         $toId = trim($toId);
@@ -147,49 +135,24 @@ class TransitService
             return [];
         }
 
-        $cacheKey = 'transit_jny_v2_' . sha1($fromId . '|' . $toId);
+        $from = $this->resolveStopId($fromId, $fromName);
+        $to = $this->resolveStopId($toId, $toName);
+        $cacheKey = 'transit_jny_motis_' . sha1($from . '|' . $to);
 
-        return Cache::remember($cacheKey, self::BOARD_TTL, function () use ($fromId, $toId) {
-            $when = now('Europe/Berlin')->format('Y-m-d\TH:i:s');
-            $res = $this->vendoPost(
-                self::JOURNEYS_URL,
-                'application/x.db.vendo.mob.verbindungssuche.v9+json',
-                [
-                    'autonomeReservierung' => false,
-                    'einstiegsTypList' => ['STANDARD'],
-                    'fahrverguenstigungen' => [
-                        'deutschlandTicketVorhanden' => false,
-                        'nurDeutschlandTicketVerbindungen' => false,
-                    ],
-                    'klasse' => 'KLASSE_2',
-                    'reisendenProfil' => [
-                        'reisende' => [[
-                            'ermaessigungen' => ['KEINE_ERMAESSIGUNG KLASSE_2'],
-                            'reisendenTyp' => 'ERWACHSENER',
-                        ]],
-                    ],
-                    'reservierungsKontingenteVorhanden' => false,
-                    'reiseHin' => [
-                        'wunsch' => [
-                            'abgangsLocationId' => $this->stationLid($fromId),
-                            'zielLocationId' => $this->stationLid($toId),
-                            'alternativeHalteBerechnung' => true,
-                            'verkehrsmittel' => self::PRODUCTS,
-                            'zeitWunsch' => [
-                                'reiseDatum' => $when,
-                                'zeitPunktArt' => 'ABFAHRT',
-                            ],
-                        ],
-                    ],
-                ],
-            );
+        return Cache::remember($cacheKey, self::BOARD_TTL, function () use ($from, $to) {
+            $res = $this->motisGet('/v5/plan', [
+                'fromPlace' => $from,
+                'toPlace' => $to,
+                'n' => 3,
+                'detailedTransfers' => 'false',
+            ]);
 
             if (!$res->successful()) {
                 throw new RuntimeException('Verbindungen nicht ladbar (HTTP ' . $res->status() . ')');
             }
 
             $body = $res->json();
-            $list = is_array($body) ? ($body['verbindungen'] ?? []) : [];
+            $list = is_array($body) ? ($body['itineraries'] ?? []) : [];
             if (!is_array($list)) {
                 return [];
             }
@@ -199,8 +162,7 @@ class TransitService
                 if (!is_array($row)) {
                     continue;
                 }
-                $conn = is_array($row['verbindung'] ?? null) ? $row['verbindung'] : $row;
-                $mapped = $this->mapJourney($conn);
+                $mapped = $this->mapJourney($row);
                 if ($mapped !== null) {
                     $out[] = $mapped;
                 }
@@ -239,7 +201,7 @@ class TransitService
             try {
                 $stations[] = [
                     'stop' => $stop,
-                    'departures' => $this->departures($stop['id']),
+                    'departures' => $this->departures($stop['id'], $stop['name']),
                 ];
             } catch (\Throwable $e) {
                 $stations[] = [
@@ -259,7 +221,12 @@ class TransitService
                     'label' => $conn['label'],
                     'from' => $conn['from'],
                     'to' => $conn['to'],
-                    'journeys' => $this->journeys($conn['from']['id'], $conn['to']['id']),
+                    'journeys' => $this->journeys(
+                        $conn['from']['id'],
+                        $conn['to']['id'],
+                        $conn['from']['name'],
+                        $conn['to']['name'],
+                    ),
                 ];
             } catch (\Throwable $e) {
                 $connections[] = [
@@ -342,28 +309,69 @@ class TransitService
     }
 
     /**
-     * @param  array<string, mixed>  $body
+     * @param  array<string, string|int|bool>  $query
      */
-    private function vendoPost(string $url, string $contentType, array $body): \Illuminate\Http\Client\Response
+    private function motisGet(string $path, array $query): \Illuminate\Http\Client\Response
     {
         return Http::timeout(25)
             ->withHeaders([
-                'Accept' => $contentType,
-                'Content-Type' => $contentType,
-                'X-Correlation-ID' => (string) Str::uuid() . '_' . (string) Str::uuid(),
-                'User-Agent' => 'SmartHomePanel/1.0',
+                'Accept' => 'application/json',
+                'User-Agent' => self::USER_AGENT,
             ])
-            ->withBody(json_encode($body, JSON_UNESCAPED_UNICODE), $contentType)
-            ->post($url);
+            ->get(self::BASE . $path, $query);
     }
 
-    private function stationLid(string $evaOrLid): string
+    /**
+     * Prefer station/parent IDs over platform-level IDs for stabler boards.
+     *
+     * @param  array<string, mixed>  $item
+     */
+    private function preferParentId(array $item): string
     {
-        if (str_contains($evaOrLid, '@') || str_starts_with($evaOrLid, 'A=')) {
-            return $evaOrLid;
+        $id = trim((string) ($item['id'] ?? ''));
+        // Common Motis pattern: …:area:stop:platform — collapse to area:stop when possible is unsafe.
+        // Prefer explicit parent if present.
+        $parent = trim((string) ($item['parentId'] ?? $item['parent'] ?? ''));
+        if ($parent !== '') {
+            return $parent;
         }
 
-        return 'A=1@L=' . $evaOrLid . '@';
+        return $id;
+    }
+
+    /**
+     * Resolve legacy EVA IDs (numeric) via name search when needed.
+     */
+    private function resolveStopId(string $id, ?string $name = null): string
+    {
+        if (!$this->looksLikeLegacyEva($id)) {
+            return $id;
+        }
+
+        $name = trim((string) $name);
+        if ($name === '') {
+            return $id;
+        }
+
+        $cacheKey = 'transit_resolve_motis_' . sha1(mb_strtolower($name));
+
+        return Cache::remember($cacheKey, self::LOCATIONS_TTL, function () use ($name, $id) {
+            try {
+                $hits = $this->searchLocations($name);
+                if ($hits !== []) {
+                    return $hits[0]['id'];
+                }
+            } catch (\Throwable) {
+                /* keep legacy id */
+            }
+
+            return $id;
+        });
+    }
+
+    private function looksLikeLegacyEva(string $id): bool
+    {
+        return (bool) preg_match('/^\d{6,9}$/', $id);
     }
 
     /**
@@ -372,8 +380,9 @@ class TransitService
      */
     private function mapDeparture(array $row): ?array
     {
-        $planned = $row['abgangsDatum'] ?? null;
-        $when = $row['ezAbgangsDatum'] ?? $planned;
+        $place = is_array($row['place'] ?? null) ? $row['place'] : [];
+        $when = $place['departure'] ?? $place['scheduledDeparture'] ?? null;
+        $planned = $place['scheduledDeparture'] ?? $when;
         if (!is_string($when) || $when === '') {
             return null;
         }
@@ -382,35 +391,24 @@ class TransitService
         }
 
         $delay = null;
-        $plannedTs = strtotime($planned);
         $whenTs = strtotime($when);
-        if ($plannedTs && $whenTs) {
+        $plannedTs = strtotime($planned);
+        if ($whenTs && $plannedTs) {
             $delay = $whenTs - $plannedTs;
         }
 
-        $line = trim((string) ($row['mitteltext'] ?? $row['kurztext'] ?? ''));
+        $line = trim((string) ($row['displayName'] ?? $row['routeShortName'] ?? $row['tripShortName'] ?? ''));
         if ($line === '') {
-            $line = 'Zug';
+            $line = (string) ($row['mode'] ?? 'Zug');
         }
 
-        $notes = $row['echtzeitNotizen'] ?? [];
-        $cancelled = false;
-        if (is_array($notes)) {
-            foreach ($notes as $n) {
-                $text = is_array($n) ? (string) ($n['text'] ?? '') : (string) $n;
-                if (stripos($text, 'entfällt') !== false || stripos($text, 'cancelled') !== false) {
-                    $cancelled = true;
-                    break;
-                }
-            }
-        }
-
-        $platform = $row['gleis'] ?? $row['plattform'] ?? null;
+        $platform = $place['track'] ?? $place['scheduledTrack'] ?? null;
+        $cancelled = (bool) ($row['cancelled'] ?? $row['tripCancelled'] ?? $place['cancelled'] ?? false);
 
         return [
             'line' => $line,
-            'product' => (string) ($row['produktGattung'] ?? $row['kurztext'] ?? ''),
-            'direction' => (string) ($row['richtung'] ?? ''),
+            'product' => (string) ($row['mode'] ?? ''),
+            'direction' => (string) ($row['headsign'] ?? $row['tripTo']['name'] ?? ''),
             'when' => $when,
             'plannedWhen' => $planned,
             'delay' => $delay,
@@ -425,55 +423,56 @@ class TransitService
      */
     private function mapJourney(array $row): ?array
     {
-        $sections = is_array($row['verbindungsAbschnitte'] ?? null) ? $row['verbindungsAbschnitte'] : [];
-        $firstPt = null;
-        $lastPt = null;
-        $legSummaries = [];
+        $legs = is_array($row['legs'] ?? null) ? $row['legs'] : [];
+        $departure = is_string($row['startTime'] ?? null) ? $row['startTime'] : null;
+        $arrival = is_string($row['endTime'] ?? null) ? $row['endTime'] : null;
 
-        foreach ($sections as $sec) {
-            if (!is_array($sec)) {
+        $legSummaries = [];
+        $delay = null;
+        $cancelled = false;
+
+        foreach ($legs as $leg) {
+            if (!is_array($leg)) {
                 continue;
             }
-            $typ = (string) ($sec['typ'] ?? '');
-            if ($typ !== '' && $typ !== 'FAHRZEUG') {
+            $mode = strtoupper((string) ($leg['mode'] ?? ''));
+            if (in_array($mode, ['WALK', 'BICYCLE', 'CAR', 'RENTAL'], true)) {
                 continue;
             }
-            if ($firstPt === null) {
-                $firstPt = $sec;
+            $line = trim((string) ($leg['displayName'] ?? $leg['routeShortName'] ?? $leg['tripShortName'] ?? ''));
+            if ($line === '') {
+                $line = $mode !== '' ? $mode : 'Zug';
             }
-            $lastPt = $sec;
-            $lineName = trim((string) ($sec['mitteltext'] ?? $sec['kurztext'] ?? ''));
-            if ($lineName !== '') {
-                $legSummaries[] = [
-                    'line' => $lineName,
-                    'direction' => (string) ($sec['richtung'] ?? ''),
-                    'product' => (string) ($sec['produktGattung'] ?? $sec['kurztext'] ?? ''),
-                ];
+            $legSummaries[] = [
+                'line' => $line,
+                'direction' => (string) ($leg['headsign'] ?? $leg['to']['name'] ?? ''),
+                'product' => (string) ($leg['mode'] ?? ''),
+            ];
+
+            if (isset($leg['departureDelay']) && is_numeric($leg['departureDelay'])) {
+                // Motis delay often in seconds
+                $d = (int) $leg['departureDelay'];
+                $delay = $delay === null ? $d : max($delay, $d);
+            }
+            if (!empty($leg['cancelled']) || !empty($leg['from']['cancelled'])) {
+                $cancelled = true;
+            }
+
+            if ($departure === null && is_string($leg['startTime'] ?? null)) {
+                $departure = $leg['startTime'];
+            }
+            if (is_string($leg['endTime'] ?? null)) {
+                $arrival = $leg['endTime'];
             }
         }
 
-        $plannedDep = is_string($row['abgangsDatum'] ?? null)
-            ? $row['abgangsDatum']
-            : (is_array($firstPt) ? ($firstPt['abgangsDatum'] ?? null) : null);
-        $actualDep = is_string($row['ezAbgangsDatum'] ?? null)
-            ? $row['ezAbgangsDatum']
-            : (is_array($firstPt) ? ($firstPt['ezAbgangsDatum'] ?? $plannedDep) : $plannedDep);
-        $plannedArr = is_string($row['ankunftsDatum'] ?? null)
-            ? $row['ankunftsDatum']
-            : (is_array($lastPt) ? ($lastPt['ankunftsDatum'] ?? null) : null);
-        $actualArr = is_string($row['ezAnkunftsDatum'] ?? null)
-            ? $row['ezAnkunftsDatum']
-            : (is_array($lastPt) ? ($lastPt['ezAnkunftsDatum'] ?? $plannedArr) : $plannedArr);
-
-        $departure = is_string($actualDep) && $actualDep !== '' ? $actualDep : (is_string($plannedDep) ? $plannedDep : null);
-        $arrival = is_string($actualArr) && $actualArr !== '' ? $actualArr : (is_string($plannedArr) ? $plannedArr : null);
         if ($departure === null || $arrival === null) {
             return null;
         }
 
         $durationMin = null;
-        if (isset($row['reiseDauer']) && is_numeric($row['reiseDauer'])) {
-            $durationMin = (int) round(((int) $row['reiseDauer']) / 60);
+        if (isset($row['duration']) && is_numeric($row['duration'])) {
+            $durationMin = (int) round(((int) $row['duration']) / 60);
         } else {
             $depTs = strtotime($departure);
             $arrTs = strtotime($arrival);
@@ -482,30 +481,9 @@ class TransitService
             }
         }
 
-        $changes = isset($row['umstiegeAnzahl']) && is_numeric($row['umstiegeAnzahl'])
-            ? (int) $row['umstiegeAnzahl']
+        $changes = isset($row['transfers']) && is_numeric($row['transfers'])
+            ? (int) $row['transfers']
             : max(0, count($legSummaries) - 1);
-
-        $delay = null;
-        if (is_string($plannedDep) && is_string($actualDep)) {
-            $p = strtotime($plannedDep);
-            $a = strtotime($actualDep);
-            if ($p && $a) {
-                $delay = $a - $p;
-            }
-        }
-
-        $cancelled = false;
-        $notes = $row['echtzeitNotizen'] ?? [];
-        if (is_array($notes)) {
-            foreach ($notes as $n) {
-                $text = is_array($n) ? (string) ($n['text'] ?? '') : (string) $n;
-                if (stripos($text, 'entfällt') !== false || stripos($text, 'cancelled') !== false) {
-                    $cancelled = true;
-                    break;
-                }
-            }
-        }
 
         return [
             'departure' => $departure,

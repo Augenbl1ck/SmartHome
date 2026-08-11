@@ -1050,7 +1050,8 @@ function TransitSection() {
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Bahn / ÖPNV</p>
         </div>
         <p className="text-xs text-muted-foreground leading-relaxed">
-          Stationen für Abfahrtstafeln und gespeicherte Verbindungen (Von→Nach). Max. 3 je Typ. Daten über DB-Fahrplan-API.
+          Stationen für Abfahrtstafeln und gespeicherte Verbindungen (Von→Nach). Max. 3 je Typ.
+          Daten über Transitous (Open-Data). Stationen ggf. neu wählen, falls zuvor mit der alten DB-API angelegt.
         </p>
         {error && <p className="text-sm text-destructive">{error}</p>}
         {saved && <p className="text-sm text-emerald-600">✓ Gespeichert</p>}
