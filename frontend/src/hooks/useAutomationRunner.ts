@@ -13,6 +13,7 @@
  *   - battery_low, power_above
  *
  * Geräte-Edge-Trigger (motion, door, flood, smoke) feuert zuverlässig nur im Backend.
+ * Bedingungen (AND/OR) werden clientseitig als Zustandsprüfung mitgeprüft.
  */
 
 import { useEffect, useRef } from 'react';
@@ -76,6 +77,67 @@ function resolveHumidity(device: Device): number | null {
   }
   const fromStatus = parseFloat(device.status);
   return isNaN(fromStatus) ? null : fromStatus;
+}
+
+function evaluateCondition(condition: Record<string, unknown>, devices: Device[]): boolean {
+  const type = condition.type as string;
+  const device = devices.find((d) => d.id === Number(condition.device_id));
+
+  switch (type) {
+    case 'device_status':
+      return !!device && device.status === condition.status;
+    case 'temperature_above':
+    case 'temperature_below': {
+      if (!device) return false;
+      const value = resolveTemperature(device);
+      if (value === null) return false;
+      const threshold = Number(condition.threshold);
+      return type === 'temperature_above' ? value > threshold : value < threshold;
+    }
+    case 'humidity_above':
+    case 'humidity_below': {
+      if (!device) return false;
+      const value = resolveHumidity(device);
+      if (value === null) return false;
+      const threshold = Number(condition.threshold);
+      return type === 'humidity_above' ? value > threshold : value < threshold;
+    }
+    case 'door_open':
+      return !!device && device.status === 'open';
+    case 'door_closed':
+      return !!device && device.status === 'closed';
+    case 'motion':
+      return !!device && device.status === 'on';
+    case 'time_between': {
+      const from = String(condition.from ?? '');
+      const to = String(condition.to ?? '');
+      if (!from || !to) return false;
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const current = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+      if (from > to) return current >= from || current <= to;
+      return current >= from && current <= to;
+    }
+    case 'weekday': {
+      const weekdays = (condition.weekdays as number[]) ?? [];
+      return weekdays.includes(new Date().getDay());
+    }
+    default:
+      return false;
+  }
+}
+
+function conditionsPass(
+  conditions: { logic?: string; items?: Record<string, unknown>[] } | null | undefined,
+  devices: Device[],
+): boolean {
+  const items = conditions?.items ?? [];
+  if (items.length === 0) return true;
+
+  if (conditions?.logic === 'or') {
+    return items.some((item) => evaluateCondition(item, devices));
+  }
+  return items.every((item) => evaluateCondition(item, devices));
 }
 
 /**
@@ -163,7 +225,6 @@ async function executeAction(action: Record<string, unknown>, devices: Device[])
     if (status === 'on' || status === 'off') {
       await executeToggle(Number(action.device_id), status);
     } else {
-      // Cover open/close/stop oder andere Status-Strings
       await api.setDeviceStatus(Number(action.device_id), status);
       console.info(`[AutomationRunner] set-status ${action.device_id} → ${status}`);
     }
@@ -194,6 +255,9 @@ async function executeAction(action: Record<string, unknown>, devices: Device[])
       await api.setDeviceStatus(Number(action.device_id), mode);
       console.info(`[AutomationRunner] Thermostat ${action.device_id} Modus → ${mode}`);
     }
+  } else if (t === 'activate_scene') {
+    await api.activateScene(Number(action.scene_id));
+    console.info(`[AutomationRunner] Szene ${action.scene_id} aktiviert`);
   } else if (t === 'notify') {
     console.info(`[AutomationRunner] Benachrichtigung: ${action.message}`);
   }
@@ -224,8 +288,11 @@ async function runAutomations() {
       } else if (trigger.type === 'device_status') {
         shouldFire = checkDeviceStatusTrigger(trigger, devices);
       } else {
-        // temperature/humidity/battery/power (+ legacy sensor_threshold)
         shouldFire = checkSensorThresholdTrigger(trigger, devices);
+      }
+
+      if (shouldFire && !conditionsPass(automation.conditions, devices)) {
+        shouldFire = false;
       }
 
       if (shouldFire) {
@@ -239,7 +306,6 @@ async function runAutomations() {
       }
     }
   } catch (err) {
-    // Kein Internet / Backend offline → still fail
     console.warn('[AutomationRunner] Fehler beim Laden:', err);
   }
 }
@@ -248,10 +314,7 @@ export function useAutomationRunner() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    // Sofort einmal prüfen
     runAutomations();
-
-    // Danach jede Minute
     intervalRef.current = setInterval(runAutomations, 60 * 1000);
 
     return () => {

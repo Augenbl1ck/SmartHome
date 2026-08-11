@@ -17,10 +17,11 @@ class AutomationController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'name'    => 'required|string|max:255',
-            'trigger' => 'required|array',
-            'action'  => 'required|array',
-            'enabled' => 'sometimes|boolean',
+            'name'       => 'required|string|max:255',
+            'trigger'    => 'required|array',
+            'action'     => 'required|array',
+            'conditions' => 'nullable|array',
+            'enabled'    => 'sometimes|boolean',
         ]);
 
         return response()->json(Automation::create($data), 201);
@@ -34,10 +35,11 @@ class AutomationController extends Controller
     public function update(Request $request, Automation $automation): JsonResponse
     {
         $data = $request->validate([
-            'name'    => 'sometimes|string|max:255',
-            'trigger' => 'sometimes|array',
-            'action'  => 'sometimes|array',
-            'enabled' => 'sometimes|boolean',
+            'name'       => 'sometimes|string|max:255',
+            'trigger'    => 'sometimes|array',
+            'action'     => 'sometimes|array',
+            'conditions' => 'nullable|array',
+            'enabled'    => 'sometimes|boolean',
         ]);
 
         $automation->update($data);

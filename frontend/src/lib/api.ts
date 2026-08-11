@@ -168,6 +168,10 @@ export interface Automation {
   name: string;
   trigger: Record<string, unknown>;
   action: Record<string, unknown>;
+  conditions?: {
+    logic: 'and' | 'or';
+    items: Record<string, unknown>[];
+  } | null;
   enabled: boolean;
 }
 

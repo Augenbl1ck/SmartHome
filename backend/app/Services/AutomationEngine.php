@@ -8,11 +8,12 @@ use App\Jobs\DelayedDeviceAction;
 use App\Models\Automation;
 use App\Models\AutomationLog;
 use App\Models\Device;
+use App\Models\Scene;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
- * AutomationEngine – prüft Auslöser und führt Aktionen aus.
+ * AutomationEngine – prüft Auslöser, optionale AND/OR-Bedingungen und führt Aktionen aus.
  *
  * Wird aufgerufen:
  *   - aus MqttSubscribe nach jedem Gerätestatus-Update (Geräte-Trigger)
@@ -20,7 +21,10 @@ use Illuminate\Support\Facades\Log;
  */
 class AutomationEngine
 {
-    public function __construct(private readonly DeviceService $deviceService) {}
+    public function __construct(
+        private readonly DeviceService $deviceService,
+        private readonly SceneService $sceneService,
+    ) {}
 
     // ─────────────────────────────────────────────────────────────────────────
     // Einstiegspunkte
@@ -34,10 +38,14 @@ class AutomationEngine
         $this->trackOnSince($device, $previousStatus);
 
         foreach (Automation::where('enabled', true)->get() as $automation) {
-            if ($this->deviceTriggerFires($automation->trigger, $device, $previousStatus)) {
-                Log::info("[AutomationEngine] Automation '{$automation->name}' ausgelöst (Gerät: {$device->name})");
-                $this->executeAction($automation->action, $automation->name);
+            if (!$this->deviceTriggerFires($automation->trigger, $device, $previousStatus)) {
+                continue;
             }
+            if (!$this->conditionsPass($automation->conditions)) {
+                continue;
+            }
+            Log::info("[AutomationEngine] Automation '{$automation->name}' ausgelöst (Gerät: {$device->name})");
+            $this->executeAction($automation->action, $automation->name);
         }
     }
 
@@ -58,6 +66,9 @@ class AutomationEngine
                 if (Cache::has($cacheKey)) {
                     continue;
                 }
+                if (!$this->conditionsPass($automation->conditions)) {
+                    continue;
+                }
                 Cache::put($cacheKey, true, now()->addMinutes(1));
                 Log::info("[AutomationEngine] Zeit-Automation '{$automation->name}' um {$time}");
                 $this->executeAction($automation->action, $automation->name);
@@ -69,6 +80,9 @@ class AutomationEngine
             ) {
                 $cacheKey = "automation:{$automation->id}:fired:{$time}:{$weekday}";
                 if (Cache::has($cacheKey)) {
+                    continue;
+                }
+                if (!$this->conditionsPass($automation->conditions)) {
                     continue;
                 }
                 Cache::put($cacheKey, true, now()->addMinutes(1));
@@ -113,12 +127,134 @@ class AutomationEngine
 
             $elapsed = (int) now()->diffInMinutes($onSince);
             if ($elapsed >= $minutes) {
+                if (!$this->conditionsPass($automation->conditions)) {
+                    continue;
+                }
                 $attrs['on_duration_fired'] = true;
                 $device->update(['attributes' => $attrs]);
                 Log::info("[AutomationEngine] Dauertrigger '{$automation->name}': {$device->name} seit {$elapsed} Min. an");
                 $this->executeAction($automation->action, $automation->name);
             }
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Bedingungen (AND/OR) – Zustandsprüfungen, keine Edge-Trigger
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * @param  array<string, mixed>|null  $conditions
+     */
+    public function conditionsPass(?array $conditions): bool
+    {
+        if (!$conditions || empty($conditions['items']) || !is_array($conditions['items'])) {
+            return true;
+        }
+
+        $logic = strtolower((string) ($conditions['logic'] ?? 'and'));
+        $items = $conditions['items'];
+
+        if ($logic === 'or') {
+            foreach ($items as $item) {
+                if (is_array($item) && $this->evaluateCondition($item)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Default: AND
+        foreach ($items as $item) {
+            if (!is_array($item) || !$this->evaluateCondition($item)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private function evaluateCondition(array $condition): bool
+    {
+        $type = $condition['type'] ?? '';
+
+        return match ($type) {
+            'device_status' => $this->conditionDeviceStatus($condition),
+            'temperature_above', 'temperature_below' => $this->conditionTemperature($condition, $type === 'temperature_above'),
+            'humidity_above', 'humidity_below' => $this->conditionHumidity($condition, $type === 'humidity_above'),
+            'door_open' => $this->conditionDeviceEquals($condition, 'open'),
+            'door_closed' => $this->conditionDeviceEquals($condition, 'closed'),
+            'motion' => $this->conditionDeviceEquals($condition, 'on'),
+            'time_between' => $this->conditionTimeBetween($condition),
+            'weekday' => $this->conditionWeekday($condition),
+            default => false,
+        };
+    }
+
+    private function conditionDeviceStatus(array $condition): bool
+    {
+        $device = Device::find($condition['device_id'] ?? null);
+        if (!$device) {
+            return false;
+        }
+        return $device->status === ($condition['status'] ?? '');
+    }
+
+    private function conditionDeviceEquals(array $condition, string $status): bool
+    {
+        $device = Device::find($condition['device_id'] ?? null);
+        return $device && $device->status === $status;
+    }
+
+    private function conditionTemperature(array $condition, bool $above): bool
+    {
+        $device = Device::find($condition['device_id'] ?? null);
+        if (!$device) {
+            return false;
+        }
+        $temp = $this->resolveTemperature($device);
+        if ($temp === null) {
+            return false;
+        }
+        $threshold = (float) ($condition['threshold'] ?? 0);
+        return $above ? $temp > $threshold : $temp < $threshold;
+    }
+
+    private function conditionHumidity(array $condition, bool $above): bool
+    {
+        $device = Device::find($condition['device_id'] ?? null);
+        if (!$device || !isset($device->attributes['humidity'])) {
+            return false;
+        }
+        $value = (float) $device->attributes['humidity'];
+        $threshold = (float) ($condition['threshold'] ?? 0);
+        return $above ? $value > $threshold : $value < $threshold;
+    }
+
+    private function conditionTimeBetween(array $condition): bool
+    {
+        $from = (string) ($condition['from'] ?? '');
+        $to   = (string) ($condition['to'] ?? '');
+        if ($from === '' || $to === '') {
+            return false;
+        }
+
+        $now = now()->format('H:i');
+
+        // Über Mitternacht: z.B. 22:00–06:00
+        if ($from > $to) {
+            return $now >= $from || $now <= $to;
+        }
+
+        return $now >= $from && $now <= $to;
+    }
+
+    private function conditionWeekday(array $condition): bool
+    {
+        $weekdays = $condition['weekdays'] ?? [];
+        if (!is_array($weekdays) || $weekdays === []) {
+            return false;
+        }
+        $weekday = (int) now()->format('w');
+        return in_array($weekday, $weekdays, true);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -266,6 +402,13 @@ class AutomationEngine
                 }
                 break;
 
+            case 'activate_scene':
+                $scene = Scene::find($action['scene_id'] ?? null);
+                if ($scene) {
+                    $this->sceneService->activate($scene);
+                }
+                break;
+
             case 'notify':
                 $message = $action['message'] ?? 'Automation ausgelöst';
                 app(PushNotificationService::class)->send(
@@ -325,6 +468,10 @@ class AutomationEngine
                     'auto' => 'Auto',
                     default => (string) ($action['mode'] ?? '?'),
                 }
+            ),
+            'activate_scene' => sprintf(
+                'Szene „%s" aktiviert',
+                optional(Scene::find($action['scene_id'] ?? null))->name ?? '?'
             ),
             'notify'            => (string) ($action['message'] ?? ''),
             default             => $type,

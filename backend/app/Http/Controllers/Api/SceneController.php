@@ -3,15 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Device;
 use App\Models\Scene;
-use App\Services\DeviceService;
+use App\Services\SceneService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class SceneController extends Controller
 {
-    public function __construct(private DeviceService $deviceService) {}
+    public function __construct(private SceneService $sceneService) {}
 
     public function index(): JsonResponse
     {
@@ -58,16 +57,7 @@ class SceneController extends Controller
 
     public function activate(Scene $scene): JsonResponse
     {
-        foreach ($scene->actions as $action) {
-            $device = Device::find($action['device_id']);
-            if (!$device) continue;
-            $status = $action['status'];
-            if ($status === 'toggle') {
-                $status = $device->status === 'on' ? 'off' : 'on';
-            }
-            $this->deviceService->setStatus($device, $status);
-            $device->update(['status' => $status, 'last_seen' => now()]);
-        }
+        $this->sceneService->activate($scene);
         return response()->json(['activated' => true, 'scene' => $scene->name]);
     }
 }

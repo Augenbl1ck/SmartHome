@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { api, Automation, AutomationLog, Device, Room } from '@/lib/api';
+import { api, Automation, AutomationLog, Device, Room, Scene } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -16,7 +16,7 @@ import {
 import {
   Pencil, Plus, Trash2, Clock, Zap, ChevronRight,
   Thermometer, Droplets, Activity, DoorOpen, Timer, History,
-  Waves, Flame, Battery, Gauge,
+  Waves, Flame, Battery, Gauge, Filter, Clapperboard,
 } from 'lucide-react';
 import { getEcho } from '@/lib/echo';
 
@@ -49,13 +49,48 @@ type ActionType =
   | 'delayed_on'
   | 'set_thermostat_setpoint'
   | 'set_thermostat_mode'
+  | 'activate_scene'
   | 'notify';
 
 type DeviceStatus = 'on' | 'off';
 type ActionDeviceStatus = 'on' | 'off' | 'open' | 'close' | 'stop';
 type ThermostatMode = 'heat' | 'off' | 'auto';
+type ConditionLogic = 'and' | 'or';
+type ConditionType =
+  | 'device_status'
+  | 'temperature_above'
+  | 'temperature_below'
+  | 'humidity_above'
+  | 'humidity_below'
+  | 'door_open'
+  | 'door_closed'
+  | 'motion'
+  | 'time_between'
+  | 'weekday';
 
 const SWITCHABLE_TYPES = ['light', 'plug', 'switch', 'dimmer', 'rgb', 'led', 'fan', 'cover', 'valve', 'other'];
+
+interface ConditionFormItem {
+  id: string;
+  type: ConditionType;
+  deviceId: string;
+  status: DeviceStatus;
+  threshold: string;
+  from: string;
+  to: string;
+  weekdays: number[];
+}
+
+const newCondition = (): ConditionFormItem => ({
+  id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  type: 'device_status',
+  deviceId: '',
+  status: 'on',
+  threshold: '22',
+  from: '22:00',
+  to: '06:00',
+  weekdays: [1, 2, 3, 4, 5],
+});
 
 // ── Form-State ────────────────────────────────────────────────────────────────
 
@@ -69,6 +104,8 @@ interface FormState {
   triggerSensorId: string;
   triggerThreshold: string;
   triggerDurationMinutes: string;
+  conditionLogic: ConditionLogic;
+  conditions: ConditionFormItem[];
   actionType: ActionType;
   actionDeviceId: string;
   actionDeviceStatus: ActionDeviceStatus;
@@ -78,6 +115,7 @@ interface FormState {
   actionNotifyMessage: string;
   actionSetpoint: string;
   actionThermostatMode: ThermostatMode;
+  actionSceneId: string;
 }
 
 const emptyForm = (): FormState => ({
@@ -90,6 +128,8 @@ const emptyForm = (): FormState => ({
   triggerSensorId: '',
   triggerThreshold: '25',
   triggerDurationMinutes: '30',
+  conditionLogic: 'and',
+  conditions: [],
   actionType: 'set_device_status',
   actionDeviceId: '',
   actionDeviceStatus: 'on',
@@ -99,11 +139,26 @@ const emptyForm = (): FormState => ({
   actionNotifyMessage: '',
   actionSetpoint: '21',
   actionThermostatMode: 'heat',
+  actionSceneId: '',
 });
+
+function conditionFromJson(item: Record<string, unknown>): ConditionFormItem {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type: (item.type as ConditionType) ?? 'device_status',
+    deviceId: item.device_id != null ? String(item.device_id) : '',
+    status: (item.status as DeviceStatus) ?? 'on',
+    threshold: item.threshold != null ? String(item.threshold) : '22',
+    from: (item.from as string) ?? '22:00',
+    to: (item.to as string) ?? '06:00',
+    weekdays: (item.weekdays as number[]) ?? [1, 2, 3, 4, 5],
+  };
+}
 
 function automationToForm(a: Automation): FormState {
   const t = a.trigger as Record<string, unknown>;
   const ac = a.action as Record<string, unknown>;
+  const cond = a.conditions;
   const defaultThreshold =
     t.type === 'battery_low' ? '20' : t.type === 'power_above' ? '100' : '25';
   return {
@@ -116,6 +171,8 @@ function automationToForm(a: Automation): FormState {
     triggerSensorId: t.device_id != null ? String(t.device_id) : '',
     triggerThreshold: t.threshold != null ? String(t.threshold) : defaultThreshold,
     triggerDurationMinutes: t.minutes != null ? String(t.minutes) : '30',
+    conditionLogic: (cond?.logic as ConditionLogic) ?? 'and',
+    conditions: (cond?.items ?? []).map((item) => conditionFromJson(item as Record<string, unknown>)),
     actionType: (ac.type as ActionType) ?? 'set_device_status',
     actionDeviceId: ac.device_id != null ? String(ac.device_id) : '',
     actionDeviceStatus: (ac.status as ActionDeviceStatus) ?? 'on',
@@ -125,6 +182,7 @@ function automationToForm(a: Automation): FormState {
     actionNotifyMessage: (ac.message as string) ?? '',
     actionSetpoint: ac.setpoint != null ? String(ac.setpoint) : '21',
     actionThermostatMode: (ac.mode as ThermostatMode) ?? 'heat',
+    actionSceneId: ac.scene_id != null ? String(ac.scene_id) : '',
   };
 }
 
@@ -181,9 +239,35 @@ function buildAction(f: FormState): Record<string, unknown> {
       return { type: 'set_thermostat_setpoint', device_id: Number(f.actionDeviceId), setpoint: Number(f.actionSetpoint) };
     case 'set_thermostat_mode':
       return { type: 'set_thermostat_mode', device_id: Number(f.actionDeviceId), mode: f.actionThermostatMode };
+    case 'activate_scene':
+      return { type: 'activate_scene', scene_id: Number(f.actionSceneId) };
     case 'notify':
       return { type: 'notify', message: f.actionNotifyMessage };
   }
+}
+
+function buildConditions(f: FormState): { logic: ConditionLogic; items: Record<string, unknown>[] } | null {
+  if (f.conditions.length === 0) return null;
+  const items = f.conditions.map((c) => {
+    switch (c.type) {
+      case 'device_status':
+        return { type: 'device_status', device_id: Number(c.deviceId), status: c.status };
+      case 'temperature_above':
+      case 'temperature_below':
+      case 'humidity_above':
+      case 'humidity_below':
+        return { type: c.type, device_id: Number(c.deviceId), threshold: Number(c.threshold) };
+      case 'door_open':
+      case 'door_closed':
+      case 'motion':
+        return { type: c.type, device_id: Number(c.deviceId) };
+      case 'time_between':
+        return { type: 'time_between', from: c.from, to: c.to };
+      case 'weekday':
+        return { type: 'weekday', weekdays: c.weekdays };
+    }
+  });
+  return { logic: f.conditionLogic, items };
 }
 
 // ── Menschenlesbare Texte ─────────────────────────────────────────────────────
@@ -199,6 +283,49 @@ function statusActionLabel(status: unknown): string {
     case 'stop': return 'stopp';
     default: return String(status ?? '');
   }
+}
+
+function describeConditionItem(item: Record<string, unknown>, devices: Device[]): string {
+  const dev = (id: unknown) => devices.find((d) => d.id === Number(id))?.name ?? '?';
+  switch (item.type) {
+    case 'device_status':
+      return `"${dev(item.device_id)}" ist ${item.status === 'on' ? 'an' : 'aus'}`;
+    case 'temperature_above':
+      return `Temp. (${dev(item.device_id)}) > ${item.threshold}°C`;
+    case 'temperature_below':
+      return `Temp. (${dev(item.device_id)}) < ${item.threshold}°C`;
+    case 'humidity_above':
+      return `Feuchte (${dev(item.device_id)}) > ${item.threshold}%`;
+    case 'humidity_below':
+      return `Feuchte (${dev(item.device_id)}) < ${item.threshold}%`;
+    case 'door_open':
+      return `"${dev(item.device_id)}" ist offen`;
+    case 'door_closed':
+      return `"${dev(item.device_id)}" ist geschlossen`;
+    case 'motion':
+      return `"${dev(item.device_id)}" erkennt Bewegung`;
+    case 'time_between':
+      return `Zeit ${item.from}–${item.to}`;
+    case 'weekday': {
+      const days = ((item.weekdays as number[]) ?? [])
+        .sort()
+        .map((d) => DAYS_SHORT[d % 7])
+        .join(', ');
+      return `Wochentag: ${days}`;
+    }
+    default:
+      return 'Bedingung';
+  }
+}
+
+function describeConditions(
+  conditions: { logic?: string; items?: Record<string, unknown>[] } | null | undefined,
+  devices: Device[],
+): string | null {
+  const items = conditions?.items ?? [];
+  if (items.length === 0) return null;
+  const joiner = conditions?.logic === 'or' ? ' ODER ' : ' UND ';
+  return items.map((item) => describeConditionItem(item, devices)).join(joiner);
 }
 
 function describeTrigger(trigger: Record<string, unknown>, devices: Device[]): string {
@@ -244,9 +371,15 @@ function describeTrigger(trigger: Record<string, unknown>, devices: Device[]): s
   }
 }
 
-function describeAction(action: Record<string, unknown>, devices: Device[], rooms: Room[]): string {
+function describeAction(
+  action: Record<string, unknown>,
+  devices: Device[],
+  rooms: Room[],
+  scenes: Scene[] = [],
+): string {
   const dev = (id: unknown) => devices.find((d) => d.id === Number(id))?.name ?? '?';
   const room = (id: unknown) => rooms.find((r) => r.id === Number(id))?.name ?? '?';
+  const scene = (id: unknown) => scenes.find((s) => s.id === Number(id))?.name ?? '?';
   switch (action.type) {
     case 'set_device_status':
       return `"${dev(action.device_id)}" ${statusActionLabel(action.status)}`;
@@ -265,6 +398,8 @@ function describeAction(action: Record<string, unknown>, devices: Device[], room
         action.mode === 'heat' ? 'Heizen' : action.mode === 'off' ? 'Aus' : action.mode === 'auto' ? 'Auto' : String(action.mode);
       return `"${dev(action.device_id)}" Modus ${modeLabel}`;
     }
+    case 'activate_scene':
+      return `Szene "${scene(action.scene_id)}" aktivieren`;
     case 'notify':
       return `Benachrichtigung: "${action.message}"`;
     default:
@@ -397,12 +532,13 @@ interface Props {
   initialAutomations: Automation[];
   devices: Device[];
   rooms: Room[];
+  scenes: Scene[];
   initialLogs: AutomationLog[];
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
-export default function AutomationsClient({ initialAutomations, devices, rooms, initialLogs }: Props) {
+export default function AutomationsClient({ initialAutomations, devices, rooms, scenes, initialLogs }: Props) {
   const [automations, setAutomations] = useState(initialAutomations);
   const [logs, setLogs]               = useState<AutomationLog[]>(initialLogs);
   const [activeTab, setActiveTab]     = useState<'automations' | 'history'>('automations');
@@ -463,6 +599,22 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
       return 'Bitte einen Sensor waehlen.';
     if (f.triggerType === 'weekday_time' && f.triggerWeekdays.length === 0)
       return 'Bitte mindestens einen Wochentag waehlen.';
+
+    for (let i = 0; i < f.conditions.length; i++) {
+      const c = f.conditions[i];
+      const label = `Bedingung ${i + 1}`;
+      const needsCondDevice: ConditionType[] = [
+        'device_status', 'temperature_above', 'temperature_below',
+        'humidity_above', 'humidity_below', 'door_open', 'door_closed', 'motion',
+      ];
+      if (needsCondDevice.includes(c.type) && !c.deviceId)
+        return `${label}: bitte ein Geraet waehlen.`;
+      if (c.type === 'weekday' && c.weekdays.length === 0)
+        return `${label}: bitte mindestens einen Wochentag waehlen.`;
+      if (c.type === 'time_between' && (!c.from || !c.to))
+        return `${label}: bitte Zeit von/bis angeben.`;
+    }
+
     if (f.actionType === 'set_room_devices' && !f.actionRoomId)
       return 'Bitte einen Raum fuer die Aktion waehlen.';
     const needsActionDevice: ActionType[] = [
@@ -471,6 +623,8 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
     ];
     if (needsActionDevice.includes(f.actionType) && !f.actionDeviceId)
       return 'Bitte ein Ziel-Geraet fuer die Aktion waehlen.';
+    if (f.actionType === 'activate_scene' && !f.actionSceneId)
+      return 'Bitte eine Szene waehlen.';
     if (f.actionType === 'set_thermostat_setpoint') {
       const sp = Number(f.actionSetpoint);
       if (Number.isNaN(sp) || sp < 4 || sp > 35)
@@ -487,7 +641,12 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
     if (err) { setDialog((s) => ({ ...s, error: err })); return; }
     setDialog((s) => ({ ...s, saving: true, error: '' }));
     try {
-      const payload = { name: form.name.trim(), trigger: buildTrigger(form), action: buildAction(form) };
+      const payload = {
+        name: form.name.trim(),
+        trigger: buildTrigger(form),
+        action: buildAction(form),
+        conditions: buildConditions(form),
+      };
       if (editing) {
         const updated = await api.updateAutomation(editing.id, payload);
         setAutomations((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
@@ -641,8 +800,17 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
                     <TriggerIcon className="h-3.5 w-3.5 shrink-0" />
                     {describeTrigger(trigger, devices)}
                   </span>
+                  {describeConditions(automation.conditions, devices) && (
+                    <>
+                      <span className="text-xs text-muted-foreground">+ wenn</span>
+                      <span className="flex items-center gap-1 text-muted-foreground text-xs">
+                        <Filter className="h-3 w-3 shrink-0" />
+                        {describeConditions(automation.conditions, devices)}
+                      </span>
+                    </>
+                  )}
                   <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <span className="font-medium">{describeAction(action, devices, rooms)}</span>
+                  <span className="font-medium">{describeAction(action, devices, rooms, scenes)}</span>
                 </div>
               </CardContent>
             </Card>
@@ -885,6 +1053,186 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
               )}
             </div>
 
+            {/* BEDINGUNGEN */}
+            <div className="space-y-3 rounded-lg border p-4">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold flex items-center gap-1.5">
+                  <Filter className="h-4 w-4" /> Und nur wenn ... (optional)
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => patchForm({ conditions: [...form.conditions, newCondition()] })}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Bedingung
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Zusaetzliche Zustandspruefungen nach dem Ausloeser. Leer = keine Einschraenkung.
+              </p>
+
+              {form.conditions.length > 1 && (
+                <div className="space-y-1">
+                  <FieldLabel>Verknuepfung</FieldLabel>
+                  <Select
+                    value={form.conditionLogic}
+                    onValueChange={(v) => patchForm({ conditionLogic: v as ConditionLogic })}
+                  >
+                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="and">ALLE Bedingungen (UND)</SelectItem>
+                      <SelectItem value="or">EINE Bedingung reicht (ODER)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {form.conditions.map((cond, idx) => {
+                const patchCond = (patch: Partial<ConditionFormItem>) => {
+                  const next = form.conditions.map((c) => (c.id === cond.id ? { ...c, ...patch } : c));
+                  patchForm({ conditions: next });
+                };
+                const removeCond = () =>
+                  patchForm({ conditions: form.conditions.filter((c) => c.id !== cond.id) });
+
+                const condNeedsTemp = cond.type === 'temperature_above' || cond.type === 'temperature_below';
+                const condNeedsHum = cond.type === 'humidity_above' || cond.type === 'humidity_below';
+                const condNeedsDoor = cond.type === 'door_open' || cond.type === 'door_closed';
+                const condDeviceList = condNeedsTemp
+                  ? tempSensors
+                  : condNeedsHum
+                    ? humiditySensors
+                    : condNeedsDoor
+                      ? doorSensors
+                      : cond.type === 'motion'
+                        ? motionSensors
+                        : devices;
+
+                return (
+                  <div key={cond.id} className="rounded-md border bg-muted/30 p-3 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Bedingung {idx + 1}
+                        {idx > 0 && (
+                          <span className="ml-2 normal-case">
+                            ({form.conditionLogic === 'or' ? 'ODER' : 'UND'})
+                          </span>
+                        )}
+                      </p>
+                      <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive"
+                        onClick={removeCond}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+
+                    <div className="space-y-1">
+                      <FieldLabel>Typ</FieldLabel>
+                      <Select
+                        value={cond.type}
+                        onValueChange={(v) => {
+                          const type = v as ConditionType;
+                          const patch: Partial<ConditionFormItem> = { type, deviceId: '' };
+                          if (type === 'temperature_above' || type === 'temperature_below') patch.threshold = '22';
+                          if (type === 'humidity_above' || type === 'humidity_below') patch.threshold = '70';
+                          patchCond(patch);
+                        }}
+                      >
+                        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="device_status">Geraet ist an/aus</SelectItem>
+                          <SelectItem value="temperature_above">Temperatur ueber</SelectItem>
+                          <SelectItem value="temperature_below">Temperatur unter</SelectItem>
+                          <SelectItem value="humidity_above">Feuchte ueber</SelectItem>
+                          <SelectItem value="humidity_below">Feuchte unter</SelectItem>
+                          <SelectItem value="door_open">Tuer/Fenster ist offen</SelectItem>
+                          <SelectItem value="door_closed">Tuer/Fenster ist geschlossen</SelectItem>
+                          <SelectItem value="motion">Bewegung aktiv</SelectItem>
+                          <SelectItem value="time_between">Zeitfenster</SelectItem>
+                          <SelectItem value="weekday">Wochentag</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {cond.type === 'device_status' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <FieldLabel>Geraet</FieldLabel>
+                          <DeviceSelect value={cond.deviceId} onChange={(v) => patchCond({ deviceId: v })}
+                            devices={switchableDevices} rooms={rooms} />
+                        </div>
+                        <div className="space-y-1">
+                          <FieldLabel>Status</FieldLabel>
+                          <Select value={cond.status} onValueChange={(v) => patchCond({ status: v as DeviceStatus })}>
+                            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="on">an</SelectItem>
+                              <SelectItem value="off">aus</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
+
+                    {(condNeedsTemp || condNeedsHum) && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <FieldLabel>Geraet</FieldLabel>
+                          {condDeviceList.length > 0 ? (
+                            <DeviceSelect value={cond.deviceId} onChange={(v) => patchCond({ deviceId: v })}
+                              devices={condDeviceList} rooms={rooms} />
+                          ) : (
+                            <p className="text-xs text-muted-foreground py-2">Keine passenden Geraete.</p>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <FieldLabel>Schwellwert</FieldLabel>
+                          <TextInput type="number" value={cond.threshold}
+                            onChange={(v) => patchCond({ threshold: v })} />
+                        </div>
+                      </div>
+                    )}
+
+                    {(condNeedsDoor || cond.type === 'motion') && (
+                      <div className="space-y-1">
+                        <FieldLabel>Geraet</FieldLabel>
+                        {condDeviceList.length > 0 ? (
+                          <DeviceSelect value={cond.deviceId} onChange={(v) => patchCond({ deviceId: v })}
+                            devices={condDeviceList} rooms={rooms} />
+                        ) : (
+                          <p className="text-xs text-muted-foreground py-2">Keine passenden Sensoren.</p>
+                        )}
+                      </div>
+                    )}
+
+                    {cond.type === 'time_between' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <FieldLabel>Von</FieldLabel>
+                          <input type="time"
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                            value={cond.from} onChange={(e) => patchCond({ from: e.target.value })} />
+                        </div>
+                        <div className="space-y-1">
+                          <FieldLabel>Bis</FieldLabel>
+                          <input type="time"
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                            value={cond.to} onChange={(e) => patchCond({ to: e.target.value })} />
+                        </div>
+                      </div>
+                    )}
+
+                    {cond.type === 'weekday' && (
+                      <div className="space-y-1">
+                        <FieldLabel>Wochentage</FieldLabel>
+                        <WeekdayPicker value={cond.weekdays} onChange={(v) => patchCond({ weekdays: v })} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
             {/* AKTION */}
             <div className="space-y-3 rounded-lg border p-4">
               <p className="text-sm font-semibold flex items-center gap-1.5">
@@ -909,8 +1257,9 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
                       <SelectItem value="set_thermostat_mode">Thermostat-Modus setzen</SelectItem>
                     </SelectGroup>
                     <SelectGroup>
-                      <SelectLabel>Raum steuern</SelectLabel>
+                      <SelectLabel>Raum / Szene</SelectLabel>
                       <SelectItem value="set_room_devices">Alle Geraete im Raum ein-/ausschalten</SelectItem>
+                      <SelectItem value="activate_scene">Szene aktivieren</SelectItem>
                     </SelectGroup>
                     <SelectGroup>
                       <SelectLabel>Sonstiges</SelectLabel>
@@ -1055,6 +1404,29 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
                 </div>
               )}
 
+              {form.actionType === 'activate_scene' && (
+                <div className="space-y-1">
+                  <FieldLabel>Szene</FieldLabel>
+                  {scenes.length > 0 ? (
+                    <Select value={form.actionSceneId} onValueChange={(v) => patchForm({ actionSceneId: v })}>
+                      <SelectTrigger className="w-full"><SelectValue placeholder="Szene waehlen..." /></SelectTrigger>
+                      <SelectContent>
+                        {scenes.map((s) => (
+                          <SelectItem key={s.id} value={String(s.id)}>
+                            <span className="inline-flex items-center gap-1.5">
+                              <Clapperboard className="h-3.5 w-3.5" />
+                              {s.icon ? `${s.icon} ` : ''}{s.name}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p className="text-xs text-muted-foreground py-2">Keine Szenen vorhanden.</p>
+                  )}
+                </div>
+              )}
+
               {form.actionType === 'notify' && (
                 <div className="space-y-1">
                   <FieldLabel>Nachricht</FieldLabel>
@@ -1077,14 +1449,19 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
               const hasAction =
                 (['set_device_status', 'toggle_device', 'delayed_off', 'delayed_on', 'set_thermostat_setpoint', 'set_thermostat_mode'].includes(form.actionType) && !!form.actionDeviceId) ||
                 (form.actionType === 'set_room_devices' && !!form.actionRoomId) ||
+                (form.actionType === 'activate_scene' && !!form.actionSceneId) ||
                 (form.actionType === 'notify' && !!form.actionNotifyMessage.trim());
               if (!hasTrigger || !hasAction) return null;
+              const condText = describeConditions(buildConditions(form), devices);
               return (
                 <div className="rounded-md bg-muted px-4 py-3 text-sm space-y-1">
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Vorschau</p>
                   <p><span className="text-muted-foreground">Wenn: </span>{describeTrigger(buildTrigger(form), devices)}</p>
+                  {condText && (
+                    <p><span className="text-muted-foreground">Nur wenn: </span>{condText}</p>
+                  )}
                   <p><span className="text-muted-foreground">Dann: </span>
-                    <span className="font-medium">{describeAction(buildAction(form), devices, rooms)}</span>
+                    <span className="font-medium">{describeAction(buildAction(form), devices, rooms, scenes)}</span>
                   </p>
                 </div>
               );
