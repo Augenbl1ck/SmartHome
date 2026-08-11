@@ -115,6 +115,11 @@ export interface PanelSettings {
   screen_timeout: number;
   kiosk_mode: boolean;
   calendar_ical_url?: string | null;
+  dashboard_layout?: Record<string, unknown> | null;
+  weather?: { city?: string; unit?: 'metric' | 'imperial' } | null;
+  theme?: 'light' | 'dark' | 'system';
+  favorites?: number[];
+  scene_snapshots?: Record<string, unknown> | null;
 }
 
 export interface CalendarEvent {

@@ -1,9 +1,11 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import { api } from '@/lib/api';
 
 export const DASHBOARD_LAYOUT_KEY = 'smarthome_dashboard_layout';
 const FAVORITES_KEY = 'smarthome_favorites';
 const LEGACY_WIDGETS_KEY = 'smarthome_dashboard_widgets';
+const LAYOUT_EVENT = 'smarthome-dashboard-layout';
 
 export type BuiltInSectionId = 'weather' | 'calendar' | 'scenes' | 'rooms';
 export type SectionId = BuiltInSectionId | `field:${string}`;
@@ -44,10 +46,10 @@ function isBuiltin(s: string): s is BuiltInSectionId {
 }
 
 function migrateLegacy(parsed: Partial<DashboardLayout> & { sectionOrder?: string[] }): DashboardLayout {
-  let fields: DashboardField[] = Array.isArray(parsed.fields) ? parsed.fields : [];
+  let fields: DashboardField[] = Array.isArray(parsed.fields) ? parsed.fields as DashboardField[] : [];
   let sectionOrder = (parsed.sectionOrder ?? DEFAULT.sectionOrder).slice() as string[];
   const hiddenSections = (parsed.hiddenSections ?? []).slice() as string[];
-  const roomOrder = parsed.roomOrder ?? [];
+  const roomOrder = Array.isArray(parsed.roomOrder) ? parsed.roomOrder as number[] : [];
 
   const hadQuickaccess = sectionOrder.includes('quickaccess');
   sectionOrder = sectionOrder.filter(s => s !== 'quickaccess');
@@ -76,7 +78,6 @@ function migrateLegacy(parsed: Partial<DashboardLayout> & { sectionOrder?: strin
     return false;
   }) as SectionId[];
 
-  // Ensure weather/calendar exist (prepend if missing)
   for (const builtin of ['weather', 'calendar'] as const) {
     if (!sectionOrder.includes(builtin)) {
       sectionOrder.unshift(builtin);
@@ -104,7 +105,15 @@ function migrateLegacy(parsed: Partial<DashboardLayout> & { sectionOrder?: strin
   };
 }
 
-function load(): DashboardLayout {
+function cacheLocal(layout: DashboardLayout): void {
+  try {
+    localStorage.setItem(DASHBOARD_LAYOUT_KEY, JSON.stringify(layout));
+  } catch { /* */ }
+  window.dispatchEvent(new CustomEvent(LAYOUT_EVENT));
+  window.dispatchEvent(new StorageEvent('storage', { key: DASHBOARD_LAYOUT_KEY }));
+}
+
+function loadLocal(): DashboardLayout {
   try {
     const raw = localStorage.getItem(DASHBOARD_LAYOUT_KEY);
     if (!raw) return DEFAULT;
@@ -113,28 +122,77 @@ function load(): DashboardLayout {
   } catch { return DEFAULT; }
 }
 
+function isMeaningful(layout: DashboardLayout): boolean {
+  if (layout.fields.some(f => f.deviceIds.length > 0)) return true;
+  if (layout.hiddenSections.length > 0) return true;
+  if (layout.roomOrder.length > 0) return true;
+  const defOrder = DEFAULT.sectionOrder.join(',');
+  if (layout.sectionOrder.join(',') !== defOrder) return true;
+  if (layout.fields.length !== 1) return true;
+  if (layout.fields[0]?.name !== 'Schnellzugriff') return true;
+  return false;
+}
+
 export function loadDashboardLayout(): DashboardLayout {
-  return load();
+  return loadLocal();
 }
 
 export function useDashboardLayout(): DashboardLayout {
   const [layout, setLayout] = useState<DashboardLayout>(DEFAULT);
 
   useEffect(() => {
-    setLayout(load());
-    const handler = (e: StorageEvent) => {
-      if (e.key === DASHBOARD_LAYOUT_KEY) setLayout(load());
+    let cancelled = false;
+
+    const apply = (next: DashboardLayout) => {
+      if (cancelled) return;
+      cacheLocal(next);
+      setLayout(next);
     };
-    window.addEventListener('storage', handler);
-    return () => window.removeEventListener('storage', handler);
+
+    (async () => {
+      const local = loadLocal();
+      setLayout(local);
+
+      try {
+        const s = await api.getPanelSettings();
+        if (cancelled) return;
+
+        if (s.dashboard_layout && typeof s.dashboard_layout === 'object') {
+          apply(migrateLegacy(s.dashboard_layout as Partial<DashboardLayout>));
+          return;
+        }
+
+        // One-shot migrate local → server
+        if (isMeaningful(local)) {
+          await api.updatePanelSettings({ dashboard_layout: local });
+        }
+      } catch {
+        /* API down — local cache */
+      }
+    })();
+
+    const onChange = () => setLayout(loadLocal());
+    window.addEventListener(LAYOUT_EVENT, onChange);
+    window.addEventListener('storage', onChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(LAYOUT_EVENT, onChange);
+      window.removeEventListener('storage', onChange);
+    };
   }, []);
 
   return layout;
 }
 
-export function saveDashboardLayout(layout: DashboardLayout): void {
-  localStorage.setItem(DASHBOARD_LAYOUT_KEY, JSON.stringify(layout));
-  window.dispatchEvent(new StorageEvent('storage', { key: DASHBOARD_LAYOUT_KEY }));
+/** Optimistic local write + persist to server (shared across all panels). */
+export async function saveDashboardLayout(layout: DashboardLayout): Promise<void> {
+  const normalized = migrateLegacy(layout);
+  cacheLocal(normalized);
+  try {
+    await api.updatePanelSettings({ dashboard_layout: normalized });
+  } catch {
+    /* keep local cache if API fails */
+  }
 }
 
 export function createFieldId(): string {
@@ -164,4 +222,13 @@ export function sectionLabel(sectionId: SectionId, fields: DashboardField[]): st
   const fieldId = parseFieldSectionId(sectionId);
   if (fieldId) return fields.find(f => f.id === fieldId)?.name ?? 'Geräte-Feld';
   return sectionId;
+}
+
+export function useDashboardLayoutState(): [DashboardLayout, (next: DashboardLayout) => void] {
+  const layout = useDashboardLayout();
+  const [, bump] = useState(0);
+  const save = useCallback((next: DashboardLayout) => {
+    void saveDashboardLayout(next).then(() => bump(n => n + 1));
+  }, []);
+  return [layout, save];
 }

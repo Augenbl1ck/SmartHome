@@ -12,6 +12,7 @@ import DeviceHistory from '@/components/DeviceHistory';
 import SensorChart from '@/components/SensorChart';
 import ShellyPlugPanel from '@/components/ShellyPlugPanel';
 import ThermostatAdvancedPanel from '@/components/ThermostatAdvancedPanel';
+import { loadFavoritesLocal, saveFavorites, syncFavoritesFromServer } from '@/lib/favorites';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { getEcho } from '@/lib/echo';
 import BleScanDialog from '@/components/BleScanDialog';
@@ -80,12 +81,12 @@ function hasMac(device: Device): boolean {
   return !!(device.attributes?.ble_address as string | undefined)?.trim();
 }
 
-const FAV_KEY = 'smarthome_favorites';
-
 function loadFavs(): number[] {
-  try { const r = localStorage.getItem(FAV_KEY); return r ? JSON.parse(r) : []; } catch { return []; }
+  return loadFavoritesLocal();
 }
-function saveFavs(ids: number[]) { localStorage.setItem(FAV_KEY, JSON.stringify(ids)); }
+function saveFavs(ids: number[]) {
+  void saveFavorites(ids);
+}
 
 export default function RoomClient({ room, initialDevices }: Props) {
   const router = useRouter();
@@ -154,7 +155,10 @@ export default function RoomClient({ room, initialDevices }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.id]);
 
-  useEffect(() => { setFavorites(loadFavs()); }, []);
+  useEffect(() => {
+    setFavorites(loadFavs());
+    void syncFavoritesFromServer().then(setFavorites);
+  }, []);
 
   // Gerätezustand-Updates von anderen Komponenten empfangen (lokale Events bei Klick)
   useEffect(() => {

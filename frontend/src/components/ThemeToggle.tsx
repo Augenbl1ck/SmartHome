@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Moon, Sun } from 'lucide-react';
+import { api } from '@/lib/api';
 
 type Theme = 'light' | 'dark' | 'system';
 
@@ -23,6 +24,21 @@ export function useTheme() {
     setThemeState(stored);
     applyTheme(stored);
 
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await api.getPanelSettings();
+        if (cancelled) return;
+        const remote = s.theme;
+        if (remote === 'light' || remote === 'dark' || remote === 'system') {
+          setThemeState(remote);
+          applyTheme(remote);
+        } else if (stored && stored !== 'system') {
+          await api.updatePanelSettings({ theme: stored });
+        }
+      } catch { /* local cache */ }
+    })();
+
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     const onChange = () => {
       if ((localStorage.getItem('smarthome_theme') ?? 'system') === 'system') {
@@ -30,12 +46,16 @@ export function useTheme() {
       }
     };
     mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
+    return () => {
+      cancelled = true;
+      mq.removeEventListener('change', onChange);
+    };
   }, []);
 
   const setTheme = (t: Theme) => {
     setThemeState(t);
     applyTheme(t);
+    void api.updatePanelSettings({ theme: t }).catch(() => {});
   };
 
   return { theme, setTheme };

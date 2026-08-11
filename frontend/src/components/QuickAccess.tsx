@@ -8,19 +8,7 @@ import { Star, Bluetooth, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { shellyBle } from '@/lib/bluetooth';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
-
-const STORAGE_KEY = 'smarthome_favorites';
-
-function loadFavorites(): number[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
-function saveFavorites(ids: number[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
-}
+import { loadFavoritesLocal, saveFavorites, syncFavoritesFromServer, subscribeFavorites } from '@/lib/favorites';
 
 function isBle(device: Device): boolean {
   return device.attributes?.protocol === 'bluetooth_shelly_gen3';
@@ -39,7 +27,9 @@ export default function QuickAccess({ initialDevices }: Props) {
   const forceUpdate = useCallback(() => setTick(t => t + 1), []);
 
   useEffect(() => {
-    setFavorites(loadFavorites());
+    setFavorites(loadFavoritesLocal());
+    void syncFavoritesFromServer().then(setFavorites);
+    const unsub = subscribeFavorites(() => setFavorites(loadFavoritesLocal()));
 
     const bleDevices = initialDevices.filter(isBle);
     for (const d of bleDevices) {
@@ -47,8 +37,11 @@ export default function QuickAccess({ initialDevices }: Props) {
     }
 
     setMounted(true);
-    return () => { for (const d of bleDevices) shellyBle.offStateChange(d.id); };
-  }, [initialDevices]);
+    return () => {
+      unsub();
+      for (const d of bleDevices) shellyBle.offStateChange(d.id);
+    };
+  }, [initialDevices, forceUpdate]);
 
   // initialDevices-Prop-Änderungen (z.B. nach Dashboard-Refresh) in State übernehmen
   useEffect(() => {

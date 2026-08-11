@@ -367,7 +367,7 @@ function deviceToForm(d: Device): DeviceForm {
 // ─────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────
-// Dashboard-Layout-Einstellungen (localStorage)
+// Dashboard-Layout-Einstellungen (serverseitig via panel-settings)
 // ─────────────────────────────────────────────────────────────────
 
 function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms: Room[] }) {
@@ -378,11 +378,23 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
   const [expandedField, setExpandedField] = useState<string | null>(null);
 
   useEffect(() => {
-    const l = loadDashboardLayout();
-    setSectionOrder(l.sectionOrder);
-    setHiddenSections(l.hiddenSections);
-    setRoomOrder(l.roomOrder);
-    setFields(l.fields);
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await api.getPanelSettings();
+        if (cancelled) return;
+        if (s.dashboard_layout) {
+          await saveDashboardLayout(s.dashboard_layout as unknown as DashboardLayout);
+        }
+      } catch { /* */ }
+      if (cancelled) return;
+      const l = loadDashboardLayout();
+      setSectionOrder(l.sectionOrder);
+      setHiddenSections(l.hiddenSections);
+      setRoomOrder(l.roomOrder);
+      setFields(l.fields);
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const persist = (patch: Partial<DashboardLayout>) => {
@@ -396,7 +408,7 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
     if (patch.hiddenSections) setHiddenSections(patch.hiddenSections);
     if (patch.roomOrder) setRoomOrder(patch.roomOrder);
     if (patch.fields) setFields(patch.fields);
-    saveDashboardLayout(next);
+    void saveDashboardLayout(next);
   };
 
   const toggleSection = (id: SectionId) => {
@@ -691,27 +703,56 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Wetter-Einstellungen (localStorage)
+// Wetter-Einstellungen (serverseitig)
 // ─────────────────────────────────────────────────────────────────
-
-const WEATHER_KEY = 'smarthome_weather_cfg';
 
 function WeatherSection() {
   const [city, setCity] = useState('');
   const [unit, setUnit] = useState<'metric' | 'imperial'>('metric');
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(WEATHER_KEY);
-      if (raw) { const c = JSON.parse(raw); setCity(c.city ?? ''); setUnit(c.unit ?? 'metric'); }
-    } catch { /* */ }
+    api.getPanelSettings()
+      .then(s => {
+        if (s.weather?.city) setCity(s.weather.city);
+        if (s.weather?.unit === 'imperial' || s.weather?.unit === 'metric') setUnit(s.weather.unit);
+        else {
+          // migrate local once
+          try {
+            const raw = localStorage.getItem('smarthome_weather_cfg');
+            if (raw) {
+              const c = JSON.parse(raw) as { city?: string; unit?: 'metric' | 'imperial' };
+              if (c.city) setCity(c.city);
+              if (c.unit) setUnit(c.unit);
+            }
+          } catch { /* */ }
+        }
+      })
+      .catch(() => {
+        try {
+          const raw = localStorage.getItem('smarthome_weather_cfg');
+          if (raw) {
+            const c = JSON.parse(raw) as { city?: string; unit?: 'metric' | 'imperial' };
+            if (c.city) setCity(c.city);
+            if (c.unit) setUnit(c.unit);
+          }
+        } catch { /* */ }
+      });
   }, []);
 
-  const save = () => {
-    localStorage.setItem(WEATHER_KEY, JSON.stringify({ city: city.trim(), unit }));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const save = async () => {
+    setSaving(true);
+    const weather = { city: city.trim(), unit };
+    try {
+      localStorage.setItem('smarthome_weather_cfg', JSON.stringify(weather));
+    } catch { /* */ }
+    try {
+      await api.updatePanelSettings({ weather });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch { /* */ }
+    setSaving(false);
   };
 
   return (
@@ -727,8 +768,8 @@ function WeatherSection() {
             <option value="imperial">Fahrenheit (°F)</option>
           </select>
         </div>
-        <Button onClick={save} size="sm">
-          {saved ? '✓ Gespeichert' : 'Speichern'}
+        <Button onClick={save} size="sm" disabled={saving}>
+          {saved ? '✓ Gespeichert' : saving ? 'Speichern…' : 'Speichern'}
         </Button>
       </div>
     </div>

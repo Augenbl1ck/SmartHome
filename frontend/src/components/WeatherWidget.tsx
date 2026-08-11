@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Cloud, CloudRain, CloudSnow, Sun, Wind, Droplets, Thermometer, Settings } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { api } from '@/lib/api';
 
 const STORAGE_KEY = 'smarthome_weather_cfg';
 const ENV_KEY     = process.env.NEXT_PUBLIC_WEATHER_API_KEY ?? '';
@@ -19,14 +20,18 @@ interface WeatherData {
   city: string;
 }
 
-function loadConfig(): WeatherConfig | null {
+function configFromStored(stored: { city?: string; unit?: 'metric' | 'imperial' } | null): WeatherConfig | null {
+  const apiKey = ENV_KEY;
+  const city = stored?.city?.trim() ?? '';
+  if (!apiKey) return null;
+  return { apiKey, city, unit: stored?.unit ?? 'metric' };
+}
+
+function loadLocalConfig(): WeatherConfig | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    const stored: Partial<WeatherConfig> = raw ? JSON.parse(raw) : {};
-    const apiKey = stored.apiKey?.trim() || ENV_KEY;
-    const city   = stored.city?.trim() ?? '';
-    if (!apiKey) return null;
-    return { apiKey, city, unit: stored.unit ?? 'metric' };
+    const stored = raw ? JSON.parse(raw) as { city?: string; unit?: 'metric' | 'imperial' } : {};
+    return configFromStored(stored);
   } catch { return null; }
 }
 
@@ -48,7 +53,29 @@ export default function WeatherWidget({ compact = false }: { compact?: boolean }
 
   useEffect(() => {
     setMounted(true);
-    setCfg(loadConfig());
+    setCfg(loadLocalConfig());
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await api.getPanelSettings();
+        if (cancelled) return;
+        if (s.weather && (s.weather.city || s.weather.unit)) {
+          const next = configFromStored(s.weather);
+          if (next) {
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ city: next.city, unit: next.unit })); } catch { /* */ }
+            setCfg(next);
+          }
+          return;
+        }
+        const local = loadLocalConfig();
+        if (local?.city) {
+          await api.updatePanelSettings({ weather: { city: local.city, unit: local.unit } });
+        }
+      } catch { /* keep local */ }
+    })();
+
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -68,7 +95,7 @@ export default function WeatherWidget({ compact = false }: { compact?: boolean }
         temp:        Math.round(d.main.temp),
         feelsLike:   Math.round(d.main.feels_like),
         humidity:    d.main.humidity,
-        windSpeed:   Math.round(d.wind.speed * 3.6), // m/s → km/h
+        windSpeed:   Math.round(d.wind.speed * 3.6),
         description: d.weather[0].description,
         icon:        d.weather[0].icon,
         city:        d.name,
@@ -81,7 +108,6 @@ export default function WeatherWidget({ compact = false }: { compact?: boolean }
 
   const unit = cfg?.unit === 'imperial' ? '°F' : '°C';
 
-  // Kompakter Inline-Modus für Dashboard-Header
   if (compact) {
     if (!data) return null;
     return (
@@ -93,7 +119,6 @@ export default function WeatherWidget({ compact = false }: { compact?: boolean }
     );
   }
 
-  // Nicht konfiguriert
   if (!cfg?.apiKey || !cfg?.city) {
     return (
       <div className="rounded-xl border bg-card p-4 flex items-center gap-3 text-muted-foreground">

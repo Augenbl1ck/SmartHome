@@ -94,8 +94,29 @@ function actionDeviceId(a: Record<string, unknown>): number | null {
 function loadSnapshots(): Snapshots {
   try { return JSON.parse(localStorage.getItem(SNAPSHOTS_KEY) ?? '{}'); } catch { return {}; }
 }
-function saveSnapshots(s: Snapshots) {
+function cacheSnapshots(s: Snapshots) {
   localStorage.setItem(SNAPSHOTS_KEY, JSON.stringify(s));
+}
+async function saveSnapshots(s: Snapshots) {
+  cacheSnapshots(s);
+  try {
+    await api.updatePanelSettings({ scene_snapshots: s });
+  } catch { /* */ }
+}
+async function syncSnapshotsFromServer(): Promise<Snapshots> {
+  const local = loadSnapshots();
+  try {
+    const res = await api.getPanelSettings();
+    if (res.scene_snapshots && typeof res.scene_snapshots === 'object') {
+      const remote = res.scene_snapshots as Snapshots;
+      cacheSnapshots(remote);
+      return remote;
+    }
+    if (Object.keys(local).length > 0) {
+      await api.updatePanelSettings({ scene_snapshots: local });
+    }
+  } catch { /* */ }
+  return local;
 }
 
 function actionFromStored(a: Record<string, unknown>): SceneActionForm {
@@ -216,7 +237,9 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
     return () => { for (const d of bleDevices) shellyBle.offStateChange(d.id); };
   }, [devices, forceUpdate]);
 
-  useEffect(() => { setSnapshots(loadSnapshots()); }, []);
+  useEffect(() => {
+    void syncSnapshotsFromServer().then(setSnapshots);
+  }, []);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -300,7 +323,7 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
 
       if (snap.length > 0) {
         const newSnapshots = { ...loadSnapshots(), [scene.id]: snap };
-        saveSnapshots(newSnapshots);
+        void saveSnapshots(newSnapshots);
         setSnapshots(newSnapshots);
       }
 
@@ -340,7 +363,7 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
       snap.forEach((s) => emitDeviceUpdate(s.device_id, s.status));
       const newSnapshots = { ...snapshots };
       delete newSnapshots[sceneId];
-      saveSnapshots(newSnapshots);
+      void saveSnapshots(newSnapshots);
       setSnapshots(newSnapshots);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -403,7 +426,7 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
     setScenes((prev) => prev.filter((s) => s.id !== id));
     const newSnaps = { ...snapshots };
     delete newSnaps[id];
-    saveSnapshots(newSnaps);
+    void saveSnapshots(newSnaps);
     setSnapshots(newSnaps);
     setDeleteId(null);
   };
