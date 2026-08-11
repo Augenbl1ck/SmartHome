@@ -41,25 +41,6 @@ body.kiosk-active main {
   to   { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes wiggle {
-  0%, 100% { transform: rotate(-0.6deg); }
-  50%      { transform: rotate(0.6deg); }
-}
-
-/* react-grid-layout: children must fill the absolute cell */
-.react-grid-item > div {
-  height: 100%;
-  width: 100%;
-}
-.react-grid-item.react-grid-placeholder {
-  background: color-mix(in oklch, var(--primary) 22%, transparent);
-  border-radius: 0.75rem;
-  opacity: 1;
-}
-.react-resizable-handle {
-  z-index: 20;
-}
-
 /* ─── Tile-Aktivierung (leichter Pop wenn Gerät einschaltet) ─────── */
 @keyframes tile-activate {
   0%   { transform: scale(1); }

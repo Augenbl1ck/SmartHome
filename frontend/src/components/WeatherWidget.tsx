@@ -96,7 +96,7 @@ export default function WeatherWidget({ compact = false }: { compact?: boolean }
   // Nicht konfiguriert
   if (!cfg?.apiKey || !cfg?.city) {
     return (
-      <div className="h-full rounded-xl bg-card/90 p-4 flex items-center gap-3 text-muted-foreground">
+      <div className="rounded-xl border bg-card p-4 flex items-center gap-3 text-muted-foreground">
         <Cloud className="h-8 w-8 opacity-30 shrink-0" />
         <div className="min-w-0">
           <p className="text-sm font-medium">Stadt noch nicht eingestellt</p>
@@ -110,7 +110,7 @@ export default function WeatherWidget({ compact = false }: { compact?: boolean }
 
   if (loading) {
     return (
-      <div className="h-full rounded-xl bg-card/90 p-4 flex items-center gap-3 animate-pulse">
+      <div className="rounded-2xl border bg-card p-5 flex items-center gap-3 animate-pulse">
         <Cloud className="h-8 w-8 text-muted-foreground/30 shrink-0" />
         <div className="space-y-1.5 flex-1">
           <div className="h-4 bg-muted rounded w-24" />
@@ -122,7 +122,7 @@ export default function WeatherWidget({ compact = false }: { compact?: boolean }
 
   if (error) {
     return (
-      <div className="h-full rounded-xl border border-destructive/30 bg-destructive/5 p-4 flex items-center justify-between gap-3">
+      <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5 flex items-center justify-between gap-3">
         <p className="text-sm text-destructive">{error}</p>
         <Link href="/settings?view=widgets" className="shrink-0">
           <Settings className="h-4 w-4 text-muted-foreground hover:text-foreground" />
@@ -136,8 +136,8 @@ export default function WeatherWidget({ compact = false }: { compact?: boolean }
   const windUnit = cfg?.unit === 'imperial' ? 'mph' : 'km/h';
 
   return (
-    <div className="h-full rounded-xl bg-card/90 p-4 flex items-center">
-      <div className="flex items-center justify-between gap-2 w-full">
+    <div className="rounded-2xl border bg-card p-5">
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
           <WeatherIcon icon={data.icon} className="h-10 w-10 text-amber-500" />
           <div className="min-w-0">

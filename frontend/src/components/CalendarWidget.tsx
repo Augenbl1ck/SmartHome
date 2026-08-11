@@ -83,7 +83,7 @@ export default function CalendarWidget({ initial = null }: Props) {
 
   if (!configured) {
     return (
-      <div className="h-full rounded-xl bg-card/90 p-4 flex items-center gap-3 text-muted-foreground">
+      <div className="rounded-2xl border bg-card p-4 flex items-center gap-3 text-muted-foreground">
         <CalendarDays className="h-8 w-8 opacity-30 shrink-0" />
         <div className="min-w-0">
           <p className="text-sm font-medium">Kalender noch nicht eingerichtet</p>
@@ -95,7 +95,7 @@ export default function CalendarWidget({ initial = null }: Props) {
 
   if (loading && events.length === 0) {
     return (
-      <div className="h-full rounded-xl bg-card/90 p-4 animate-pulse space-y-3">
+      <div className="rounded-2xl border bg-card p-5 animate-pulse space-y-3">
         <div className="h-4 bg-muted rounded w-28" />
         <div className="h-3 bg-muted rounded w-full" />
         <div className="h-3 bg-muted rounded w-2/3" />
@@ -105,7 +105,7 @@ export default function CalendarWidget({ initial = null }: Props) {
 
   if (error) {
     return (
-      <div className="h-full rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+      <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5">
         <p className="text-sm text-destructive">{error}</p>
       </div>
     );
@@ -114,8 +114,8 @@ export default function CalendarWidget({ initial = null }: Props) {
   let lastDayKey = '';
 
   return (
-    <div className="h-full rounded-xl bg-card/90 p-4 overflow-auto">
-      <Link href="/calendar" className="flex items-center gap-2 min-w-0 mb-2.5 hover:opacity-80 transition-opacity no-drag">
+    <div className="rounded-2xl border bg-card p-5">
+      <Link href="/calendar" className="flex items-center gap-2 min-w-0 mb-3 hover:opacity-80 transition-opacity">
         <CalendarDays className="h-5 w-5 text-violet-500 shrink-0" />
         <p className="font-semibold text-sm">Kalender</p>
         {todayEvents.length > 0 && (
@@ -128,7 +128,7 @@ export default function CalendarWidget({ initial = null }: Props) {
       {nextUp.length === 0 ? (
         <p className="text-sm text-muted-foreground">Keine Termine in den nächsten 14 Tagen</p>
       ) : (
-        <ul className="space-y-1.5">
+        <ul className="space-y-2">
           {nextUp.map(ev => {
             const day = new Date(ev.start);
             const dayKey = `${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`;
@@ -142,7 +142,7 @@ export default function CalendarWidget({ initial = null }: Props) {
                   </p>
                 )}
                 <div className={cn(
-                  'flex items-start gap-3 rounded-lg px-2 py-1.5',
+                  'flex items-start gap-3 rounded-xl px-2.5 py-2',
                   isSameDay(day, startOfLocalDay(now)) && 'bg-violet-500/8',
                 )}>
                   <span className="text-xs tabular-nums text-muted-foreground w-[4.5rem] shrink-0 pt-0.5">

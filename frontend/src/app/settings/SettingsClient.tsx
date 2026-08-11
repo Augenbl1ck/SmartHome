@@ -17,13 +17,14 @@ import {
   Pencil, Plus, Trash2, Wifi, LockKeyhole, LockKeyholeOpen, Timer,
   ChevronDown, Home, Cpu, Cloud, LayoutDashboard, Search, Loader2, Radio,
   ChevronUp, X, ChevronRight, ArrowLeft, Clapperboard, Zap, Monitor, RefreshCw, Check, Bell, Activity,
+  Eye, EyeOff,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePinLockContext } from '@/components/PinLockProvider';
 import { useKiosk } from '@/components/KioskProvider';
 import EmojiPicker from '@/components/EmojiPicker';
 import { cn } from '@/lib/utils';
-import DashboardSettingsEditor from '@/components/DashboardSettingsEditor';
+import { saveDashboardLayout, loadDashboardLayout, createFieldId, fieldSectionId, sectionLabel, type SectionId, type DashboardField, type DashboardLayout } from '@/hooks/useDashboardLayout';
 
 // ─────────────────────────────────────────────────────────────────
 // Typen & Konstanten
@@ -370,7 +371,323 @@ function deviceToForm(d: Device): DeviceForm {
 // ─────────────────────────────────────────────────────────────────
 
 function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms: Room[] }) {
-  return <DashboardSettingsEditor devices={devices} rooms={rooms} />;
+  const [sectionOrder, setSectionOrder] = useState<SectionId[]>(['weather', 'calendar', 'scenes', 'rooms']);
+  const [hiddenSections, setHiddenSections] = useState<SectionId[]>([]);
+  const [roomOrder, setRoomOrder] = useState<number[]>([]);
+  const [fields, setFields] = useState<DashboardField[]>([]);
+  const [expandedField, setExpandedField] = useState<string | null>(null);
+
+  useEffect(() => {
+    const l = loadDashboardLayout();
+    setSectionOrder(l.sectionOrder);
+    setHiddenSections(l.hiddenSections);
+    setRoomOrder(l.roomOrder);
+    setFields(l.fields);
+  }, []);
+
+  const persist = (patch: Partial<DashboardLayout>) => {
+    const next: DashboardLayout = {
+      sectionOrder: patch.sectionOrder ?? sectionOrder,
+      hiddenSections: patch.hiddenSections ?? hiddenSections,
+      roomOrder: patch.roomOrder ?? roomOrder,
+      fields: patch.fields ?? fields,
+    };
+    if (patch.sectionOrder) setSectionOrder(patch.sectionOrder);
+    if (patch.hiddenSections) setHiddenSections(patch.hiddenSections);
+    if (patch.roomOrder) setRoomOrder(patch.roomOrder);
+    if (patch.fields) setFields(patch.fields);
+    saveDashboardLayout(next);
+  };
+
+  const toggleSection = (id: SectionId) => {
+    const next = hiddenSections.includes(id)
+      ? hiddenSections.filter(s => s !== id)
+      : [...hiddenSections, id];
+    setHiddenSections(next);
+    persist({ hiddenSections: next });
+  };
+
+  const moveSectionUp = (i: number) => {
+    if (i === 0) return;
+    const next = [...sectionOrder];
+    [next[i - 1], next[i]] = [next[i], next[i - 1]];
+    setSectionOrder(next);
+    persist({ sectionOrder: next });
+  };
+
+  const moveSectionDown = (i: number) => {
+    if (i >= sectionOrder.length - 1) return;
+    const next = [...sectionOrder];
+    [next[i], next[i + 1]] = [next[i + 1], next[i]];
+    setSectionOrder(next);
+    persist({ sectionOrder: next });
+  };
+
+  const orderedRooms = roomOrder.length === 0
+    ? rooms
+    : rooms.slice().sort((a, b) => {
+        const ai = roomOrder.indexOf(a.id);
+        const bi = roomOrder.indexOf(b.id);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      });
+
+  const moveRoomUp = (i: number) => {
+    if (i === 0) return;
+    const ids = orderedRooms.map(r => r.id);
+    [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]];
+    setRoomOrder(ids);
+    persist({ roomOrder: ids });
+  };
+
+  const moveRoomDown = (i: number) => {
+    if (i >= orderedRooms.length - 1) return;
+    const ids = orderedRooms.map(r => r.id);
+    [ids[i], ids[i + 1]] = [ids[i + 1], ids[i]];
+    setRoomOrder(ids);
+    persist({ roomOrder: ids });
+  };
+
+  const addField = () => {
+    const id = createFieldId();
+    const field: DashboardField = { id, name: `Feld ${fields.length + 1}`, deviceIds: [] };
+    const nextFields = [...fields, field];
+    const nextOrder = [...sectionOrder, fieldSectionId(id)];
+    setFields(nextFields);
+    setSectionOrder(nextOrder);
+    setExpandedField(id);
+    persist({ fields: nextFields, sectionOrder: nextOrder });
+  };
+
+  const deleteField = (id: string) => {
+    const sid = fieldSectionId(id);
+    const nextFields = fields.filter(f => f.id !== id);
+    const nextOrder = sectionOrder.filter(s => s !== sid);
+    const nextHidden = hiddenSections.filter(s => s !== sid);
+    setFields(nextFields);
+    setSectionOrder(nextOrder);
+    setHiddenSections(nextHidden);
+    if (expandedField === id) setExpandedField(null);
+    persist({ fields: nextFields, sectionOrder: nextOrder, hiddenSections: nextHidden });
+  };
+
+  const renameField = (id: string, name: string) => {
+    const nextFields = fields.map(f => f.id === id ? { ...f, name: name.trim() || f.name } : f);
+    setFields(nextFields);
+    persist({ fields: nextFields });
+  };
+
+  const addDeviceToField = (fieldId: string, deviceId: number) => {
+    const nextFields = fields.map(f =>
+      f.id === fieldId && !f.deviceIds.includes(deviceId)
+        ? { ...f, deviceIds: [...f.deviceIds, deviceId] }
+        : f,
+    );
+    setFields(nextFields);
+    persist({ fields: nextFields });
+  };
+
+  const removeDeviceFromField = (fieldId: string, deviceId: number) => {
+    const nextFields = fields.map(f =>
+      f.id === fieldId ? { ...f, deviceIds: f.deviceIds.filter(id => id !== deviceId) } : f,
+    );
+    setFields(nextFields);
+    persist({ fields: nextFields });
+  };
+
+  const moveDeviceInField = (fieldId: string, index: number, dir: -1 | 1) => {
+    const nextFields = fields.map(f => {
+      if (f.id !== fieldId) return f;
+      const j = index + dir;
+      if (j < 0 || j >= f.deviceIds.length) return f;
+      const ids = [...f.deviceIds];
+      [ids[index], ids[j]] = [ids[j], ids[index]];
+      return { ...f, deviceIds: ids };
+    });
+    setFields(nextFields);
+    persist({ fields: nextFields });
+  };
+
+  // Alle Geräte wählbar (Schaltbare, Thermostate, Sensoren …)
+  const selectableDevices = useMemo(
+    () => [...devices].sort((a, b) => a.name.localeCompare(b.name, 'de')),
+    [devices],
+  );
+
+  return (
+    <div className="space-y-6">
+
+      <div>
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Abschnitte</p>
+        <p className="text-xs text-muted-foreground mb-3">Ein-/Ausblenden und Reihenfolge aller Dashboard-Bereiche.</p>
+        <div className="space-y-1">
+          {sectionOrder.map((id, i) => {
+            const isHidden = hiddenSections.includes(id);
+            return (
+              <div key={id} className={cn(
+                'flex items-center gap-2 rounded-lg border px-3 py-2 transition-opacity',
+                isHidden ? 'opacity-50' : '',
+              )}>
+                <button onClick={() => toggleSection(id)}
+                  title={isHidden ? 'Einblenden' : 'Ausblenden'}
+                  className={cn(
+                    'cursor-pointer h-7 w-7 rounded flex items-center justify-center shrink-0 transition-colors',
+                    isHidden
+                      ? 'bg-muted text-muted-foreground hover:bg-accent'
+                      : 'bg-primary/15 text-primary hover:bg-primary/25',
+                  )}>
+                  {isHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </button>
+                <span className="text-sm flex-1">{sectionLabel(id, fields)}</span>
+                <div className="flex gap-0.5 shrink-0">
+                  <button onClick={() => moveSectionUp(i)} disabled={i === 0}
+                    className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={() => moveSectionDown(i)} disabled={i === sectionOrder.length - 1}
+                    className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {rooms.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Räume-Reihenfolge</p>
+          <p className="text-xs text-muted-foreground mb-3">Reihenfolge der Raum-Kacheln auf dem Dashboard.</p>
+          <div className="space-y-1">
+            {orderedRooms.map((room, i) => (
+              <div key={room.id} className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2">
+                <span className="text-base select-none w-6 text-center">{room.icon ?? '🏠'}</span>
+                <span className="text-sm flex-1 truncate">{room.name}</span>
+                <div className="flex gap-0.5 shrink-0">
+                  <button onClick={() => moveRoomUp(i)} disabled={i === 0}
+                    className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={() => moveRoomDown(i)} disabled={i === orderedRooms.length - 1}
+                    className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Geräte-Felder</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Eigene Bereiche mit beliebig vielen Geräten — z.&nbsp;B. Schnellzugriff, Sensoren, Außenbereich.
+            </p>
+          </div>
+          <Button onClick={addField} size="sm" variant="outline" className="shrink-0">
+            <Plus className="h-3.5 w-3.5 mr-1" /> Neues Feld
+          </Button>
+        </div>
+
+        {fields.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-6 rounded-xl border border-dashed">
+            Noch keine Felder. Erstelle ein Feld und füge Geräte hinzu.
+          </p>
+        )}
+
+        <div className="space-y-3">
+          {fields.map(field => {
+            const isOpen = expandedField === field.id;
+            const available = selectableDevices.filter(d => !field.deviceIds.includes(d.id));
+            return (
+              <div key={field.id} className="rounded-xl border bg-card overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2.5">
+                  <button
+                    onClick={() => setExpandedField(isOpen ? null : field.id)}
+                    className="cursor-pointer flex-1 flex items-center gap-2 text-left min-w-0"
+                  >
+                    <ChevronRight className={cn('h-4 w-4 shrink-0 transition-transform', isOpen && 'rotate-90')} />
+                    <input
+                      value={field.name}
+                      onClick={e => e.stopPropagation()}
+                      onChange={e => renameField(field.id, e.target.value)}
+                      className="text-sm font-medium bg-transparent border-none outline-none flex-1 min-w-0"
+                    />
+                    <span className="text-xs text-muted-foreground shrink-0">{field.deviceIds.length} Geräte</span>
+                  </button>
+                  <button
+                    onClick={() => deleteField(field.id)}
+                    title="Feld löschen"
+                    className="cursor-pointer h-7 w-7 flex items-center justify-center rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive shrink-0"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                {isOpen && (
+                  <div className="px-3 pb-3 space-y-2 border-t pt-2">
+                    {field.deviceIds.length > 0 && (
+                      <div className="space-y-1">
+                        {field.deviceIds.map((id, i) => {
+                          const d = devices.find(x => x.id === id);
+                          if (!d) return null;
+                          return (
+                            <div key={id} className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-2 py-1.5">
+                              <span className="text-xs font-bold text-primary w-4 shrink-0">{i + 1}</span>
+                              <span className="text-sm flex-1 truncate">{d.name}</span>
+                              <span className="text-xs text-muted-foreground shrink-0">{d.type.replace('sensor_', '')}</span>
+                              <div className="flex gap-0.5 shrink-0">
+                                <button onClick={() => moveDeviceInField(field.id, i, -1)} disabled={i === 0}
+                                  className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
+                                  <ChevronUp className="h-3.5 w-3.5" />
+                                </button>
+                                <button onClick={() => moveDeviceInField(field.id, i, 1)} disabled={i === field.deviceIds.length - 1}
+                                  className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
+                                  <ChevronDown className="h-3.5 w-3.5" />
+                                </button>
+                                <button onClick={() => removeDeviceFromField(field.id, id)}
+                                  className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive">
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {available.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Gerät hinzufügen</p>
+                        <div className="max-h-44 overflow-y-auto space-y-0.5">
+                          {available.map(d => (
+                            <button key={d.id} onClick={() => addDeviceToField(field.id, d.id)}
+                              className="cursor-pointer w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left hover:bg-accent transition-colors">
+                              <Plus className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                              <span className="text-sm flex-1 truncate">{d.name}</span>
+                              <span className="text-xs text-muted-foreground shrink-0">{d.type.replace('sensor_', '')}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {field.deviceIds.length === 0 && available.length === 0 && (
+                      <p className="text-xs text-muted-foreground text-center py-3">Keine Geräte verfügbar.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+    </div>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────
