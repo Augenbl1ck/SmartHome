@@ -35,4 +35,10 @@ return [
         'key' => env('WEATHER_API_KEY', env('OPENWEATHER_API_KEY')),
     ],
 
+    'spotify' => [
+        'client_id' => env('SPOTIFY_CLIENT_ID'),
+        'client_secret' => env('SPOTIFY_CLIENT_SECRET'),
+        'redirect_uri' => env('SPOTIFY_REDIRECT_URI'),
+    ],
+
 ];

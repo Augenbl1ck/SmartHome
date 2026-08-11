@@ -151,6 +151,13 @@ class PanelSettingsController extends Controller
         $energyRaw = PanelSetting::getValue('energy');
         $energy = $this->normalizeEnergy(is_array($energyRaw) ? $energyRaw : null);
 
+        $spotifyRaw = PanelSetting::getValue('spotify');
+        $spotifyConnected = is_array($spotifyRaw) && !empty($spotifyRaw['refresh_token']);
+        $spotifyName = null;
+        if ($spotifyConnected && !empty($spotifyRaw['display_name'])) {
+            $spotifyName = (string) $spotifyRaw['display_name'];
+        }
+
         return [
             'pin_hash'          => PanelSetting::getValue('pin_hash'),
             'pin_enabled'       => (bool) PanelSetting::getValue('pin_enabled', false),
@@ -162,6 +169,10 @@ class PanelSettingsController extends Controller
             'weather'           => $weather,
             'transit'           => $transit,
             'energy'            => $energy,
+            'spotify'           => [
+                'connected' => $spotifyConnected,
+                'display_name' => $spotifyName,
+            ],
             'theme'             => $theme,
             'favorites'         => array_values(array_map('intval', $favorites)),
             'scene_snapshots'   => $snapshots,

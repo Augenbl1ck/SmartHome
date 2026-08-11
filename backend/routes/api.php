@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\SystemController;
 use App\Http\Controllers\Api\WeatherController;
 use App\Http\Controllers\Api\TransitController;
 use App\Http\Controllers\Api\EnergyController;
+use App\Http\Controllers\Api\SpotifyController;
 use App\Http\Controllers\Api\ZigbeeController;
 use Illuminate\Support\Facades\Route;
 
@@ -77,4 +78,22 @@ Route::prefix('v1')->group(function () {
     // Energie
     Route::get('energy', [EnergyController::class, 'show']);
     Route::get('energy/history', [EnergyController::class, 'history']);
+
+    // Spotify
+    Route::get('spotify/auth-url', [SpotifyController::class, 'authUrl']);
+    Route::get('spotify/callback', [SpotifyController::class, 'callback']);
+    Route::delete('spotify/disconnect', [SpotifyController::class, 'disconnect']);
+    Route::get('spotify/status', [SpotifyController::class, 'status']);
+    Route::get('spotify/token', [SpotifyController::class, 'token']);
+    Route::get('spotify/player', [SpotifyController::class, 'player']);
+    Route::put('spotify/player/play', [SpotifyController::class, 'play']);
+    Route::put('spotify/player/pause', [SpotifyController::class, 'pause']);
+    Route::post('spotify/player/next', [SpotifyController::class, 'next']);
+    Route::post('spotify/player/previous', [SpotifyController::class, 'previous']);
+    Route::put('spotify/player/volume', [SpotifyController::class, 'volume']);
+    Route::get('spotify/devices', [SpotifyController::class, 'devices']);
+    Route::put('spotify/devices/transfer', [SpotifyController::class, 'transfer']);
+    Route::get('spotify/search', [SpotifyController::class, 'search']);
+    Route::get('spotify/queue', [SpotifyController::class, 'queue']);
+    Route::post('spotify/queue', [SpotifyController::class, 'addToQueue']);
 });

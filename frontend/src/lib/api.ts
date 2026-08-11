@@ -124,6 +124,44 @@ export const api = {
   getEnergy: () => request<EnergyOverview>('/energy'),
   getEnergyHistory: (range: 'day' | 'week' = 'day') =>
     request<EnergyHistoryResponse>(`/energy/history?range=${range}`),
+
+  // Spotify
+  getSpotifyAuthUrl: () => request<{ url: string; error?: string }>('/spotify/auth-url'),
+  disconnectSpotify: () =>
+    request<{ connected: boolean; display_name: string | null }>('/spotify/disconnect', { method: 'DELETE' }),
+  getSpotifyStatus: () =>
+    request<{ connected: boolean; display_name: string | null }>('/spotify/status'),
+  getSpotifyToken: () =>
+    request<{ access_token: string; expires_in: number }>('/spotify/token'),
+  getSpotifyPlayer: () => request<SpotifyPlayerState>('/spotify/player'),
+  spotifyPlay: (body?: { uri?: string; device_id?: string }) =>
+    request<{ ok?: boolean; error?: string }>('/spotify/player/play', {
+      method: 'PUT',
+      body: JSON.stringify(body ?? {}),
+    }),
+  spotifyPause: () =>
+    request<{ ok?: boolean; error?: string }>('/spotify/player/pause', { method: 'PUT' }),
+  spotifyNext: () =>
+    request<{ ok?: boolean; error?: string }>('/spotify/player/next', { method: 'POST' }),
+  spotifyPrevious: () =>
+    request<{ ok?: boolean; error?: string }>('/spotify/player/previous', { method: 'POST' }),
+  spotifyVolume: (volume: number) =>
+    request<{ ok?: boolean; error?: string }>(`/spotify/player/volume?volume=${volume}`, { method: 'PUT' }),
+  getSpotifyDevices: () =>
+    request<{ devices: SpotifyDevice[]; error?: string }>('/spotify/devices'),
+  spotifyTransfer: (device_id: string, play = false) =>
+    request<{ ok?: boolean; error?: string }>('/spotify/devices/transfer', {
+      method: 'PUT',
+      body: JSON.stringify({ device_id, play }),
+    }),
+  spotifySearch: (q: string) =>
+    request<SpotifySearchResult>(`/spotify/search?q=${encodeURIComponent(q)}`),
+  getSpotifyQueue: () => request<SpotifyQueueResponse>('/spotify/queue'),
+  spotifyAddToQueue: (uri: string) =>
+    request<{ ok?: boolean; error?: string }>('/spotify/queue', {
+      method: 'POST',
+      body: JSON.stringify({ uri }),
+    }),
 };
 
 export interface PanelSettings {
@@ -142,9 +180,62 @@ export interface PanelSettings {
   weather?: { city?: string; unit?: 'metric' | 'imperial' } | null;
   transit?: TransitConfig | null;
   energy?: { price_per_kwh?: number } | null;
+  spotify?: { connected?: boolean; display_name?: string | null } | null;
   theme?: 'light' | 'dark' | 'system';
   favorites?: number[];
   scene_snapshots?: Record<string, unknown> | null;
+}
+
+export interface SpotifyDevice {
+  id: string;
+  name: string;
+  type: string;
+  is_active: boolean;
+  volume_percent: number | null;
+  supports_volume?: boolean;
+}
+
+export interface SpotifyTrack {
+  id: string;
+  uri: string;
+  name: string;
+  artists: string[];
+  album: string;
+  image: string | null;
+  duration_ms: number;
+}
+
+export interface SpotifyPlaylist {
+  id: string;
+  uri: string;
+  name: string;
+  owner: string;
+  image: string | null;
+  tracks_total: number;
+}
+
+export interface SpotifyPlayerState {
+  configured: boolean;
+  connected: boolean;
+  active: boolean;
+  is_playing?: boolean;
+  progress_ms?: number;
+  volume_percent?: number | null;
+  device?: SpotifyDevice | null;
+  item?: SpotifyTrack | null;
+  error?: string | null;
+}
+
+export interface SpotifySearchResult {
+  tracks: SpotifyTrack[];
+  playlists: SpotifyPlaylist[];
+  error?: string;
+}
+
+export interface SpotifyQueueResponse {
+  currently_playing: SpotifyTrack | null;
+  queue: SpotifyTrack[];
+  error?: string;
 }
 
 export interface EnergyDeviceRow {
