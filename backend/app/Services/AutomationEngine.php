@@ -297,6 +297,23 @@ class AutomationEngine
             return false;
         }
 
+        $fromDate = (string) ($condition['from_date'] ?? '');
+        $toDate   = (string) ($condition['to_date'] ?? '');
+
+        if ($fromDate !== '' && $toDate !== '') {
+            try {
+                $start = \Carbon\Carbon::createFromFormat('Y-m-d H:i', $fromDate . ' ' . $from);
+                $end   = \Carbon\Carbon::createFromFormat('Y-m-d H:i', $toDate . ' ' . $to);
+            } catch (\Throwable) {
+                return false;
+            }
+            if (!$start || !$end) {
+                return false;
+            }
+            $now = now();
+            return $now->gte($start) && $now->lte($end);
+        }
+
         $now = now()->format('H:i');
 
         if ($from > $to) {
@@ -399,8 +416,50 @@ class AutomationEngine
 
     private function executeAction(array $action, string $automationName = ''): void
     {
-        $type    = $action['type'] ?? '';
+        $type = $action['type'] ?? '';
+
+        // Multi-Action: Teilaktionen nacheinander, ein Log-Eintrag
+        if ($type === 'multi') {
+            $items = $action['actions'] ?? [];
+            if (!is_array($items)) {
+                return;
+            }
+            $summaries = [];
+            foreach ($items as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                $this->executeSingleAction($item);
+                $summaries[] = $this->describeAction($item);
+            }
+            if ($automationName !== '') {
+                $summary = implode(' + ', array_filter($summaries));
+                AutomationLog::create([
+                    'automation_name' => $automationName,
+                    'action_summary'  => $summary !== '' ? $summary : 'Mehrfachaktion',
+                    'fired_at'        => now(),
+                ]);
+                AutomationFired::dispatch($automationName, $summary !== '' ? $summary : 'Mehrfachaktion');
+            }
+            return;
+        }
+
         $summary = $this->describeAction($action);
+        $this->executeSingleAction($action);
+
+        if ($automationName) {
+            AutomationLog::create([
+                'automation_name' => $automationName,
+                'action_summary'  => $summary,
+                'fired_at'        => now(),
+            ]);
+            AutomationFired::dispatch($automationName, $summary);
+        }
+    }
+
+    private function executeSingleAction(array $action): void
+    {
+        $type = $action['type'] ?? '';
 
         switch ($type) {
             case 'set_device_status':
@@ -516,26 +575,31 @@ class AutomationEngine
             case 'notify':
                 $message = $action['message'] ?? 'Automation ausgelöst';
                 app(PushNotificationService::class)->send(
-                    $automationName ?? 'SmartHome',
+                    'SmartHome',
                     $message,
                 );
                 Log::info('[Automation] Push gesendet: ' . $message);
                 break;
-        }
-
-        if ($automationName) {
-            AutomationLog::create([
-                'automation_name' => $automationName,
-                'action_summary'  => $summary,
-                'fired_at'        => now(),
-            ]);
-            AutomationFired::dispatch($automationName, $summary);
         }
     }
 
     private function describeAction(array $action): string
     {
         $type = $action['type'] ?? '';
+
+        if ($type === 'multi') {
+            $items = $action['actions'] ?? [];
+            if (!is_array($items) || $items === []) {
+                return 'Mehrfachaktion';
+            }
+            $parts = [];
+            foreach ($items as $item) {
+                if (is_array($item)) {
+                    $parts[] = $this->describeAction($item);
+                }
+            }
+            return implode(' + ', $parts);
+        }
 
         $deviceName = fn () => optional(Device::find($action['device_id'] ?? null))->name ?? 'Gerät';
 

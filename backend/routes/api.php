@@ -27,6 +27,7 @@ Route::prefix('v1')->group(function () {
     Route::post('mqtt/publish', [MqttController::class, 'publish']);
     Route::post('devices/{device}/toggle', [MqttController::class, 'toggleDevice']);
     Route::post('devices/{device}/set-status', [DeviceController::class, 'setStatus']);
+    Route::post('devices/{device}/thermostat', [DeviceController::class, 'thermostatCommand']);
     Route::get('devices/{device}/logs', [DeviceLogController::class, 'index']);
     Route::get('devices/{device}/sensor-history', [DeviceLogController::class, 'sensorHistory']);
 

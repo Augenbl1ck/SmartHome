@@ -137,4 +137,35 @@ class DeviceController extends Controller
 
         return response()->json($device->fresh());
     }
+
+    public function thermostatCommand(Request $request, Device $device): JsonResponse
+    {
+        if ($device->type !== 'thermostat') {
+            return response()->json(['message' => 'Gerät ist kein Thermostat'], 422);
+        }
+
+        $data = $request->validate([
+            'command'      => 'required|string|in:boost,timer,clear_boost,schedule_day,valve',
+            'duration'     => 'nullable|integer|min:0|max:1440',
+            'temperature'  => 'nullable|numeric|min:4|max:35',
+            'day'          => 'nullable|string|in:sunday,monday,tuesday,wednesday,thursday,friday,saturday',
+            'transitions'  => 'nullable|string|max:255',
+            'opening'      => 'nullable|integer|min:0|max:100',
+            'closing'      => 'nullable|integer|min:0|max:100',
+        ]);
+
+        try {
+            $patch = $this->deviceService->applyThermostatCommand($device, $data);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $attrs = array_merge($device->attributes ?? [], $patch);
+        $device->update([
+            'attributes' => $attrs,
+            'last_seen'  => now(),
+        ]);
+
+        return response()->json($device->fresh());
+    }
 }

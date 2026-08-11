@@ -115,6 +115,131 @@ class DeviceService
         }
     }
 
+    /**
+     * Thermostat-Befehle mit komplexem MQTT-Payload (Boost, Wochenplan, Ventil).
+     *
+     * @param  array<string, mixed>  $command
+     * @return array<string, mixed>  Optimistic attribute patch
+     */
+    public function applyThermostatCommand(Device $device, array $command): array
+    {
+        if ($device->type !== 'thermostat') {
+            throw new \InvalidArgumentException('Gerät ist kein Thermostat');
+        }
+
+        $type = (string) ($command['command'] ?? '');
+        $payload = [];
+        $attrsPatch = [];
+
+        switch ($type) {
+            case 'boost':
+                $duration = max(0, min(180, (int) ($command['duration'] ?? 30)));
+                $payload = [
+                    'temporary_mode_select'   => 'boost',
+                    'temporary_mode_duration' => $duration,
+                ];
+                $attrsPatch = [
+                    'temporary_mode_select'   => 'boost',
+                    'temporary_mode_duration' => $duration,
+                ];
+                break;
+
+            case 'timer':
+                $duration = max(0, min(1440, (int) ($command['duration'] ?? 60)));
+                $temp = round((float) ($command['temperature'] ?? 21), 1);
+                $temp = max(4.0, min(35.0, $temp));
+                $payload = [
+                    'temporary_mode_select'   => 'timer',
+                    'temporary_mode_duration' => $duration,
+                    'timer_mode_target_temp'  => $temp,
+                ];
+                $attrsPatch = [
+                    'temporary_mode_select'   => 'timer',
+                    'temporary_mode_duration' => $duration,
+                    'timer_mode_target_temp'  => $temp,
+                ];
+                break;
+
+            case 'clear_boost':
+                $payload = [
+                    'temporary_mode_duration' => 0,
+                ];
+                $attrsPatch = [
+                    'temporary_mode_duration' => 0,
+                ];
+                break;
+
+            case 'schedule_day':
+                $day = strtolower((string) ($command['day'] ?? ''));
+                $allowed = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+                if (!in_array($day, $allowed, true)) {
+                    throw new \InvalidArgumentException('Ungültiger Wochentag');
+                }
+                $transitions = trim((string) ($command['transitions'] ?? ''));
+                if ($transitions === '') {
+                    throw new \InvalidArgumentException('transitions erforderlich');
+                }
+                $key = 'weekly_schedule_' . $day;
+                $payload = [$key => $transitions];
+                $attrsPatch = [$key => $transitions];
+                break;
+
+            case 'valve':
+                $opening = max(0, min(100, (int) ($command['opening'] ?? 100)));
+                $closing = max(0, min(100, (int) ($command['closing'] ?? 100)));
+                $payload = [
+                    'valve_opening_degree' => $opening,
+                    'valve_closing_degree' => $closing,
+                ];
+                $attrsPatch = [
+                    'valve_opening_degree' => $opening,
+                    'valve_closing_degree' => $closing,
+                ];
+                break;
+
+            default:
+                throw new \InvalidArgumentException('Unbekannter Thermostat-Befehl');
+        }
+
+        $this->publishMqttJson($device, $payload);
+
+        DeviceLog::create([
+            'device_id'   => $device->id,
+            'status'      => 'thermostat:' . $type,
+            'recorded_at' => now(),
+        ]);
+
+        return $attrsPatch;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    public function publishMqttJson(Device $device, array $payload): void
+    {
+        if (!$device->mqtt_topic) {
+            Log::warning("[DeviceService] Kein MQTT-Topic für {$device->name}");
+            return;
+        }
+
+        $base = rtrim((string) $device->mqtt_topic, '/');
+        $topic = $base . '/set';
+        $json = json_encode($payload);
+
+        try {
+            $mqtt = new MqttClient(
+                config('mqtt.host', '127.0.0.1'),
+                (int) config('mqtt.port', 1883),
+                'laravel-device-service-thermo'
+            );
+            $mqtt->connect(MqttHelper::settings(3), true);
+            $mqtt->publish($topic, $json, 0);
+            $mqtt->disconnect();
+        } catch (\Exception $e) {
+            Log::warning("[DeviceService] MQTT nicht verfügbar: " . $e->getMessage());
+        }
+    }
+
     private function buildMqttCommand(Device $device, string $protocol, string $status): array
     {
         $base = rtrim((string) $device->mqtt_topic, '/');

@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import DeviceHistory from '@/components/DeviceHistory';
 import SensorChart from '@/components/SensorChart';
 import ShellyPlugPanel from '@/components/ShellyPlugPanel';
+import ThermostatAdvancedPanel from '@/components/ThermostatAdvancedPanel';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { getEcho } from '@/lib/echo';
 import BleScanDialog from '@/components/BleScanDialog';
@@ -862,6 +863,14 @@ export default function RoomClient({ room, initialDevices }: Props) {
                               />
                             </div>
                           </div>
+
+                        <ThermostatAdvancedPanel
+                          device={device}
+                          disabled={isDisabled}
+                          onUpdated={(updated) =>
+                            setDevices((prev) => prev.map((d) => (d.id === updated.id ? { ...d, ...updated } : d)))
+                          }
+                        />
                         </div>
                       </div>
                     )}

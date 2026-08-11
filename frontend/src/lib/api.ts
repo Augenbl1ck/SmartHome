@@ -32,6 +32,8 @@ export const api = {
   toggleDevice: (id: number) => request<Device>(`/devices/${id}/toggle`, { method: 'POST' }),
   setDeviceStatus: (id: number, status: string) =>
     request<Device>(`/devices/${id}/set-status`, { method: 'POST', body: JSON.stringify({ status }) }),
+  setThermostatCommand: (id: number, body: Record<string, unknown>) =>
+    request<Device>(`/devices/${id}/thermostat`, { method: 'POST', body: JSON.stringify(body) }),
   getDeviceLogs: (id: number) => request<DeviceLog[]>(`/devices/${id}/logs`),
   getSensorHistory: (id: number, hours = 24) =>
     request<SensorHistory>(`/devices/${id}/sensor-history?hours=${hours}`),

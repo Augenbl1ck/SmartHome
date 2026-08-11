@@ -78,6 +78,15 @@ function evaluateCondition(condition: Record<string, unknown>, devices: Device[]
       const from = String(condition.from ?? '');
       const to = String(condition.to ?? '');
       if (!from || !to) return false;
+      const fromDate = String(condition.from_date ?? '');
+      const toDate = String(condition.to_date ?? '');
+      if (fromDate && toDate) {
+        const start = new Date(`${fromDate}T${from}:00`);
+        const end = new Date(`${toDate}T${to}:00`);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+        const now = new Date();
+        return now >= start && now <= end;
+      }
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, '0');
       const current = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
@@ -176,6 +185,14 @@ function checkSensorThresholdTrigger(trigger: Record<string, unknown>, devices: 
 
 async function executeAction(action: Record<string, unknown>, devices: Device[]): Promise<void> {
   const t = action.type as string;
+
+  if (t === 'multi') {
+    const items = (action.actions as Record<string, unknown>[]) ?? [];
+    for (const item of items) {
+      await executeAction(item, devices);
+    }
+    return;
+  }
 
   const executeToggle = async (deviceId: number, targetStatus: 'on' | 'off' | 'toggle') => {
     const device = devices.find((d) => d.id === deviceId);

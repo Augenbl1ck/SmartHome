@@ -253,6 +253,43 @@ class MqttSubscribe extends Command
         if (isset($data['frost_protection_temperature']) && is_numeric($data['frost_protection_temperature'])) {
             $attrs['frost_protection_temperature'] = round((float) $data['frost_protection_temperature'], 1);
         }
+        if (isset($data['temporary_mode_select'])) {
+            $attrs['temporary_mode_select'] = strtolower((string) $data['temporary_mode_select']);
+        }
+        if (isset($data['temporary_mode_duration']) && is_numeric($data['temporary_mode_duration'])) {
+            $attrs['temporary_mode_duration'] = (int) $data['temporary_mode_duration'];
+        }
+        if (isset($data['timer_mode_target_temp']) && is_numeric($data['timer_mode_target_temp'])) {
+            $attrs['timer_mode_target_temp'] = round((float) $data['timer_mode_target_temp'], 1);
+        }
+        if (isset($data['valve_opening_degree']) && is_numeric($data['valve_opening_degree'])) {
+            $attrs['valve_opening_degree'] = (int) $data['valve_opening_degree'];
+        }
+        if (isset($data['valve_closing_degree']) && is_numeric($data['valve_closing_degree'])) {
+            $attrs['valve_closing_degree'] = (int) $data['valve_closing_degree'];
+        }
+        foreach (['idle_steps', 'closing_steps', 'valve_opening_limit_voltage', 'valve_closing_limit_voltage', 'valve_motor_running_voltage'] as $diagKey) {
+            if (isset($data[$diagKey]) && is_numeric($data[$diagKey])) {
+                $attrs[$diagKey] = (int) $data[$diagKey];
+            }
+        }
+        foreach ([
+            'weekly_schedule_sunday', 'weekly_schedule_monday', 'weekly_schedule_tuesday',
+            'weekly_schedule_wednesday', 'weekly_schedule_thursday', 'weekly_schedule_friday',
+            'weekly_schedule_saturday',
+        ] as $schedKey) {
+            if (isset($data[$schedKey]) && is_string($data[$schedKey])) {
+                $attrs[$schedKey] = $data[$schedKey];
+            }
+        }
+        // Legacy nested weekly_schedule → flache Keys
+        if (isset($data['weekly_schedule']) && is_array($data['weekly_schedule'])) {
+            foreach ($data['weekly_schedule'] as $day => $transitions) {
+                if (is_string($day) && is_string($transitions)) {
+                    $attrs['weekly_schedule_' . strtolower($day)] = $transitions;
+                }
+            }
+        }
 
         // Tür-/Fensterkontakt
         if (isset($data['contact'])) {

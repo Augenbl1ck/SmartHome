@@ -69,7 +69,30 @@ interface ConditionFormItem {
   time: string;
   weekdays: number[];
   value: string;
+  useDates: boolean;
+  fromDate: string;
+  toDate: string;
 }
+
+interface ActionFormItem {
+  id: string;
+  type: ActionType;
+  deviceId: string;
+  deviceStatus: ActionDeviceStatus;
+  roomId: string;
+  roomStatus: DeviceStatus;
+  delayMinutes: string;
+  notifyMessage: string;
+  setpoint: string;
+  thermostatMode: ThermostatMode;
+  sceneId: string;
+  childLock: boolean;
+  openWindow: boolean;
+  calibration: string;
+  frostProtection: string;
+}
+
+const todayIso = () => new Date().toISOString().slice(0, 10);
 
 const newCondition = (): ConditionFormItem => ({
   id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -82,6 +105,27 @@ const newCondition = (): ConditionFormItem => ({
   time: '08:00',
   weekdays: [1, 2, 3, 4, 5],
   value: 'LOCK',
+  useDates: false,
+  fromDate: '',
+  toDate: '',
+});
+
+const newAction = (): ActionFormItem => ({
+  id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  type: 'set_device_status',
+  deviceId: '',
+  deviceStatus: 'on',
+  roomId: '',
+  roomStatus: 'off',
+  delayMinutes: '10',
+  notifyMessage: '',
+  setpoint: '21',
+  thermostatMode: 'heat',
+  sceneId: '',
+  childLock: true,
+  openWindow: true,
+  calibration: '0',
+  frostProtection: '5',
 });
 
 // ── Form-State ────────────────────────────────────────────────────────────────
@@ -90,40 +134,14 @@ interface FormState {
   name: string;
   conditionLogic: ConditionLogic;
   conditions: ConditionFormItem[];
-  actionType: ActionType;
-  actionDeviceId: string;
-  actionDeviceStatus: ActionDeviceStatus;
-  actionRoomId: string;
-  actionRoomStatus: DeviceStatus;
-  actionDelayMinutes: string;
-  actionNotifyMessage: string;
-  actionSetpoint: string;
-  actionThermostatMode: ThermostatMode;
-  actionSceneId: string;
-  actionChildLock: boolean;
-  actionOpenWindow: boolean;
-  actionCalibration: string;
-  actionFrostProtection: string;
+  actions: ActionFormItem[];
 }
 
 const emptyForm = (): FormState => ({
   name: '',
   conditionLogic: 'and',
   conditions: [newCondition()],
-  actionType: 'set_device_status',
-  actionDeviceId: '',
-  actionDeviceStatus: 'on',
-  actionRoomId: '',
-  actionRoomStatus: 'off',
-  actionDelayMinutes: '10',
-  actionNotifyMessage: '',
-  actionSetpoint: '21',
-  actionThermostatMode: 'heat',
-  actionSceneId: '',
-  actionChildLock: true,
-  actionOpenWindow: true,
-  actionCalibration: '0',
-  actionFrostProtection: '5',
+  actions: [newAction()],
 });
 
 function conditionFromJson(item: Record<string, unknown>): ConditionFormItem {
@@ -131,6 +149,9 @@ function conditionFromJson(item: Record<string, unknown>): ConditionFormItem {
   let value = item.value != null ? String(item.value) : 'LOCK';
   if (type === 'open_window' && item.value == null) value = 'ON';
   if (type === 'child_lock' && item.value == null) value = 'LOCK';
+  const fromDate = item.from_date != null ? String(item.from_date) : '';
+  const toDate = item.to_date != null ? String(item.to_date) : '';
+  const useDates = !!(fromDate && toDate);
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     type,
@@ -142,6 +163,33 @@ function conditionFromJson(item: Record<string, unknown>): ConditionFormItem {
     time: (item.time as string) ?? '08:00',
     weekdays: (item.weekdays as number[]) ?? [1, 2, 3, 4, 5],
     value,
+    useDates,
+    fromDate,
+    toDate,
+  };
+}
+
+function actionFromJson(ac: Record<string, unknown>): ActionFormItem {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type: (ac.type as ActionType) ?? 'set_device_status',
+    deviceId: ac.device_id != null ? String(ac.device_id) : '',
+    deviceStatus: (ac.status as ActionDeviceStatus) ?? 'on',
+    roomId: ac.room_id != null ? String(ac.room_id) : '',
+    roomStatus: (ac.status as DeviceStatus) ?? 'off',
+    delayMinutes: ac.minutes != null ? String(ac.minutes) : '10',
+    notifyMessage: (ac.message as string) ?? '',
+    setpoint: ac.setpoint != null ? String(ac.setpoint) : '21',
+    thermostatMode: (ac.mode as ThermostatMode) ?? 'heat',
+    sceneId: ac.scene_id != null ? String(ac.scene_id) : '',
+    childLock: ac.locked != null ? Boolean(ac.locked) : true,
+    openWindow: ac.enabled != null ? Boolean(ac.enabled) : true,
+    calibration: ac.type === 'set_thermostat_calibration' && ac.value != null
+      ? String(ac.value)
+      : '0',
+    frostProtection: ac.type === 'set_thermostat_frost_protection' && ac.value != null
+      ? String(ac.value)
+      : '5',
   };
 }
 
@@ -206,62 +254,55 @@ function automationToForm(a: Automation): FormState {
         ? conditionsFromLegacyTrigger(t)
         : [newCondition()];
 
+  const mappedActions =
+    ac.type === 'multi' && Array.isArray(ac.actions)
+      ? (ac.actions as Record<string, unknown>[]).map(actionFromJson)
+      : [actionFromJson(ac)];
+
   return {
     name: a.name,
     conditionLogic: (cond?.logic as ConditionLogic) ?? 'and',
     conditions: mappedConditions,
-    actionType: (ac.type as ActionType) ?? 'set_device_status',
-    actionDeviceId: ac.device_id != null ? String(ac.device_id) : '',
-    actionDeviceStatus: (ac.status as ActionDeviceStatus) ?? 'on',
-    actionRoomId: ac.room_id != null ? String(ac.room_id) : '',
-    actionRoomStatus: (ac.status as DeviceStatus) ?? 'off',
-    actionDelayMinutes: ac.minutes != null ? String(ac.minutes) : '10',
-    actionNotifyMessage: (ac.message as string) ?? '',
-    actionSetpoint: ac.setpoint != null ? String(ac.setpoint) : '21',
-    actionThermostatMode: (ac.mode as ThermostatMode) ?? 'heat',
-    actionSceneId: ac.scene_id != null ? String(ac.scene_id) : '',
-    actionChildLock: ac.locked != null ? Boolean(ac.locked) : true,
-    actionOpenWindow: ac.enabled != null ? Boolean(ac.enabled) : true,
-    actionCalibration: ac.type === 'set_thermostat_calibration' && ac.value != null
-      ? String(ac.value)
-      : '0',
-    actionFrostProtection: ac.type === 'set_thermostat_frost_protection' && ac.value != null
-      ? String(ac.value)
-      : '5',
+    actions: mappedActions.length > 0 ? mappedActions : [newAction()],
   };
 }
 
 // ── Aktion / Bedingungen → JSON ───────────────────────────────────────────────
 
-function buildAction(f: FormState): Record<string, unknown> {
-  switch (f.actionType) {
+function buildActionItem(a: ActionFormItem): Record<string, unknown> {
+  switch (a.type) {
     case 'set_device_status':
-      return { type: 'set_device_status', device_id: Number(f.actionDeviceId), status: f.actionDeviceStatus };
+      return { type: 'set_device_status', device_id: Number(a.deviceId), status: a.deviceStatus };
     case 'toggle_device':
-      return { type: 'toggle_device', device_id: Number(f.actionDeviceId) };
+      return { type: 'toggle_device', device_id: Number(a.deviceId) };
     case 'set_room_devices':
-      return { type: 'set_room_devices', room_id: Number(f.actionRoomId), status: f.actionRoomStatus };
+      return { type: 'set_room_devices', room_id: Number(a.roomId), status: a.roomStatus };
     case 'delayed_off':
-      return { type: 'delayed_off', device_id: Number(f.actionDeviceId), minutes: Number(f.actionDelayMinutes) };
+      return { type: 'delayed_off', device_id: Number(a.deviceId), minutes: Number(a.delayMinutes) };
     case 'delayed_on':
-      return { type: 'delayed_on', device_id: Number(f.actionDeviceId), minutes: Number(f.actionDelayMinutes) };
+      return { type: 'delayed_on', device_id: Number(a.deviceId), minutes: Number(a.delayMinutes) };
     case 'set_thermostat_setpoint':
-      return { type: 'set_thermostat_setpoint', device_id: Number(f.actionDeviceId), setpoint: Number(f.actionSetpoint) };
+      return { type: 'set_thermostat_setpoint', device_id: Number(a.deviceId), setpoint: Number(a.setpoint) };
     case 'set_thermostat_mode':
-      return { type: 'set_thermostat_mode', device_id: Number(f.actionDeviceId), mode: f.actionThermostatMode };
+      return { type: 'set_thermostat_mode', device_id: Number(a.deviceId), mode: a.thermostatMode };
     case 'set_thermostat_child_lock':
-      return { type: 'set_thermostat_child_lock', device_id: Number(f.actionDeviceId), locked: f.actionChildLock };
+      return { type: 'set_thermostat_child_lock', device_id: Number(a.deviceId), locked: a.childLock };
     case 'set_thermostat_open_window':
-      return { type: 'set_thermostat_open_window', device_id: Number(f.actionDeviceId), enabled: f.actionOpenWindow };
+      return { type: 'set_thermostat_open_window', device_id: Number(a.deviceId), enabled: a.openWindow };
     case 'set_thermostat_calibration':
-      return { type: 'set_thermostat_calibration', device_id: Number(f.actionDeviceId), value: Number(f.actionCalibration) };
+      return { type: 'set_thermostat_calibration', device_id: Number(a.deviceId), value: Number(a.calibration) };
     case 'set_thermostat_frost_protection':
-      return { type: 'set_thermostat_frost_protection', device_id: Number(f.actionDeviceId), value: Number(f.actionFrostProtection) };
+      return { type: 'set_thermostat_frost_protection', device_id: Number(a.deviceId), value: Number(a.frostProtection) };
     case 'activate_scene':
-      return { type: 'activate_scene', scene_id: Number(f.actionSceneId) };
+      return { type: 'activate_scene', scene_id: Number(a.sceneId) };
     case 'notify':
-      return { type: 'notify', message: f.actionNotifyMessage };
+      return { type: 'notify', message: a.notifyMessage };
   }
+}
+
+function buildAction(f: FormState): Record<string, unknown> {
+  if (f.actions.length === 1) return buildActionItem(f.actions[0]);
+  return { type: 'multi', actions: f.actions.map(buildActionItem) };
 }
 
 function buildConditions(f: FormState): { logic: ConditionLogic; items: Record<string, unknown>[] } {
@@ -278,8 +319,14 @@ function buildConditions(f: FormState): { logic: ConditionLogic; items: Record<s
       case 'door_closed':
       case 'motion':
         return { type: c.type, device_id: Number(c.deviceId) };
-      case 'time_between':
-        return { type: 'time_between', from: c.from, to: c.to };
+      case 'time_between': {
+        const base: Record<string, unknown> = { type: 'time_between', from: c.from, to: c.to };
+        if (c.useDates && c.fromDate && c.toDate) {
+          base.from_date = c.fromDate;
+          base.to_date = c.toDate;
+        }
+        return base;
+      }
       case 'time_at':
         return { type: 'time_at', time: c.time };
       case 'weekday':
@@ -295,6 +342,12 @@ function buildConditions(f: FormState): { logic: ConditionLogic; items: Record<s
 // ── Menschenlesbare Texte ─────────────────────────────────────────────────────
 
 const DAYS_SHORT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+
+function formatDeDate(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  if (!y || !m || !d) return iso;
+  return `${d}.${m}.${y}`;
+}
 
 function statusActionLabel(status: unknown): string {
   switch (status) {
@@ -326,8 +379,14 @@ function describeConditionItem(item: Record<string, unknown>, devices: Device[])
       return `"${dev(item.device_id)}" ist geschlossen`;
     case 'motion':
       return `"${dev(item.device_id)}" erkennt Bewegung`;
-    case 'time_between':
+    case 'time_between': {
+      const fromDate = item.from_date != null ? String(item.from_date) : '';
+      const toDate = item.to_date != null ? String(item.to_date) : '';
+      if (fromDate && toDate) {
+        return `${formatDeDate(fromDate)} ${item.from}–${formatDeDate(toDate)} ${item.to}`;
+      }
       return `Zeit ${item.from}–${item.to}`;
+    }
     case 'time_at':
       return `Uhrzeit ${item.time}`;
     case 'weekday': {
@@ -401,7 +460,7 @@ function describeTrigger(trigger: Record<string, unknown>, devices: Device[]): s
   }
 }
 
-function describeAction(
+function describeActionItem(
   action: Record<string, unknown>,
   devices: Device[],
   rooms: Room[],
@@ -445,6 +504,20 @@ function describeAction(
   }
 }
 
+function describeAction(
+  action: Record<string, unknown>,
+  devices: Device[],
+  rooms: Room[],
+  scenes: Scene[] = [],
+): string {
+  if (action.type === 'multi' && Array.isArray(action.actions)) {
+    return (action.actions as Record<string, unknown>[])
+      .map((a) => describeActionItem(a, devices, rooms, scenes))
+      .join(' + ');
+  }
+  return describeActionItem(action, devices, rooms, scenes);
+}
+
 function getTriggerIcon(type: string) {
   if (type === 'time' || type === 'weekday_time' || type === 'time_at') return Clock;
   if (type === 'temperature_above' || type === 'temperature_below') return Thermometer;
@@ -458,6 +531,18 @@ function getTriggerIcon(type: string) {
   if (type === 'power_above') return Gauge;
   if (type === 'conditions') return Filter;
   return Zap;
+}
+
+function actionIsComplete(a: ActionFormItem): boolean {
+  if (['set_device_status', 'toggle_device', 'delayed_off', 'delayed_on',
+    'set_thermostat_setpoint', 'set_thermostat_mode',
+    'set_thermostat_child_lock', 'set_thermostat_open_window',
+    'set_thermostat_calibration', 'set_thermostat_frost_protection',
+  ].includes(a.type) && !!a.deviceId) return true;
+  if (a.type === 'set_room_devices' && !!a.roomId) return true;
+  if (a.type === 'activate_scene' && !!a.sceneId) return true;
+  if (a.type === 'notify' && !!a.notifyMessage.trim()) return true;
+  return false;
 }
 
 // ── Hilfs-Komponenten ─────────────────────────────────────────────────────────
@@ -599,6 +684,16 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
   const patchForm = (patch: Partial<FormState>) =>
     setDialog((s) => ({ ...s, form: { ...s.form, ...patch } }));
 
+  const patchAction = (id: string, patch: Partial<ActionFormItem>) => {
+    setDialog((s) => ({
+      ...s,
+      form: {
+        ...s.form,
+        actions: s.form.actions.map((a) => (a.id === id ? { ...a, ...patch } : a)),
+      },
+    }));
+  };
+
   // Echtzeit-Updates: neuer Log-Eintrag wenn Automation feuert
   useEffect(() => {
     let echo: ReturnType<typeof getEcho> | null = null;
@@ -628,6 +723,7 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
   const validate = (f: FormState): string => {
     if (!f.name.trim()) return 'Name ist erforderlich.';
     if (f.conditions.length < 1) return 'Mindestens eine Bedingung ist erforderlich.';
+    if (f.actions.length < 1) return 'Mindestens eine Aktion ist erforderlich.';
 
     for (let i = 0; i < f.conditions.length; i++) {
       const c = f.conditions[i];
@@ -643,41 +739,56 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
         return `${label}: bitte mindestens einen Wochentag waehlen.`;
       if (c.type === 'time_between' && (!c.from || !c.to))
         return `${label}: bitte Zeit von/bis angeben.`;
+      if (c.type === 'time_between' && c.useDates) {
+        if (!c.fromDate || !c.toDate)
+          return `${label}: bitte Datum von/bis angeben.`;
+        const fromTs = Date.parse(`${c.fromDate}T${c.from}`);
+        const toTs = Date.parse(`${c.toDate}T${c.to}`);
+        if (Number.isNaN(fromTs) || Number.isNaN(toTs))
+          return `${label}: ungueltiges Datum/Zeit.`;
+        if (fromTs > toTs)
+          return `${label}: Von muss vor Bis liegen.`;
+      }
       if (c.type === 'time_at' && !c.time)
         return `${label}: bitte eine Uhrzeit angeben.`;
       if ((c.type === 'child_lock' || c.type === 'open_window') && !c.value)
         return `${label}: bitte einen Wert waehlen.`;
     }
 
-    if (f.actionType === 'set_room_devices' && !f.actionRoomId)
-      return 'Bitte einen Raum fuer die Aktion waehlen.';
     const needsActionDevice: ActionType[] = [
       'set_device_status', 'toggle_device', 'delayed_off', 'delayed_on',
       'set_thermostat_setpoint', 'set_thermostat_mode',
       'set_thermostat_child_lock', 'set_thermostat_open_window',
       'set_thermostat_calibration', 'set_thermostat_frost_protection',
     ];
-    if (needsActionDevice.includes(f.actionType) && !f.actionDeviceId)
-      return 'Bitte ein Ziel-Geraet fuer die Aktion waehlen.';
-    if (f.actionType === 'activate_scene' && !f.actionSceneId)
-      return 'Bitte eine Szene waehlen.';
-    if (f.actionType === 'set_thermostat_setpoint') {
-      const sp = Number(f.actionSetpoint);
-      if (Number.isNaN(sp) || sp < 4 || sp > 35)
-        return 'Sollwert muss zwischen 4 und 35°C liegen.';
+
+    for (let i = 0; i < f.actions.length; i++) {
+      const a = f.actions[i];
+      const label = `Aktion ${i + 1}`;
+      if (a.type === 'set_room_devices' && !a.roomId)
+        return `${label}: bitte einen Raum waehlen.`;
+      if (needsActionDevice.includes(a.type) && !a.deviceId)
+        return `${label}: bitte ein Ziel-Geraet waehlen.`;
+      if (a.type === 'activate_scene' && !a.sceneId)
+        return `${label}: bitte eine Szene waehlen.`;
+      if (a.type === 'set_thermostat_setpoint') {
+        const sp = Number(a.setpoint);
+        if (Number.isNaN(sp) || sp < 4 || sp > 35)
+          return `${label}: Sollwert muss zwischen 4 und 35°C liegen.`;
+      }
+      if (a.type === 'set_thermostat_calibration') {
+        const v = Number(a.calibration);
+        if (Number.isNaN(v) || v < -12.7 || v > 12.7)
+          return `${label}: Kalibrierung muss zwischen -12.7 und 12.7°C liegen.`;
+      }
+      if (a.type === 'set_thermostat_frost_protection') {
+        const v = Number(a.frostProtection);
+        if (Number.isNaN(v) || v < 4 || v > 35)
+          return `${label}: Frostschutz muss zwischen 4 und 35°C liegen.`;
+      }
+      if (a.type === 'notify' && !a.notifyMessage.trim())
+        return `${label}: bitte eine Benachrichtigungs-Nachricht eingeben.`;
     }
-    if (f.actionType === 'set_thermostat_calibration') {
-      const v = Number(f.actionCalibration);
-      if (Number.isNaN(v) || v < -12.7 || v > 12.7)
-        return 'Kalibrierung muss zwischen -12.7 und 12.7°C liegen.';
-    }
-    if (f.actionType === 'set_thermostat_frost_protection') {
-      const v = Number(f.actionFrostProtection);
-      if (Number.isNaN(v) || v < 4 || v > 35)
-        return 'Frostschutz muss zwischen 4 und 35°C liegen.';
-    }
-    if (f.actionType === 'notify' && !f.actionNotifyMessage.trim())
-      return 'Bitte eine Benachrichtigungs-Nachricht eingeben.';
     return '';
   };
 
@@ -720,8 +831,6 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
   const switchableDevices = devices.filter((d) => SWITCHABLE_TYPES.includes(d.type));
 
   const { form } = dialog;
-  const actionTargetDevice = switchableDevices.find((d) => String(d.id) === form.actionDeviceId);
-  const actionTargetIsCover = actionTargetDevice?.type === 'cover';
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -1055,18 +1164,54 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
                     )}
 
                     {cond.type === 'time_between' && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <FieldLabel>Von</FieldLabel>
-                          <input type="time"
-                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                            value={cond.from} onChange={(e) => patchCond({ from: e.target.value })} />
-                        </div>
-                        <div className="space-y-1">
-                          <FieldLabel>Bis</FieldLabel>
-                          <input type="time"
-                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                            value={cond.to} onChange={(e) => patchCond({ to: e.target.value })} />
+                      <div className="space-y-3">
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="rounded border-input"
+                            checked={cond.useDates}
+                            onChange={(e) => {
+                              const on = e.target.checked;
+                              patchCond({
+                                useDates: on,
+                                fromDate: on && !cond.fromDate ? todayIso() : cond.fromDate,
+                                toDate: on && !cond.toDate ? todayIso() : cond.toDate,
+                              });
+                            }}
+                          />
+                          Datum angeben
+                        </label>
+                        {cond.useDates && (
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <FieldLabel>Von Datum</FieldLabel>
+                              <input type="date"
+                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                                value={cond.fromDate}
+                                onChange={(e) => patchCond({ fromDate: e.target.value })} />
+                            </div>
+                            <div className="space-y-1">
+                              <FieldLabel>Bis Datum</FieldLabel>
+                              <input type="date"
+                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                                value={cond.toDate}
+                                onChange={(e) => patchCond({ toDate: e.target.value })} />
+                            </div>
+                          </div>
+                        )}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <FieldLabel>Von</FieldLabel>
+                            <input type="time"
+                              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                              value={cond.from} onChange={(e) => patchCond({ from: e.target.value })} />
+                          </div>
+                          <div className="space-y-1">
+                            <FieldLabel>Bis</FieldLabel>
+                            <input type="time"
+                              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                              value={cond.to} onChange={(e) => patchCond({ to: e.target.value })} />
+                          </div>
                         </div>
                       </div>
                     )}
@@ -1116,323 +1261,354 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
               })}
             </div>
 
-            {/* AKTION */}
+            {/* AKTIONEN */}
             <div className="space-y-3 rounded-lg border p-4">
-              <p className="text-sm font-semibold flex items-center gap-1.5">
-                <ChevronRight className="h-4 w-4" /> Dann ... (Aktion)
-              </p>
-
-              <div className="space-y-1">
-                <FieldLabel>Aktions-Typ</FieldLabel>
-                <Select value={form.actionType} onValueChange={(v) => patchForm({ actionType: v as ActionType })}>
-                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectLabel>Geraet steuern</SelectLabel>
-                      <SelectItem value="set_device_status">Geraet ein-/ausschalten</SelectItem>
-                      <SelectItem value="toggle_device">Geraet umschalten (Toggle)</SelectItem>
-                      <SelectItem value="delayed_off">Geraet nach X Minuten ausschalten</SelectItem>
-                      <SelectItem value="delayed_on">Geraet nach X Minuten einschalten</SelectItem>
-                    </SelectGroup>
-                    <SelectGroup>
-                      <SelectLabel>Klima</SelectLabel>
-                      <SelectItem value="set_thermostat_setpoint">Thermostat-Sollwert setzen</SelectItem>
-                      <SelectItem value="set_thermostat_mode">Thermostat-Modus setzen</SelectItem>
-                      <SelectItem value="set_thermostat_child_lock">Kindersicherung setzen</SelectItem>
-                      <SelectItem value="set_thermostat_open_window">Offenes-Fenster setzen</SelectItem>
-                      <SelectItem value="set_thermostat_calibration">Kalibrierung setzen</SelectItem>
-                      <SelectItem value="set_thermostat_frost_protection">Frostschutz setzen</SelectItem>
-                    </SelectGroup>
-                    <SelectGroup>
-                      <SelectLabel>Raum / Szene</SelectLabel>
-                      <SelectItem value="set_room_devices">Alle Geraete im Raum ein-/ausschalten</SelectItem>
-                      <SelectItem value="activate_scene">Szene aktivieren</SelectItem>
-                    </SelectGroup>
-                    <SelectGroup>
-                      <SelectLabel>Sonstiges</SelectLabel>
-                      <SelectItem value="notify">Benachrichtigung senden</SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold flex items-center gap-1.5">
+                  <ChevronRight className="h-4 w-4" /> Dann ...
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => patchForm({ actions: [...form.actions, newAction()] })}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Aktion
+                </Button>
               </div>
 
-              {form.actionType === 'set_device_status' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <FieldLabel>Geraet</FieldLabel>
-                    <DeviceSelect
-                      value={form.actionDeviceId}
-                      onChange={(v) => {
-                        const next = switchableDevices.find((d) => String(d.id) === v);
-                        const patch: Partial<FormState> = { actionDeviceId: v };
-                        if (next?.type === 'cover' && !['open', 'close', 'stop'].includes(form.actionDeviceStatus)) {
-                          patch.actionDeviceStatus = 'open';
-                        } else if (next && next.type !== 'cover' && ['open', 'close', 'stop'].includes(form.actionDeviceStatus)) {
-                          patch.actionDeviceStatus = 'on';
-                        }
-                        patchForm(patch);
-                      }}
-                      devices={switchableDevices} rooms={rooms} />
-                  </div>
-                  <div className="space-y-1">
-                    <FieldLabel>Aktion</FieldLabel>
-                    <Select value={form.actionDeviceStatus} onValueChange={(v) => patchForm({ actionDeviceStatus: v as ActionDeviceStatus })}>
-                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {actionTargetIsCover ? (
-                          <>
-                            <SelectItem value="open">oeffnen</SelectItem>
-                            <SelectItem value="close">schliessen</SelectItem>
-                            <SelectItem value="stop">stopp</SelectItem>
-                          </>
+              {form.actions.map((action, idx) => {
+                const actionTargetDevice = switchableDevices.find((d) => String(d.id) === action.deviceId);
+                const actionTargetIsCover = actionTargetDevice?.type === 'cover';
+                const removeAction = () => {
+                  if (form.actions.length <= 1) return;
+                  patchForm({ actions: form.actions.filter((a) => a.id !== action.id) });
+                };
+
+                return (
+                  <div key={action.id} className="rounded-md border bg-muted/30 p-3 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Aktion {idx + 1}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-destructive"
+                        disabled={form.actions.length <= 1}
+                        onClick={removeAction}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+
+                    <div className="space-y-1">
+                      <FieldLabel>Aktions-Typ</FieldLabel>
+                      <Select value={action.type} onValueChange={(v) => patchAction(action.id, { type: v as ActionType })}>
+                        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            <SelectLabel>Geraet steuern</SelectLabel>
+                            <SelectItem value="set_device_status">Geraet ein-/ausschalten</SelectItem>
+                            <SelectItem value="toggle_device">Geraet umschalten (Toggle)</SelectItem>
+                            <SelectItem value="delayed_off">Geraet nach X Minuten ausschalten</SelectItem>
+                            <SelectItem value="delayed_on">Geraet nach X Minuten einschalten</SelectItem>
+                          </SelectGroup>
+                          <SelectGroup>
+                            <SelectLabel>Klima</SelectLabel>
+                            <SelectItem value="set_thermostat_setpoint">Thermostat-Sollwert setzen</SelectItem>
+                            <SelectItem value="set_thermostat_mode">Thermostat-Modus setzen</SelectItem>
+                            <SelectItem value="set_thermostat_child_lock">Kindersicherung setzen</SelectItem>
+                            <SelectItem value="set_thermostat_open_window">Offenes-Fenster setzen</SelectItem>
+                            <SelectItem value="set_thermostat_calibration">Kalibrierung setzen</SelectItem>
+                            <SelectItem value="set_thermostat_frost_protection">Frostschutz setzen</SelectItem>
+                          </SelectGroup>
+                          <SelectGroup>
+                            <SelectLabel>Raum / Szene</SelectLabel>
+                            <SelectItem value="set_room_devices">Alle Geraete im Raum ein-/ausschalten</SelectItem>
+                            <SelectItem value="activate_scene">Szene aktivieren</SelectItem>
+                          </SelectGroup>
+                          <SelectGroup>
+                            <SelectLabel>Sonstiges</SelectLabel>
+                            <SelectItem value="notify">Benachrichtigung senden</SelectItem>
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {action.type === 'set_device_status' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <FieldLabel>Geraet</FieldLabel>
+                          <DeviceSelect
+                            value={action.deviceId}
+                            onChange={(v) => {
+                              const next = switchableDevices.find((d) => String(d.id) === v);
+                              const patch: Partial<ActionFormItem> = { deviceId: v };
+                              if (next?.type === 'cover' && !['open', 'close', 'stop'].includes(action.deviceStatus)) {
+                                patch.deviceStatus = 'open';
+                              } else if (next && next.type !== 'cover' && ['open', 'close', 'stop'].includes(action.deviceStatus)) {
+                                patch.deviceStatus = 'on';
+                              }
+                              patchAction(action.id, patch);
+                            }}
+                            devices={switchableDevices} rooms={rooms} />
+                        </div>
+                        <div className="space-y-1">
+                          <FieldLabel>Aktion</FieldLabel>
+                          <Select value={action.deviceStatus} onValueChange={(v) => patchAction(action.id, { deviceStatus: v as ActionDeviceStatus })}>
+                            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {actionTargetIsCover ? (
+                                <>
+                                  <SelectItem value="open">oeffnen</SelectItem>
+                                  <SelectItem value="close">schliessen</SelectItem>
+                                  <SelectItem value="stop">stopp</SelectItem>
+                                </>
+                              ) : (
+                                <>
+                                  <SelectItem value="on">einschalten</SelectItem>
+                                  <SelectItem value="off">ausschalten</SelectItem>
+                                </>
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
+
+                    {action.type === 'toggle_device' && (
+                      <div className="space-y-1">
+                        <FieldLabel>Geraet</FieldLabel>
+                        <DeviceSelect value={action.deviceId} onChange={(v) => patchAction(action.id, { deviceId: v })}
+                          devices={switchableDevices} rooms={rooms} />
+                      </div>
+                    )}
+
+                    {(action.type === 'delayed_off' || action.type === 'delayed_on') && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <FieldLabel>Geraet</FieldLabel>
+                          <DeviceSelect value={action.deviceId} onChange={(v) => patchAction(action.id, { deviceId: v })}
+                            devices={switchableDevices} rooms={rooms} />
+                        </div>
+                        <div className="space-y-1">
+                          <FieldLabel>Verzoegerung (Minuten)</FieldLabel>
+                          <TextInput type="number" value={action.delayMinutes}
+                            onChange={(v) => patchAction(action.id, { delayMinutes: v })} placeholder="10" />
+                        </div>
+                      </div>
+                    )}
+
+                    {action.type === 'set_room_devices' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <FieldLabel>Raum</FieldLabel>
+                          <Select value={action.roomId} onValueChange={(v) => patchAction(action.id, { roomId: v })}>
+                            <SelectTrigger className="w-full"><SelectValue placeholder="Raum waehlen..." /></SelectTrigger>
+                            <SelectContent>
+                              {rooms.map((r) => (
+                                <SelectItem key={r.id} value={String(r.id)}>{r.icon} {r.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <FieldLabel>Aktion</FieldLabel>
+                          <Select value={action.roomStatus} onValueChange={(v) => patchAction(action.id, { roomStatus: v as DeviceStatus })}>
+                            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="on">alle einschalten</SelectItem>
+                              <SelectItem value="off">alle ausschalten</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
+
+                    {action.type === 'set_thermostat_setpoint' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <FieldLabel>Thermostat</FieldLabel>
+                          {thermostats.length > 0 ? (
+                            <DeviceSelect value={action.deviceId} onChange={(v) => patchAction(action.id, { deviceId: v })}
+                              devices={thermostats} rooms={rooms} />
+                          ) : (
+                            <p className="text-xs text-muted-foreground py-2">Keine Thermostate vorhanden.</p>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <FieldLabel>Sollwert (°C)</FieldLabel>
+                          <TextInput type="number" value={action.setpoint}
+                            onChange={(v) => patchAction(action.id, { setpoint: v })} placeholder="21" />
+                          <p className="text-xs text-muted-foreground">4–35°C, Schritte 0.5</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {action.type === 'set_thermostat_mode' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <FieldLabel>Thermostat</FieldLabel>
+                          {thermostats.length > 0 ? (
+                            <DeviceSelect value={action.deviceId} onChange={(v) => patchAction(action.id, { deviceId: v })}
+                              devices={thermostats} rooms={rooms} />
+                          ) : (
+                            <p className="text-xs text-muted-foreground py-2">Keine Thermostate vorhanden.</p>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <FieldLabel>Modus</FieldLabel>
+                          <Select value={action.thermostatMode} onValueChange={(v) => patchAction(action.id, { thermostatMode: v as ThermostatMode })}>
+                            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="heat">Heizen</SelectItem>
+                              <SelectItem value="off">Aus</SelectItem>
+                              <SelectItem value="auto">Auto</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
+
+                    {action.type === 'set_thermostat_child_lock' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <FieldLabel>Thermostat</FieldLabel>
+                          {thermostats.length > 0 ? (
+                            <DeviceSelect value={action.deviceId} onChange={(v) => patchAction(action.id, { deviceId: v })}
+                              devices={thermostats} rooms={rooms} />
+                          ) : (
+                            <p className="text-xs text-muted-foreground py-2">Keine Thermostate vorhanden.</p>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <FieldLabel>Kindersicherung</FieldLabel>
+                          <Select
+                            value={action.childLock ? 'true' : 'false'}
+                            onValueChange={(v) => patchAction(action.id, { childLock: v === 'true' })}
+                          >
+                            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="true">an (LOCK)</SelectItem>
+                              <SelectItem value="false">aus (UNLOCK)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
+
+                    {action.type === 'set_thermostat_open_window' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <FieldLabel>Thermostat</FieldLabel>
+                          {thermostats.length > 0 ? (
+                            <DeviceSelect value={action.deviceId} onChange={(v) => patchAction(action.id, { deviceId: v })}
+                              devices={thermostats} rooms={rooms} />
+                          ) : (
+                            <p className="text-xs text-muted-foreground py-2">Keine Thermostate vorhanden.</p>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <FieldLabel>Offenes-Fenster</FieldLabel>
+                          <Select
+                            value={action.openWindow ? 'true' : 'false'}
+                            onValueChange={(v) => patchAction(action.id, { openWindow: v === 'true' })}
+                          >
+                            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="true">an (ON)</SelectItem>
+                              <SelectItem value="false">aus (OFF)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
+
+                    {action.type === 'set_thermostat_calibration' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <FieldLabel>Thermostat</FieldLabel>
+                          {thermostats.length > 0 ? (
+                            <DeviceSelect value={action.deviceId} onChange={(v) => patchAction(action.id, { deviceId: v })}
+                              devices={thermostats} rooms={rooms} />
+                          ) : (
+                            <p className="text-xs text-muted-foreground py-2">Keine Thermostate vorhanden.</p>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <FieldLabel>Kalibrierung (°C)</FieldLabel>
+                          <TextInput type="number" value={action.calibration}
+                            onChange={(v) => patchAction(action.id, { calibration: v })} placeholder="0" />
+                          <p className="text-xs text-muted-foreground">-12.7 bis 12.7°C</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {action.type === 'set_thermostat_frost_protection' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <FieldLabel>Thermostat</FieldLabel>
+                          {thermostats.length > 0 ? (
+                            <DeviceSelect value={action.deviceId} onChange={(v) => patchAction(action.id, { deviceId: v })}
+                              devices={thermostats} rooms={rooms} />
+                          ) : (
+                            <p className="text-xs text-muted-foreground py-2">Keine Thermostate vorhanden.</p>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <FieldLabel>Frostschutz (°C)</FieldLabel>
+                          <TextInput type="number" value={action.frostProtection}
+                            onChange={(v) => patchAction(action.id, { frostProtection: v })} placeholder="5" />
+                          <p className="text-xs text-muted-foreground">4–35°C</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {action.type === 'activate_scene' && (
+                      <div className="space-y-1">
+                        <FieldLabel>Szene</FieldLabel>
+                        {scenes.length > 0 ? (
+                          <Select value={action.sceneId} onValueChange={(v) => patchAction(action.id, { sceneId: v })}>
+                            <SelectTrigger className="w-full"><SelectValue placeholder="Szene waehlen..." /></SelectTrigger>
+                            <SelectContent>
+                              {scenes.map((s) => (
+                                <SelectItem key={s.id} value={String(s.id)}>
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <Clapperboard className="h-3.5 w-3.5" />
+                                    {s.icon ? `${s.icon} ` : ''}{s.name}
+                                  </span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         ) : (
-                          <>
-                            <SelectItem value="on">einschalten</SelectItem>
-                            <SelectItem value="off">ausschalten</SelectItem>
-                          </>
+                          <p className="text-xs text-muted-foreground py-2">Keine Szenen vorhanden.</p>
                         )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
+                      </div>
+                    )}
 
-              {form.actionType === 'toggle_device' && (
-                <div className="space-y-1">
-                  <FieldLabel>Geraet</FieldLabel>
-                  <DeviceSelect value={form.actionDeviceId} onChange={(v) => patchForm({ actionDeviceId: v })}
-                    devices={switchableDevices} rooms={rooms} />
-                </div>
-              )}
-
-              {(form.actionType === 'delayed_off' || form.actionType === 'delayed_on') && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <FieldLabel>Geraet</FieldLabel>
-                    <DeviceSelect value={form.actionDeviceId} onChange={(v) => patchForm({ actionDeviceId: v })}
-                      devices={switchableDevices} rooms={rooms} />
-                  </div>
-                  <div className="space-y-1">
-                    <FieldLabel>Verzoegerung (Minuten)</FieldLabel>
-                    <TextInput type="number" value={form.actionDelayMinutes}
-                      onChange={(v) => patchForm({ actionDelayMinutes: v })} placeholder="10" />
-                  </div>
-                </div>
-              )}
-
-              {form.actionType === 'set_room_devices' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <FieldLabel>Raum</FieldLabel>
-                    <Select value={form.actionRoomId} onValueChange={(v) => patchForm({ actionRoomId: v })}>
-                      <SelectTrigger className="w-full"><SelectValue placeholder="Raum waehlen..." /></SelectTrigger>
-                      <SelectContent>
-                        {rooms.map((r) => (
-                          <SelectItem key={r.id} value={String(r.id)}>{r.icon} {r.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <FieldLabel>Aktion</FieldLabel>
-                    <Select value={form.actionRoomStatus} onValueChange={(v) => patchForm({ actionRoomStatus: v as DeviceStatus })}>
-                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="on">alle einschalten</SelectItem>
-                        <SelectItem value="off">alle ausschalten</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
-
-              {form.actionType === 'set_thermostat_setpoint' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <FieldLabel>Thermostat</FieldLabel>
-                    {thermostats.length > 0 ? (
-                      <DeviceSelect value={form.actionDeviceId} onChange={(v) => patchForm({ actionDeviceId: v })}
-                        devices={thermostats} rooms={rooms} />
-                    ) : (
-                      <p className="text-xs text-muted-foreground py-2">Keine Thermostate vorhanden.</p>
+                    {action.type === 'notify' && (
+                      <div className="space-y-1">
+                        <FieldLabel>Nachricht</FieldLabel>
+                        <TextInput value={action.notifyMessage}
+                          onChange={(v) => patchAction(action.id, { notifyMessage: v })}
+                          placeholder="z.B. Fenster ist seit 30 Minuten offen!" />
+                        <p className="text-xs text-muted-foreground">
+                          Wird im Dashboard als Benachrichtigung angezeigt (Phase 3).
+                        </p>
+                      </div>
                     )}
                   </div>
-                  <div className="space-y-1">
-                    <FieldLabel>Sollwert (°C)</FieldLabel>
-                    <TextInput type="number" value={form.actionSetpoint}
-                      onChange={(v) => patchForm({ actionSetpoint: v })} placeholder="21" />
-                    <p className="text-xs text-muted-foreground">4–35°C, Schritte 0.5</p>
-                  </div>
-                </div>
-              )}
-
-              {form.actionType === 'set_thermostat_mode' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <FieldLabel>Thermostat</FieldLabel>
-                    {thermostats.length > 0 ? (
-                      <DeviceSelect value={form.actionDeviceId} onChange={(v) => patchForm({ actionDeviceId: v })}
-                        devices={thermostats} rooms={rooms} />
-                    ) : (
-                      <p className="text-xs text-muted-foreground py-2">Keine Thermostate vorhanden.</p>
-                    )}
-                  </div>
-                  <div className="space-y-1">
-                    <FieldLabel>Modus</FieldLabel>
-                    <Select value={form.actionThermostatMode} onValueChange={(v) => patchForm({ actionThermostatMode: v as ThermostatMode })}>
-                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="heat">Heizen</SelectItem>
-                        <SelectItem value="off">Aus</SelectItem>
-                        <SelectItem value="auto">Auto</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
-
-              {form.actionType === 'set_thermostat_child_lock' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <FieldLabel>Thermostat</FieldLabel>
-                    {thermostats.length > 0 ? (
-                      <DeviceSelect value={form.actionDeviceId} onChange={(v) => patchForm({ actionDeviceId: v })}
-                        devices={thermostats} rooms={rooms} />
-                    ) : (
-                      <p className="text-xs text-muted-foreground py-2">Keine Thermostate vorhanden.</p>
-                    )}
-                  </div>
-                  <div className="space-y-1">
-                    <FieldLabel>Kindersicherung</FieldLabel>
-                    <Select
-                      value={form.actionChildLock ? 'true' : 'false'}
-                      onValueChange={(v) => patchForm({ actionChildLock: v === 'true' })}
-                    >
-                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="true">an (LOCK)</SelectItem>
-                        <SelectItem value="false">aus (UNLOCK)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
-
-              {form.actionType === 'set_thermostat_open_window' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <FieldLabel>Thermostat</FieldLabel>
-                    {thermostats.length > 0 ? (
-                      <DeviceSelect value={form.actionDeviceId} onChange={(v) => patchForm({ actionDeviceId: v })}
-                        devices={thermostats} rooms={rooms} />
-                    ) : (
-                      <p className="text-xs text-muted-foreground py-2">Keine Thermostate vorhanden.</p>
-                    )}
-                  </div>
-                  <div className="space-y-1">
-                    <FieldLabel>Offenes-Fenster</FieldLabel>
-                    <Select
-                      value={form.actionOpenWindow ? 'true' : 'false'}
-                      onValueChange={(v) => patchForm({ actionOpenWindow: v === 'true' })}
-                    >
-                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="true">an (ON)</SelectItem>
-                        <SelectItem value="false">aus (OFF)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              )}
-
-              {form.actionType === 'set_thermostat_calibration' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <FieldLabel>Thermostat</FieldLabel>
-                    {thermostats.length > 0 ? (
-                      <DeviceSelect value={form.actionDeviceId} onChange={(v) => patchForm({ actionDeviceId: v })}
-                        devices={thermostats} rooms={rooms} />
-                    ) : (
-                      <p className="text-xs text-muted-foreground py-2">Keine Thermostate vorhanden.</p>
-                    )}
-                  </div>
-                  <div className="space-y-1">
-                    <FieldLabel>Kalibrierung (°C)</FieldLabel>
-                    <TextInput type="number" value={form.actionCalibration}
-                      onChange={(v) => patchForm({ actionCalibration: v })} placeholder="0" />
-                    <p className="text-xs text-muted-foreground">-12.7 bis 12.7°C</p>
-                  </div>
-                </div>
-              )}
-
-              {form.actionType === 'set_thermostat_frost_protection' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <FieldLabel>Thermostat</FieldLabel>
-                    {thermostats.length > 0 ? (
-                      <DeviceSelect value={form.actionDeviceId} onChange={(v) => patchForm({ actionDeviceId: v })}
-                        devices={thermostats} rooms={rooms} />
-                    ) : (
-                      <p className="text-xs text-muted-foreground py-2">Keine Thermostate vorhanden.</p>
-                    )}
-                  </div>
-                  <div className="space-y-1">
-                    <FieldLabel>Frostschutz (°C)</FieldLabel>
-                    <TextInput type="number" value={form.actionFrostProtection}
-                      onChange={(v) => patchForm({ actionFrostProtection: v })} placeholder="5" />
-                    <p className="text-xs text-muted-foreground">4–35°C</p>
-                  </div>
-                </div>
-              )}
-
-              {form.actionType === 'activate_scene' && (
-                <div className="space-y-1">
-                  <FieldLabel>Szene</FieldLabel>
-                  {scenes.length > 0 ? (
-                    <Select value={form.actionSceneId} onValueChange={(v) => patchForm({ actionSceneId: v })}>
-                      <SelectTrigger className="w-full"><SelectValue placeholder="Szene waehlen..." /></SelectTrigger>
-                      <SelectContent>
-                        {scenes.map((s) => (
-                          <SelectItem key={s.id} value={String(s.id)}>
-                            <span className="inline-flex items-center gap-1.5">
-                              <Clapperboard className="h-3.5 w-3.5" />
-                              {s.icon ? `${s.icon} ` : ''}{s.name}
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <p className="text-xs text-muted-foreground py-2">Keine Szenen vorhanden.</p>
-                  )}
-                </div>
-              )}
-
-              {form.actionType === 'notify' && (
-                <div className="space-y-1">
-                  <FieldLabel>Nachricht</FieldLabel>
-                  <TextInput value={form.actionNotifyMessage}
-                    onChange={(v) => patchForm({ actionNotifyMessage: v })}
-                    placeholder="z.B. Fenster ist seit 30 Minuten offen!" />
-                  <p className="text-xs text-muted-foreground">
-                    Wird im Dashboard als Benachrichtigung angezeigt (Phase 3).
-                  </p>
-                </div>
-              )}
+                );
+              })}
             </div>
 
             {/* Vorschau */}
             {(() => {
               const hasConditions = form.conditions.length >= 1;
-              const hasAction =
-                (['set_device_status', 'toggle_device', 'delayed_off', 'delayed_on',
-                  'set_thermostat_setpoint', 'set_thermostat_mode',
-                  'set_thermostat_child_lock', 'set_thermostat_open_window',
-                  'set_thermostat_calibration', 'set_thermostat_frost_protection',
-                ].includes(form.actionType) && !!form.actionDeviceId) ||
-                (form.actionType === 'set_room_devices' && !!form.actionRoomId) ||
-                (form.actionType === 'activate_scene' && !!form.actionSceneId) ||
-                (form.actionType === 'notify' && !!form.actionNotifyMessage.trim());
+              const hasAction = form.actions.length >= 1 && form.actions.every(actionIsComplete);
               if (!hasConditions || !hasAction) return null;
               const condText = describeConditions(buildConditions(form), devices);
               if (!condText) return null;

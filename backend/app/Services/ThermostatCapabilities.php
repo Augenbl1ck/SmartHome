@@ -5,6 +5,7 @@ namespace App\Services;
 /**
  * Thermostat-Capabilities (Zigbee2MQTT / TRVZB u.ä.).
  * Status-Schema: cap:<name>:<value>
+ * Komplexe Befehle (Boost, Wochenplan, Ventil): DeviceService::applyThermostatCommand
  */
 class ThermostatCapabilities
 {
@@ -24,6 +25,27 @@ class ThermostatCapabilities
         'frost_protection_temperature',
         'running_state',
         'local_temperature',
+        'temporary_mode_select',
+        'temporary_mode_duration',
+        'timer_mode_target_temp',
+        'valve_opening_degree',
+        'valve_closing_degree',
+        'idle_steps',
+        'closing_steps',
+        'valve_opening_limit_voltage',
+        'valve_closing_limit_voltage',
+        'valve_motor_running_voltage',
+        'weekly_schedule_sunday',
+        'weekly_schedule_monday',
+        'weekly_schedule_tuesday',
+        'weekly_schedule_wednesday',
+        'weekly_schedule_thursday',
+        'weekly_schedule_friday',
+        'weekly_schedule_saturday',
+    ];
+
+    public const SCHEDULE_DAYS = [
+        'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday',
     ];
 
     /**
