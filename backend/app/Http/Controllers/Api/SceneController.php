@@ -20,13 +20,13 @@ class SceneController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'name'                => 'required|string|max:100',
-            'icon'                => 'nullable|string|max:10',
-            'actions'             => 'required|array',
-            'actions.*.device_id' => 'required|integer|exists:devices,id',
-            'actions.*.status'    => 'required|string|in:on,off,toggle',
-            'active'              => 'boolean',
+            'name'    => 'required|string|max:100',
+            'icon'    => 'nullable|string|max:10',
+            'actions' => 'required|array|min:1',
+            'actions.*' => 'required|array',
+            'active'  => 'boolean',
         ]);
+        $data['actions'] = $this->sanitizeActions($data['actions']);
         return response()->json(Scene::create($data), 201);
     }
 
@@ -38,13 +38,15 @@ class SceneController extends Controller
     public function update(Request $request, Scene $scene): JsonResponse
     {
         $data = $request->validate([
-            'name'                => 'sometimes|string|max:100',
-            'icon'                => 'nullable|string|max:10',
-            'actions'             => 'sometimes|array',
-            'actions.*.device_id' => 'required_with:actions|integer|exists:devices,id',
-            'actions.*.status'    => 'required_with:actions|string|in:on,off,toggle',
-            'active'              => 'boolean',
+            'name'    => 'sometimes|string|max:100',
+            'icon'    => 'nullable|string|max:10',
+            'actions' => 'sometimes|array|min:1',
+            'actions.*' => 'required_with:actions|array',
+            'active'  => 'boolean',
         ]);
+        if (isset($data['actions'])) {
+            $data['actions'] = $this->sanitizeActions($data['actions']);
+        }
         $scene->update($data);
         return response()->json($scene);
     }
@@ -59,5 +61,21 @@ class SceneController extends Controller
     {
         $this->sceneService->activate($scene);
         return response()->json(['activated' => true, 'scene' => $scene->name]);
+    }
+
+    /**
+     * @param  array<int, mixed>  $actions
+     * @return array<int, array<string, mixed>>
+     */
+    private function sanitizeActions(array $actions): array
+    {
+        $out = [];
+        foreach ($actions as $action) {
+            if (!is_array($action)) {
+                continue;
+            }
+            $out[] = $this->sceneService->normalizeAction($action);
+        }
+        return $out;
     }
 }

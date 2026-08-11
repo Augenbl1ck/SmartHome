@@ -141,7 +141,8 @@ export interface Scene {
   id: number;
   name: string;
   icon: string;
-  actions: { device_id: number; status: 'on' | 'off' | 'toggle' }[];
+  /** Typed actions or legacy { device_id, status } */
+  actions: Record<string, unknown>[];
   active: boolean;
 }
 

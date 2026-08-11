@@ -2,9 +2,7 @@
 
 namespace App\Services;
 
-use App\Services\PushNotificationService;
 use App\Events\AutomationFired;
-use App\Jobs\DelayedDeviceAction;
 use App\Models\Automation;
 use App\Models\AutomationLog;
 use App\Models\Device;
@@ -21,8 +19,7 @@ use Illuminate\Support\Facades\Log;
 class AutomationEngine
 {
     public function __construct(
-        private readonly DeviceService $deviceService,
-        private readonly SceneService $sceneService,
+        private readonly ActionExecutor $actionExecutor,
     ) {}
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -459,128 +456,7 @@ class AutomationEngine
 
     private function executeSingleAction(array $action): void
     {
-        $type = $action['type'] ?? '';
-
-        switch ($type) {
-            case 'set_device_status':
-                $device = Device::find($action['device_id'] ?? null);
-                if ($device) {
-                    $this->deviceService->setStatus($device, $action['status'] ?? 'off');
-                }
-                break;
-
-            case 'toggle_device':
-                $device = Device::find($action['device_id'] ?? null);
-                if ($device) {
-                    $this->deviceService->setStatus($device, $device->status === 'on' ? 'off' : 'on');
-                }
-                break;
-
-            case 'set_room_devices':
-                Device::where('room_id', $action['room_id'] ?? null)
-                    ->where('active', true)
-                    ->where('type', '!=', 'thermostat')
-                    ->get()
-                    ->each(fn ($d) => $this->deviceService->setStatus($d, $action['status'] ?? 'off'));
-                break;
-
-            case 'delayed_off':
-                $device = Device::find($action['device_id'] ?? null);
-                if ($device) {
-                    DelayedDeviceAction::dispatch($device->id, 'off')
-                        ->delay(now()->addMinutes((int) ($action['minutes'] ?? 10)));
-                }
-                break;
-
-            case 'delayed_on':
-                $device = Device::find($action['device_id'] ?? null);
-                if ($device) {
-                    DelayedDeviceAction::dispatch($device->id, 'on')
-                        ->delay(now()->addMinutes((int) ($action['minutes'] ?? 10)));
-                }
-                break;
-
-            case 'set_thermostat_setpoint':
-                $device = Device::find($action['device_id'] ?? null);
-                if ($device && $device->type === 'thermostat') {
-                    $setpoint = round((float) ($action['setpoint'] ?? 21), 1);
-                    $setpoint = max(4.0, min(35.0, $setpoint));
-                    $this->deviceService->setStatus($device, (string) $setpoint);
-                }
-                break;
-
-            case 'set_thermostat_mode':
-                $device = Device::find($action['device_id'] ?? null);
-                if ($device && $device->type === 'thermostat') {
-                    $mode = strtolower((string) ($action['mode'] ?? 'heat'));
-                    if (in_array($mode, ['off', 'auto', 'heat'], true)) {
-                        $this->deviceService->setStatus($device, $mode);
-                    }
-                }
-                break;
-
-            case 'set_thermostat_child_lock':
-                $device = Device::find($action['device_id'] ?? null);
-                if ($device && $device->type === 'thermostat') {
-                    $locked = (bool) ($action['locked'] ?? true);
-                    $this->deviceService->setStatus(
-                        $device,
-                        ThermostatCapabilities::encodeCapStatus('child_lock', $locked ? 'LOCK' : 'UNLOCK')
-                    );
-                }
-                break;
-
-            case 'set_thermostat_open_window':
-                $device = Device::find($action['device_id'] ?? null);
-                if ($device && $device->type === 'thermostat') {
-                    $on = (bool) ($action['enabled'] ?? true);
-                    $this->deviceService->setStatus(
-                        $device,
-                        ThermostatCapabilities::encodeCapStatus('open_window', $on ? 'ON' : 'OFF')
-                    );
-                }
-                break;
-
-            case 'set_thermostat_calibration':
-                $device = Device::find($action['device_id'] ?? null);
-                if ($device && $device->type === 'thermostat') {
-                    $val = round((float) ($action['value'] ?? 0), 1);
-                    $val = max(-12.7, min(12.7, $val));
-                    $this->deviceService->setStatus(
-                        $device,
-                        ThermostatCapabilities::encodeCapStatus('local_temperature_calibration', (string) $val)
-                    );
-                }
-                break;
-
-            case 'set_thermostat_frost_protection':
-                $device = Device::find($action['device_id'] ?? null);
-                if ($device && $device->type === 'thermostat') {
-                    $val = round((float) ($action['value'] ?? 5), 1);
-                    $val = max(4.0, min(35.0, $val));
-                    $this->deviceService->setStatus(
-                        $device,
-                        ThermostatCapabilities::encodeCapStatus('frost_protection_temperature', (string) $val)
-                    );
-                }
-                break;
-
-            case 'activate_scene':
-                $scene = Scene::find($action['scene_id'] ?? null);
-                if ($scene) {
-                    $this->sceneService->activate($scene);
-                }
-                break;
-
-            case 'notify':
-                $message = $action['message'] ?? 'Automation ausgelöst';
-                app(PushNotificationService::class)->send(
-                    'SmartHome',
-                    $message,
-                );
-                Log::info('[Automation] Push gesendet: ' . $message);
-                break;
-        }
+        $this->actionExecutor->execute($action, allowActivateScene: true);
     }
 
     private function describeAction(array $action): string
