@@ -2,7 +2,9 @@
 
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Cloud, Droplets, Sunrise, Sunset, Thermometer, Wind, Eye, Gauge } from 'lucide-react';
+import {
+  ArrowLeft, Cloud, Droplets, Sunrise, Sunset, Thermometer, Wind, Eye, Gauge, Sun,
+} from 'lucide-react';
 import { WeatherIcon } from '@/components/WeatherWidget';
 import type { WeatherResponse } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -25,7 +27,7 @@ function formatClock(iso: string | null | undefined): string {
 }
 
 function formatDay(dateStr: string): string {
-  const d = new Date(dateStr + 'T12:00:00');
+  const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T12:00:00');
   const today = new Date();
   const tomorrow = new Date();
   tomorrow.setDate(today.getDate() + 1);
@@ -38,6 +40,7 @@ export default function WeatherClient({ initial }: Props) {
   const router = useRouter();
   const unit = unitSymbol(initial.unit ?? 'metric');
   const wUnit = windLabel(initial.unit ?? 'metric');
+  const precipUnit = initial.unit === 'imperial' ? 'in' : 'mm';
   const current = initial.current;
   const hourly = initial.hourly ?? [];
   const daily = initial.daily ?? [];
@@ -93,10 +96,19 @@ export default function WeatherClient({ initial }: Props) {
             <InfoChip icon={<Thermometer className="h-3.5 w-3.5" />} label="Gefühlt" value={`${current.feelsLike}${unit}`} />
             <InfoChip icon={<Droplets className="h-3.5 w-3.5" />} label="Luftfeuchte" value={`${current.humidity}%`} />
             <InfoChip icon={<Wind className="h-3.5 w-3.5" />} label="Wind" value={`${current.windSpeed} ${wUnit}`} />
+            {current.windGusts != null && (
+              <InfoChip icon={<Wind className="h-3.5 w-3.5" />} label="Böen" value={`${current.windGusts} ${wUnit}`} />
+            )}
             <InfoChip icon={<Gauge className="h-3.5 w-3.5" />} label="Druck" value={`${current.pressure} hPa`} />
             <InfoChip icon={<Cloud className="h-3.5 w-3.5" />} label="Wolken" value={`${current.clouds}%`} />
             {current.visibility != null && (
               <InfoChip icon={<Eye className="h-3.5 w-3.5" />} label="Sicht" value={`${current.visibility} km`} />
+            )}
+            {current.uvIndex != null && (
+              <InfoChip icon={<Sun className="h-3.5 w-3.5" />} label="UV-Index max." value={String(current.uvIndex)} />
+            )}
+            {current.precipitation != null && (
+              <InfoChip icon={<Droplets className="h-3.5 w-3.5" />} label="Niederschlag" value={`${current.precipitation} ${precipUnit}`} />
             )}
             <InfoChip icon={<Sunrise className="h-3.5 w-3.5" />} label="Sonnenaufgang" value={formatClock(current.sunrise)} />
             <InfoChip icon={<Sunset className="h-3.5 w-3.5" />} label="Sonnenuntergang" value={formatClock(current.sunset)} />
@@ -140,6 +152,11 @@ export default function WeatherClient({ initial }: Props) {
                 <span className="w-24 text-sm font-medium shrink-0">{formatDay(d.date)}</span>
                 <WeatherIcon icon={d.icon} className="h-6 w-6 text-amber-500 shrink-0" />
                 <span className="text-xs text-muted-foreground capitalize flex-1 min-w-0 truncate">{d.description}</span>
+                {d.uvIndex != null && (
+                  <span className="text-[10px] text-muted-foreground tabular-nums shrink-0" title="UV-Index max.">
+                    UV {d.uvIndex}
+                  </span>
+                )}
                 <span className="text-xs text-sky-600 dark:text-sky-400 tabular-nums w-14 text-right shrink-0" title="Regenwahrscheinlichkeit">
                   {d.pop}%
                 </span>
@@ -153,6 +170,10 @@ export default function WeatherClient({ initial }: Props) {
           </ul>
         </div>
       )}
+
+      <p className="text-[11px] text-center text-muted-foreground pb-2">
+        Wetterdaten: <a href="https://open-meteo.com/" className="underline underline-offset-2" target="_blank" rel="noreferrer">Open-Meteo</a>
+      </p>
     </div>
   );
 }

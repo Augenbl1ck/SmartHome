@@ -164,6 +164,9 @@ export interface WeatherCurrent {
   city: string;
   sunrise: string | null;
   sunset: string | null;
+  uvIndex?: number | null;
+  precipitation?: number | null;
+  windGusts?: number | null;
 }
 
 export interface WeatherHourly {
@@ -185,6 +188,8 @@ export interface WeatherDaily {
   pop: number;
   humidity: number;
   windSpeed: number;
+  precipitationSum?: number | null;
+  uvIndex?: number | null;
 }
 
 export interface WeatherResponse {

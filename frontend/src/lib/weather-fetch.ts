@@ -1,247 +1,82 @@
 import type { PanelSettings, WeatherDaily, WeatherHourly, WeatherResponse } from './api';
 
-const OW_KEY = () =>
-  process.env.NEXT_PUBLIC_WEATHER_API_KEY?.trim()
-  || process.env.WEATHER_API_KEY?.trim()
-  || '';
-
-type OwCurrent = {
+type GeoResult = {
   name?: string;
-  coord?: { lat: number; lon: number };
-  main?: {
-    temp?: number;
-    feels_like?: number;
-    temp_min?: number;
-    temp_max?: number;
-    humidity?: number;
-    pressure?: number;
+  latitude: number;
+  longitude: number;
+  country?: string;
+  admin1?: string;
+};
+
+/** Map WMO weather_code → OpenWeather-ähnlicher Icon-Code (für WeatherIcon). */
+export function wmoToIcon(code: number, isDay: boolean): string {
+  const d = isDay ? 'd' : 'n';
+  if (code === 0) return `01${d}`;
+  if (code === 1) return `02${d}`;
+  if (code === 2) return `03${d}`;
+  if (code === 3) return `04${d}`;
+  if (code === 45 || code === 48) return `50${d}`;
+  if (code >= 51 && code <= 57) return `09${d}`;
+  if (code >= 61 && code <= 67) return `10${d}`;
+  if (code >= 71 && code <= 77) return `13${d}`;
+  if (code >= 80 && code <= 82) return `09${d}`;
+  if (code >= 85 && code <= 86) return `13${d}`;
+  if (code >= 95) return `11${d}`;
+  return `03${d}`;
+}
+
+export function wmoDescription(code: number): string {
+  const map: Record<number, string> = {
+    0: 'Klar',
+    1: 'Überwiegend klar',
+    2: 'Teilweise bewölkt',
+    3: 'Bedeckt',
+    45: 'Nebel',
+    48: 'Reifnebel',
+    51: 'Leichter Nieselregen',
+    53: 'Nieselregen',
+    55: 'Starker Nieselregen',
+    56: 'Leichter gefrierender Nieselregen',
+    57: 'Gefrierender Nieselregen',
+    61: 'Leichter Regen',
+    63: 'Regen',
+    65: 'Starker Regen',
+    66: 'Leichter Eisregen',
+    67: 'Eisregen',
+    71: 'Leichter Schneefall',
+    73: 'Schneefall',
+    75: 'Starker Schneefall',
+    77: 'Schneegriesel',
+    80: 'Leichte Regenschauer',
+    81: 'Regenschauer',
+    82: 'Starke Regenschauer',
+    85: 'Leichte Schneeschauer',
+    86: 'Schneeschauer',
+    95: 'Gewitter',
+    96: 'Gewitter mit Hagel',
+    99: 'Schweres Gewitter mit Hagel',
   };
-  wind?: { speed?: number; deg?: number };
-  clouds?: { all?: number };
-  visibility?: number;
-  weather?: { description?: string; icon?: string }[];
-  sys?: { sunrise?: number; sunset?: number };
-};
-
-type OwForecastItem = {
-  dt: number;
-  main?: { temp?: number; temp_min?: number; temp_max?: number; humidity?: number };
-  weather?: { description?: string; icon?: string }[];
-  pop?: number;
-  wind?: { speed?: number };
-};
-
-type OwOneCallHourly = {
-  dt: number;
-  temp?: number;
-  humidity?: number;
-  pop?: number;
-  wind_speed?: number;
-  weather?: { description?: string; icon?: string }[];
-};
-
-type OwOneCallDaily = {
-  dt: number;
-  temp?: { min?: number; max?: number };
-  humidity?: number;
-  pop?: number;
-  wind_speed?: number;
-  weather?: { description?: string; icon?: string }[];
-};
-
-function windSpeed(mps: number, unit: string): number {
-  return unit === 'imperial' ? Math.round(mps) : Math.round(mps * 3.6);
+  return map[code] ?? 'Unbekannt';
 }
 
-function ymdUtc(ms: number): string {
-  const d = new Date(ms);
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(d.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
 }
 
-/** Build 24 hourly points from 3-hour forecast (linear temp between slots). */
-function hourlyFrom3hForecast(
-  list: OwForecastItem[],
-  unit: string,
-  nowSec: number,
-): WeatherHourly[] {
-  const future = list
-    .filter(i => i.dt >= nowSec - 30 * 60)
-    .sort((a, b) => a.dt - b.dt);
+async function geocodeCity(city: string): Promise<GeoResult | null> {
+  const url = new URL('https://geocoding-api.open-meteo.com/v1/search');
+  url.searchParams.set('name', city);
+  url.searchParams.set('count', '1');
+  url.searchParams.set('language', 'de');
+  url.searchParams.set('format', 'json');
 
-  if (future.length === 0) return [];
-
-  const endSec = nowSec + 24 * 3600;
-  const out: WeatherHourly[] = [];
-
-  // Start at the next full hour
-  const startHour = Math.ceil(nowSec / 3600) * 3600;
-
-  for (let t = startHour; t <= endSec && out.length < 24; t += 3600) {
-    // Find surrounding 3h points
-    let prev = future[0];
-    let next = future[0];
-    for (let i = 0; i < future.length; i++) {
-      if (future[i].dt <= t) prev = future[i];
-      if (future[i].dt >= t) {
-        next = future[i];
-        break;
-      }
-      next = future[i];
-    }
-
-    let temp: number;
-    if (prev.dt === next.dt || t <= prev.dt) {
-      temp = prev.main?.temp ?? 0;
-    } else if (t >= next.dt) {
-      temp = next.main?.temp ?? 0;
-    } else {
-      const ratio = (t - prev.dt) / (next.dt - prev.dt);
-      const a = prev.main?.temp ?? 0;
-      const b = next.main?.temp ?? 0;
-      temp = a + (b - a) * ratio;
-    }
-
-    // Prefer the nearer slot for icon / pop / humidity / wind
-    const nearer = Math.abs(t - prev.dt) <= Math.abs(t - next.dt) ? prev : next;
-    out.push({
-      time: new Date(t * 1000).toISOString(),
-      temp: Math.round(temp),
-      icon: nearer.weather?.[0]?.icon ?? '01d',
-      description: nearer.weather?.[0]?.description ?? '',
-      pop: Math.round((nearer.pop ?? 0) * 100),
-      humidity: nearer.main?.humidity ?? 0,
-      windSpeed: windSpeed(nearer.wind?.speed ?? 0, unit),
-    });
-  }
-
-  return out;
-}
-
-function dailyFrom3hForecast(
-  list: OwForecastItem[],
-  unit: string,
-  tzOffset: number,
-): WeatherDaily[] {
-  const byDay = new Map<string, {
-    date: string;
-    tempMin: number;
-    tempMax: number;
-    icon: string;
-    description: string;
-    pop: number;
-    humiditySum: number;
-    humidityN: number;
-    windMax: number;
-  }>();
-
-  for (const item of list) {
-    const localMs = (item.dt + tzOffset) * 1000;
-    const dayKey = ymdUtc(localMs);
-    const temp = item.main?.temp ?? 0;
-    const tempMin = item.main?.temp_min ?? temp;
-    const tempMax = item.main?.temp_max ?? temp;
-    const icon = item.weather?.[0]?.icon ?? '01d';
-    const description = item.weather?.[0]?.description ?? '';
-    const pop = item.pop ?? 0;
-    const humidity = item.main?.humidity ?? 0;
-    const ws = windSpeed(item.wind?.speed ?? 0, unit);
-
-    const existing = byDay.get(dayKey);
-    if (!existing) {
-      byDay.set(dayKey, {
-        date: dayKey,
-        tempMin,
-        tempMax,
-        icon,
-        description,
-        pop,
-        humiditySum: humidity,
-        humidityN: 1,
-        windMax: ws,
-      });
-    } else {
-      existing.tempMin = Math.min(existing.tempMin, tempMin);
-      existing.tempMax = Math.max(existing.tempMax, tempMax);
-      existing.pop = Math.max(existing.pop, pop);
-      existing.humiditySum += humidity;
-      existing.humidityN += 1;
-      existing.windMax = Math.max(existing.windMax, ws);
-      const hour = new Date(localMs).getUTCHours();
-      if (hour >= 11 && hour <= 14) {
-        existing.icon = icon;
-        existing.description = description;
-      }
-    }
-  }
-
-  return [...byDay.values()].slice(0, 7).map(d => ({
-    date: d.date,
-    tempMin: Math.round(d.tempMin),
-    tempMax: Math.round(d.tempMax),
-    icon: d.icon,
-    description: d.description,
-    pop: Math.round(d.pop * 100),
-    humidity: Math.round(d.humiditySum / Math.max(1, d.humidityN)),
-    windSpeed: d.windMax,
-  }));
-}
-
-async function tryOneCall(
-  lat: number,
-  lon: number,
-  unit: string,
-  apiKey: string,
-): Promise<{ hourly: WeatherHourly[]; daily: WeatherDaily[] } | null> {
-  // One Call 3.0 (hourly) — falls Key freigeschaltet
-  const url = new URL('https://api.openweathermap.org/data/3.0/onecall');
-  url.searchParams.set('lat', String(lat));
-  url.searchParams.set('lon', String(lon));
-  url.searchParams.set('appid', apiKey);
-  url.searchParams.set('units', unit);
-  url.searchParams.set('lang', 'de');
-  url.searchParams.set('exclude', 'minutely,alerts');
-
-  const res = await fetch(url, { next: { revalidate: 300 } });
+  const res = await fetch(url, { next: { revalidate: 86400 } });
   if (!res.ok) return null;
-
-  const data = await res.json() as {
-    hourly?: OwOneCallHourly[];
-    daily?: OwOneCallDaily[];
-  };
-
-  const now = Math.floor(Date.now() / 1000);
-  const hourly: WeatherHourly[] = (data.hourly ?? [])
-    .filter(h => h.dt >= now - 1800)
-    .slice(0, 24)
-    .map(h => ({
-      time: new Date(h.dt * 1000).toISOString(),
-      temp: Math.round(h.temp ?? 0),
-      icon: h.weather?.[0]?.icon ?? '01d',
-      description: h.weather?.[0]?.description ?? '',
-      pop: Math.round((h.pop ?? 0) * 100),
-      humidity: h.humidity ?? 0,
-      windSpeed: windSpeed(h.wind_speed ?? 0, unit),
-    }));
-
-  const daily: WeatherDaily[] = (data.daily ?? []).slice(0, 7).map(d => ({
-    date: ymdUtc(d.dt * 1000),
-    tempMin: Math.round(d.temp?.min ?? 0),
-    tempMax: Math.round(d.temp?.max ?? 0),
-    icon: d.weather?.[0]?.icon ?? '01d',
-    description: d.weather?.[0]?.description ?? '',
-    pop: Math.round((d.pop ?? 0) * 100),
-    humidity: d.humidity ?? 0,
-    windSpeed: windSpeed(d.wind_speed ?? 0, unit),
-  }));
-
-  if (hourly.length === 0) return null;
-  return { hourly, daily };
+  const data = await res.json() as { results?: GeoResult[] };
+  return data.results?.[0] ?? null;
 }
 
-/** OpenWeather fetch using NEXT_PUBLIC_WEATHER_API_KEY + panel weather city/unit. */
+/** Wetter über Open-Meteo (kostenlos, stündlich, kein API-Key). */
 export async function fetchWeatherData(settings: Pick<PanelSettings, 'weather'>): Promise<WeatherResponse> {
   const city = settings.weather?.city?.trim() ?? '';
   const unit = settings.weather?.unit === 'imperial' ? 'imperial' : 'metric';
@@ -250,79 +85,182 @@ export async function fetchWeatherData(settings: Pick<PanelSettings, 'weather'>)
     return { configured: false, unit };
   }
 
-  const apiKey = OW_KEY();
-  if (!apiKey) {
-    return {
-      configured: true,
-      unit,
-      error: 'NEXT_PUBLIC_WEATHER_API_KEY fehlt in der Frontend-.env',
-    };
-  }
-
   try {
-    const currentUrl = new URL('https://api.openweathermap.org/data/2.5/weather');
-    currentUrl.searchParams.set('q', city);
-    currentUrl.searchParams.set('appid', apiKey);
-    currentUrl.searchParams.set('units', unit);
-    currentUrl.searchParams.set('lang', 'de');
-
-    const currentRes = await fetch(currentUrl, { next: { revalidate: 300 } });
-    if (currentRes.status === 401) {
-      return { configured: true, unit, error: 'Ungültiger API-Key' };
-    }
-    if (currentRes.status === 404) {
+    const geo = await geocodeCity(city);
+    if (!geo) {
       return { configured: true, unit, error: 'Stadt nicht gefunden' };
     }
-    if (!currentRes.ok) {
-      return { configured: true, unit, error: `Wetter-API Fehler HTTP ${currentRes.status}` };
+
+    const displayName = [geo.name, geo.admin1].filter(Boolean).join(', ') || city;
+
+    const url = new URL('https://api.open-meteo.com/v1/forecast');
+    url.searchParams.set('latitude', String(geo.latitude));
+    url.searchParams.set('longitude', String(geo.longitude));
+    url.searchParams.set('timezone', 'auto');
+    url.searchParams.set('forecast_days', '7');
+    url.searchParams.set('temperature_unit', unit === 'imperial' ? 'fahrenheit' : 'celsius');
+    url.searchParams.set('wind_speed_unit', unit === 'imperial' ? 'mph' : 'kmh');
+    url.searchParams.set(
+      'current',
+      [
+        'temperature_2m',
+        'relative_humidity_2m',
+        'apparent_temperature',
+        'is_day',
+        'precipitation',
+        'weather_code',
+        'cloud_cover',
+        'pressure_msl',
+        'wind_speed_10m',
+        'wind_direction_10m',
+        'wind_gusts_10m',
+      ].join(','),
+    );
+    url.searchParams.set(
+      'hourly',
+      [
+        'temperature_2m',
+        'relative_humidity_2m',
+        'apparent_temperature',
+        'precipitation_probability',
+        'precipitation',
+        'weather_code',
+        'wind_speed_10m',
+        'cloud_cover',
+        'visibility',
+      ].join(','),
+    );
+    url.searchParams.set(
+      'daily',
+      [
+        'weather_code',
+        'temperature_2m_max',
+        'temperature_2m_min',
+        'sunrise',
+        'sunset',
+        'precipitation_probability_max',
+        'precipitation_sum',
+        'wind_speed_10m_max',
+        'uv_index_max',
+      ].join(','),
+    );
+
+    const res = await fetch(url, { next: { revalidate: 300 } });
+    if (!res.ok) {
+      return { configured: true, unit, error: `Open-Meteo Fehler HTTP ${res.status}` };
     }
 
-    const c = (await currentRes.json()) as OwCurrent;
-    const current = {
-      temp: Math.round(c.main?.temp ?? 0),
-      feelsLike: Math.round(c.main?.feels_like ?? 0),
-      tempMin: Math.round(c.main?.temp_min ?? 0),
-      tempMax: Math.round(c.main?.temp_max ?? 0),
-      humidity: c.main?.humidity ?? 0,
-      pressure: c.main?.pressure ?? 0,
-      windSpeed: windSpeed(c.wind?.speed ?? 0, unit),
-      windDeg: c.wind?.deg ?? null,
-      clouds: c.clouds?.all ?? 0,
-      visibility: c.visibility != null ? Math.round(c.visibility / 1000) : null,
-      description: c.weather?.[0]?.description ?? '',
-      icon: c.weather?.[0]?.icon ?? '01d',
-      city: c.name ?? city,
-      sunrise: c.sys?.sunrise ? new Date(c.sys.sunrise * 1000).toISOString() : null,
-      sunset: c.sys?.sunset ? new Date(c.sys.sunset * 1000).toISOString() : null,
+    const data = await res.json() as {
+      current?: Record<string, number | string>;
+      hourly?: {
+        time: string[];
+        temperature_2m: number[];
+        relative_humidity_2m: number[];
+        precipitation_probability: (number | null)[];
+        weather_code: number[];
+        wind_speed_10m: number[];
+        visibility?: (number | null)[];
+      };
+      daily?: {
+        time: string[];
+        weather_code: number[];
+        temperature_2m_max: number[];
+        temperature_2m_min: number[];
+        sunrise: string[];
+        sunset: string[];
+        precipitation_probability_max: (number | null)[];
+        precipitation_sum: number[];
+        wind_speed_10m_max: number[];
+        uv_index_max: number[];
+      };
     };
 
-    let hourly: WeatherHourly[] = [];
-    let daily: WeatherDaily[] = [];
+    const cur = data.current ?? {};
+    const isDay = Number(cur.is_day ?? 1) === 1;
+    const code = Number(cur.weather_code ?? 0);
 
-    if (c.coord?.lat != null && c.coord?.lon != null) {
-      const oneCall = await tryOneCall(c.coord.lat, c.coord.lon, unit, apiKey);
-      if (oneCall) {
-        hourly = oneCall.hourly;
-        daily = oneCall.daily;
-      } else {
-        // Fallback: 5-Tage/3-Std-Forecast → 24 Stundenpunkte + Tagesaggregate
-        const forecastUrl = new URL('https://api.openweathermap.org/data/2.5/forecast');
-        forecastUrl.searchParams.set('lat', String(c.coord.lat));
-        forecastUrl.searchParams.set('lon', String(c.coord.lon));
-        forecastUrl.searchParams.set('appid', apiKey);
-        forecastUrl.searchParams.set('units', unit);
-        forecastUrl.searchParams.set('lang', 'de');
+    const daily0Max = data.daily?.temperature_2m_max?.[0];
+    const daily0Min = data.daily?.temperature_2m_min?.[0];
 
-        const forecastRes = await fetch(forecastUrl, { next: { revalidate: 300 } });
-        if (forecastRes.ok) {
-          const fj = await forecastRes.json() as {
-            list?: OwForecastItem[];
-            city?: { timezone?: number };
-          };
-          const nowSec = Math.floor(Date.now() / 1000);
-          hourly = hourlyFrom3hForecast(fj.list ?? [], unit, nowSec);
-          daily = dailyFrom3hForecast(fj.list ?? [], unit, fj.city?.timezone ?? 0);
+    // Sichtweite: nächster Stundenwert (m → km)
+    let visibilityKm: number | null = null;
+    if (data.hourly?.visibility?.length) {
+      const now = Date.now();
+      const times = data.hourly.time;
+      let bestIdx = 0;
+      let bestDiff = Infinity;
+      for (let i = 0; i < times.length; i++) {
+        const diff = Math.abs(new Date(times[i]).getTime() - now);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          bestIdx = i;
         }
+      }
+      const vis = data.hourly.visibility[bestIdx];
+      if (vis != null) visibilityKm = Math.round(vis / 1000);
+    }
+
+    const current = {
+      temp: Math.round(Number(cur.temperature_2m ?? 0)),
+      feelsLike: Math.round(Number(cur.apparent_temperature ?? 0)),
+      tempMin: Math.round(daily0Min ?? Number(cur.temperature_2m ?? 0)),
+      tempMax: Math.round(daily0Max ?? Number(cur.temperature_2m ?? 0)),
+      humidity: Math.round(Number(cur.relative_humidity_2m ?? 0)),
+      pressure: Math.round(Number(cur.pressure_msl ?? 0)),
+      windSpeed: Math.round(Number(cur.wind_speed_10m ?? 0)),
+      windDeg: cur.wind_direction_10m != null ? Math.round(Number(cur.wind_direction_10m)) : null,
+      clouds: Math.round(Number(cur.cloud_cover ?? 0)),
+      visibility: visibilityKm,
+      description: wmoDescription(code),
+      icon: wmoToIcon(code, isDay),
+      city: displayName,
+      sunrise: data.daily?.sunrise?.[0] ? new Date(data.daily.sunrise[0]).toISOString() : null,
+      sunset: data.daily?.sunset?.[0] ? new Date(data.daily.sunset[0]).toISOString() : null,
+      uvIndex: data.daily?.uv_index_max?.[0] != null ? round1(data.daily.uv_index_max[0]) : null,
+      precipitation: cur.precipitation != null ? round1(Number(cur.precipitation)) : null,
+      windGusts: cur.wind_gusts_10m != null ? Math.round(Number(cur.wind_gusts_10m)) : null,
+    };
+
+    const now = Date.now();
+    const hourly: WeatherHourly[] = [];
+    if (data.hourly?.time) {
+      for (let i = 0; i < data.hourly.time.length && hourly.length < 24; i++) {
+        const t = new Date(data.hourly.time[i]).getTime();
+        // ab aktueller Stunde (nicht weit in der Vergangenheit)
+        if (t < now - 45 * 60_000) continue;
+        const hCode = data.hourly.weather_code[i] ?? 0;
+        const hour = new Date(t).getHours();
+        const dayLike = hour >= 6 && hour < 21;
+        hourly.push({
+          time: new Date(t).toISOString(),
+          temp: Math.round(data.hourly.temperature_2m[i] ?? 0),
+          icon: wmoToIcon(hCode, dayLike),
+          description: wmoDescription(hCode),
+          pop: Math.round(data.hourly.precipitation_probability[i] ?? 0),
+          humidity: Math.round(data.hourly.relative_humidity_2m[i] ?? 0),
+          windSpeed: Math.round(data.hourly.wind_speed_10m[i] ?? 0),
+        });
+      }
+    }
+
+    const daily: WeatherDaily[] = [];
+    if (data.daily?.time) {
+      for (let i = 0; i < data.daily.time.length && i < 7; i++) {
+        const dCode = data.daily.weather_code[i] ?? 0;
+        daily.push({
+          date: data.daily.time[i],
+          tempMin: Math.round(data.daily.temperature_2m_min[i] ?? 0),
+          tempMax: Math.round(data.daily.temperature_2m_max[i] ?? 0),
+          icon: wmoToIcon(dCode, true),
+          description: wmoDescription(dCode),
+          pop: Math.round(data.daily.precipitation_probability_max[i] ?? 0),
+          humidity: 0, // Open-Meteo daily hat keine mittlere Feuchte — UI zeigt optional nichts
+          windSpeed: Math.round(data.daily.wind_speed_10m_max[i] ?? 0),
+          precipitationSum: data.daily.precipitation_sum[i] != null
+            ? round1(data.daily.precipitation_sum[i])
+            : null,
+          uvIndex: data.daily.uv_index_max[i] != null ? round1(data.daily.uv_index_max[i]) : null,
+        });
       }
     }
 

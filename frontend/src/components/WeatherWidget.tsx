@@ -10,6 +10,7 @@ function WeatherIcon({ icon, className }: { icon: string; className?: string }) 
   const cls = cn('shrink-0', className);
   if (icon.includes('01')) return <Sun className={cls} />;
   if (icon.includes('09') || icon.includes('10')) return <CloudRain className={cls} />;
+  if (icon.includes('11')) return <CloudRain className={cls} />;
   if (icon.includes('13')) return <CloudSnow className={cls} />;
   if (icon.includes('50')) return <Wind className={cls} />;
   return <Cloud className={cls} />;
