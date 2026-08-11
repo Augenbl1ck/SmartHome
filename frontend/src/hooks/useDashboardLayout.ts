@@ -5,7 +5,7 @@ export const DASHBOARD_LAYOUT_KEY = 'smarthome_dashboard_layout';
 const FAVORITES_KEY = 'smarthome_favorites';
 const LEGACY_WIDGETS_KEY = 'smarthome_dashboard_widgets';
 
-export type BuiltInSectionId = 'scenes' | 'rooms';
+export type BuiltInSectionId = 'weather' | 'calendar' | 'scenes' | 'rooms';
 export type SectionId = BuiltInSectionId | `field:${string}`;
 
 export interface DashboardField {
@@ -23,9 +23,11 @@ export interface DashboardLayout {
 
 const DEFAULT_FIELD_ID = 'default-quickaccess';
 
+const BUILTIN_SECTIONS: BuiltInSectionId[] = ['weather', 'calendar', 'scenes', 'rooms'];
+
 const DEFAULT: DashboardLayout = {
   roomOrder: [],
-  sectionOrder: ['scenes', 'rooms', `field:${DEFAULT_FIELD_ID}`],
+  sectionOrder: ['weather', 'calendar', 'scenes', 'rooms', `field:${DEFAULT_FIELD_ID}`],
   hiddenSections: [],
   fields: [{ id: DEFAULT_FIELD_ID, name: 'Schnellzugriff', deviceIds: [] }],
 };
@@ -35,6 +37,10 @@ function readJson<T>(key: string): T | null {
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) as T : null;
   } catch { return null; }
+}
+
+function isBuiltin(s: string): s is BuiltInSectionId {
+  return (BUILTIN_SECTIONS as string[]).includes(s);
 }
 
 function migrateLegacy(parsed: Partial<DashboardLayout> & { sectionOrder?: string[] }): DashboardLayout {
@@ -65,10 +71,17 @@ function migrateLegacy(parsed: Partial<DashboardLayout> & { sectionOrder?: strin
 
   const validFieldIds = new Set(fields.map(f => f.id));
   sectionOrder = sectionOrder.filter(s => {
-    if (s === 'scenes' || s === 'rooms') return true;
+    if (isBuiltin(s)) return true;
     if (s.startsWith('field:')) return validFieldIds.has(s.slice(6));
     return false;
   }) as SectionId[];
+
+  // Ensure weather/calendar exist (prepend if missing)
+  for (const builtin of ['weather', 'calendar'] as const) {
+    if (!sectionOrder.includes(builtin)) {
+      sectionOrder.unshift(builtin);
+    }
+  }
 
   for (const field of fields) {
     const sid = `field:${field.id}` as SectionId;
@@ -78,7 +91,7 @@ function migrateLegacy(parsed: Partial<DashboardLayout> & { sectionOrder?: strin
   const hidden = hiddenSections
     .map(s => s === 'quickaccess' ? `field:${fields[0]?.id ?? DEFAULT_FIELD_ID}` : s)
     .filter(s => {
-      if (s === 'scenes' || s === 'rooms') return true;
+      if (isBuiltin(s)) return true;
       if (s.startsWith('field:')) return validFieldIds.has(s.slice(6));
       return false;
     }) as SectionId[];
@@ -144,6 +157,8 @@ export function parseFieldSectionId(sectionId: SectionId): string | null {
 }
 
 export function sectionLabel(sectionId: SectionId, fields: DashboardField[]): string {
+  if (sectionId === 'weather') return 'Wetter';
+  if (sectionId === 'calendar') return 'Kalender';
   if (sectionId === 'scenes') return 'Szenen';
   if (sectionId === 'rooms') return 'Räume';
   const fieldId = parseFieldSectionId(sectionId);

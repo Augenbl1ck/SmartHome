@@ -17,7 +17,7 @@ import {
   Pencil, Plus, Trash2, Wifi, LockKeyhole, LockKeyholeOpen, Timer,
   ChevronDown, Home, Cpu, Cloud, LayoutDashboard, Search, Loader2, Radio,
   ChevronUp, X, ChevronRight, ArrowLeft, Clapperboard, Zap, Monitor, RefreshCw, Check, Bell, Activity,
-  Eye, EyeOff, CalendarDays,
+  Eye, EyeOff,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePinLockContext } from '@/components/PinLockProvider';
@@ -371,7 +371,7 @@ function deviceToForm(d: Device): DeviceForm {
 // ─────────────────────────────────────────────────────────────────
 
 function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms: Room[] }) {
-  const [sectionOrder, setSectionOrder] = useState<SectionId[]>(['scenes', 'rooms']);
+  const [sectionOrder, setSectionOrder] = useState<SectionId[]>(['weather', 'calendar', 'scenes', 'rooms']);
   const [hiddenSections, setHiddenSections] = useState<SectionId[]>([]);
   const [roomOrder, setRoomOrder] = useState<number[]>([]);
   const [fields, setFields] = useState<DashboardField[]>([]);
@@ -701,12 +701,12 @@ function WeatherSection() {
   const [unit, setUnit] = useState<'metric' | 'imperial'>('metric');
   const [saved, setSaved] = useState(false);
 
-  useState(() => {
+  useEffect(() => {
     try {
       const raw = localStorage.getItem(WEATHER_KEY);
       if (raw) { const c = JSON.parse(raw); setCity(c.city ?? ''); setUnit(c.unit ?? 'metric'); }
     } catch { /* */ }
-  });
+  }, []);
 
   const save = () => {
     localStorage.setItem(WEATHER_KEY, JSON.stringify({ city: city.trim(), unit }));
@@ -717,19 +717,20 @@ function WeatherSection() {
   return (
     <div className="divide-y rounded-2xl border bg-card overflow-hidden">
       <div className="px-4 py-3 space-y-3">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Wetter</p>
         <Field label="Stadt" value={city} onChange={setCity} placeholder="z.B. Berlin" />
-          <div className="space-y-1">
-            <label className="block text-sm font-medium">Einheit</label>
-            <select value={unit} onChange={e => setUnit(e.target.value as 'metric' | 'imperial')}
-              className="rounded-lg border border-input bg-background px-3 py-2 text-sm">
-              <option value="metric">Celsius (°C)</option>
-              <option value="imperial">Fahrenheit (°F)</option>
-            </select>
-          </div>
-          <Button onClick={save} size="sm">
-            {saved ? '✓ Gespeichert' : 'Speichern'}
-          </Button>
+        <div className="space-y-1">
+          <label className="block text-sm font-medium">Einheit</label>
+          <select value={unit} onChange={e => setUnit(e.target.value as 'metric' | 'imperial')}
+            className="rounded-lg border border-input bg-background px-3 py-2 text-sm">
+            <option value="metric">Celsius (°C)</option>
+            <option value="imperial">Fahrenheit (°F)</option>
+          </select>
         </div>
+        <Button onClick={save} size="sm">
+          {saved ? '✓ Gespeichert' : 'Speichern'}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -780,6 +781,7 @@ function CalendarSection() {
   return (
     <div className="divide-y rounded-2xl border bg-card overflow-hidden">
       <div className="px-4 py-3 space-y-3">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Kalender</p>
         <p className="text-xs text-muted-foreground leading-relaxed">
           FamilyWall → Kalender → Einstellungen → Kreis-Kalender →{' '}
           <span className="font-medium text-foreground">iCal generieren</span> und den Link hier einfügen.
@@ -797,6 +799,15 @@ function CalendarSection() {
           {saving ? 'Speichern…' : saved ? '✓ Gespeichert' : 'Speichern'}
         </Button>
       </div>
+    </div>
+  );
+}
+
+function WidgetsSection() {
+  return (
+    <div className="space-y-4">
+      <WeatherSection />
+      <CalendarSection />
     </div>
   );
 }
@@ -1287,7 +1298,9 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
   const [view, setView] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     try {
-      return new URLSearchParams(window.location.search).get('view');
+      const v = new URLSearchParams(window.location.search).get('view');
+      if (v === 'weather' || v === 'calendar') return 'widgets';
+      return v;
     } catch {
       return null;
     }
@@ -1512,8 +1525,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     { id: 'scenes',   icon: Clapperboard, color: 'text-amber-500  bg-amber-500/10',  label: 'Szenen',           desc: 'Szenen verwalten',         href: '/scenes' },
     { id: 'automat',  icon: Zap,          color: 'text-green-500  bg-green-500/10',  label: 'Automationen',     desc: 'Regeln & Zeitpl\u00e4ne',        href: '/automations' },
     { id: 'dashboard',icon: LayoutDashboard, color: 'text-indigo-500 bg-indigo-500/10',label: 'Dashboard',      desc: 'Felder & Anordnung' },
-    { id: 'weather',  icon: Cloud,        color: 'text-sky-500    bg-sky-500/10',    label: 'Wetter-Widget',    desc: 'Ort & Einheiten' },
-    { id: 'calendar', icon: CalendarDays, color: 'text-violet-500 bg-violet-500/10', label: 'Kalender',         desc: 'FamilyWall / iCal' },
+    { id: 'widgets',  icon: Cloud,        color: 'text-sky-500    bg-sky-500/10',    label: 'Widgets',         desc: 'Wetter & Kalender' },
     { id: 'system',   icon: Activity,     color: 'text-emerald-500 bg-emerald-500/10', label: 'System',         desc: 'CPU-Temp & Status' },
     { id: 'security', icon: LockKeyhole,  color: 'text-orange-500 bg-orange-500/10', label: 'Sicherheit',       desc: 'PIN & Bildschirmsperre' },
     { id: 'kiosk',    icon: Monitor,      color: 'text-teal-500   bg-teal-500/10',   label: 'Kiosk-Modus',      desc: 'Wandbildschirm einrichten' },
@@ -1734,8 +1746,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
       )}
 
       {view === 'dashboard' && <div key="dashboard" className="animate-page-in"><DashboardWidgetsSection devices={devices} rooms={rooms} /></div>}
-      {view === 'weather'   && <div key="weather"   className="animate-page-in"><WeatherSection /></div>}
-      {view === 'calendar'  && <div key="calendar"  className="animate-page-in"><CalendarSection /></div>}
+      {view === 'widgets'   && <div key="widgets"   className="animate-page-in"><WidgetsSection /></div>}
       {view === 'system'    && <div key="system"    className="animate-page-in"><SystemSection /></div>}
       {view === 'kiosk'     && <div key="kiosk"     className="animate-page-in"><KioskSection /></div>}
       {view === 'zigbee'    && <div key="zigbee"    className="animate-page-in"><ZigbeeSection rooms={rooms} onDeviceImported={d => setDevices(prev => [...prev, d])} /></div>}

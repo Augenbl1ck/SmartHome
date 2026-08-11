@@ -100,7 +100,7 @@ export default function WeatherWidget({ compact = false }: { compact?: boolean }
         <Cloud className="h-8 w-8 opacity-30 shrink-0" />
         <div className="min-w-0">
           <p className="text-sm font-medium">Stadt noch nicht eingestellt</p>
-          <Link href="/settings" className="text-xs text-primary underline underline-offset-2">
+          <Link href="/settings?view=widgets" className="text-xs text-primary underline underline-offset-2">
             Stadt in Einstellungen eingeben →
           </Link>
         </div>
@@ -124,7 +124,7 @@ export default function WeatherWidget({ compact = false }: { compact?: boolean }
     return (
       <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5 flex items-center justify-between gap-3">
         <p className="text-sm text-destructive">{error}</p>
-        <Link href="/settings" className="shrink-0">
+        <Link href="/settings?view=widgets" className="shrink-0">
           <Settings className="h-4 w-4 text-muted-foreground hover:text-foreground" />
         </Link>
       </div>

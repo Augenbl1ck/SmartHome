@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { Geist } from "next/font/google";
 import NavBar from "@/components/NavBar";
 import AutomationRunnerProvider from "@/components/AutomationRunnerProvider";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
@@ -9,8 +8,6 @@ import KioskProvider from "@/components/KioskProvider";
 import VirtualKeyboardProvider from "@/components/VirtualKeyboardProvider";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
-
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 
 export const viewport: Viewport = {
   themeColor: '#09090b',
@@ -33,7 +30,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="de" className={`${geistSans.variable} h-full antialiased`} suppressHydrationWarning>
+    <html lang="de" className="h-full antialiased" suppressHydrationWarning>
       <head>
         {/* Theme: verhindert Flash beim Laden */}
         <script dangerouslySetInnerHTML={{ __html: `
@@ -74,7 +71,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             } catch(e) {}
           })();
         `}} /></head>
-      <body className="min-h-full">
+      <body className="min-h-full font-sans">
         <PinLockProvider>
           <VirtualKeyboardProvider>
             <KioskProvider>
@@ -93,6 +90,3 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   );
 }
-
-
-

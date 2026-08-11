@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useLayoutEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { Home, Zap, Settings, LockKeyhole, Clapperboard } from 'lucide-react';
+import { Home, Zap, Settings, LockKeyhole, Clapperboard, CalendarDays } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePinLockContext } from '@/components/PinLockProvider';
 import ThemeToggle from '@/components/ThemeToggle';
@@ -11,6 +11,7 @@ import { useKiosk } from '@/components/KioskProvider';
 
 const NAV = [
   { href: '/',            icon: Home,         label: 'Home' },
+  { href: '/calendar',    icon: CalendarDays, label: 'Kalender' },
   { href: '/scenes',      icon: Clapperboard, label: 'Szenen' },
   { href: '/automations', icon: Zap,          label: 'Automationen' },
   { href: '/settings',    icon: Settings,     label: 'Einstellungen' },

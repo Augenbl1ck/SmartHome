@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { api, Device, DeviceType, Room, Scene } from '@/lib/api';
+import { api, Device, DeviceType, Room, Scene, type CalendarEventsResponse } from '@/lib/api';
 import { isToggleable } from '@/lib/devices';
 import { DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { getEcho } from '@/lib/echo';
@@ -17,13 +17,14 @@ interface Props {
   initialDevices: Device[];
   rooms: Room[];
   initialScenes: Scene[];
+  initialCalendar: CalendarEventsResponse;
 }
 
 function getFormattedDate(): string {
   return new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
-export default function DashboardLive({ initialDevices, rooms, initialScenes }: Props) {
+export default function DashboardLive({ initialDevices, rooms, initialScenes, initialCalendar }: Props) {
   // Server-Daten sofort nutzen → keine Farbverzögerung beim ersten Render
   const [devices,  setDevices]  = useState<Device[]>(initialDevices);
   const [mounted,  setMounted]  = useState(false);
@@ -101,7 +102,7 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes }: 
 
   const sectionOrder: SectionId[] = layout.sectionOrder.length > 0
     ? layout.sectionOrder
-    : ['scenes', 'rooms'];
+    : ['weather', 'calendar', 'scenes', 'rooms'];
   const hiddenSections = new Set(layout.hiddenSections);
   const fieldsById = useMemo(
     () => new Map(layout.fields.map(f => [f.id, f])),
@@ -123,7 +124,7 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes }: 
   return (
     <div className="flex flex-col gap-4">
 
-      {/* ── Panel-Header: Uhr + Wetter + Status + Action ─────────── */}
+      {/* ── Panel-Header: Uhr + Status + Action ─────────────────── */}
       <div className="flex items-center gap-4 rounded-2xl border bg-card p-5">
         {/* Uhr + Datum — suppressHydrationWarning: Server rendert leer, Client überschreibt sofort */}
         <div className="min-w-0">
@@ -136,14 +137,6 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes }: 
         </div>
 
         <div className="flex-1" />
-
-        {/* Wetter + nächster Termin (kompakt) */}
-        {mounted && (
-          <div className="flex flex-col items-end gap-1.5 min-w-0">
-            <WeatherWidget compact />
-            <CalendarWidget compact />
-          </div>
-        )}
 
         {/* Aktiv-Badge — immer sichtbar (Server-Daten vorhanden) */}
         <div className={cn(
@@ -163,10 +156,20 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes }: 
         <DashboardActions devices={list} />
       </div>
 
-      {mounted && <CalendarWidget />}
-
       {sectionOrder.map(sectionId => {
         if (hiddenSections.has(sectionId)) return null;
+
+        if (sectionId === 'weather') return (
+          <div key="weather">
+            <WeatherWidget />
+          </div>
+        );
+
+        if (sectionId === 'calendar') return (
+          <div key="calendar">
+            <CalendarWidget initial={initialCalendar} />
+          </div>
+        );
 
         if (sectionId === 'scenes') return initialScenes.length > 0 ? (
           <div key="scenes" className="flex gap-3 overflow-x-auto pb-1 -mb-1 scrollbar-none">
