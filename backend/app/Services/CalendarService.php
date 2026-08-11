@@ -12,6 +12,16 @@ class CalendarService
 {
     private const CACHE_TTL_SECONDS = 900; // 15 Min
 
+    private const WEEKDAY_MAP = [
+        'SU' => Carbon::SUNDAY,
+        'MO' => Carbon::MONDAY,
+        'TU' => Carbon::TUESDAY,
+        'WE' => Carbon::WEDNESDAY,
+        'TH' => Carbon::THURSDAY,
+        'FR' => Carbon::FRIDAY,
+        'SA' => Carbon::SATURDAY,
+    ];
+
     /**
      * @return array{events: list<array<string, mixed>>, configured: bool, error?: string}
      */
@@ -99,7 +109,6 @@ class CalendarService
             $end = null;
             if (isset($props['DTEND'])) {
                 $end = $this->parseDateTime($props['DTEND']['value'], $props['DTEND']['params']);
-                // All-day DTEND is exclusive in iCal — show as previous day end for display range
                 if ($allDay && $end !== null) {
                     $end = $end->copy()->subSecond();
                 }
@@ -109,27 +118,280 @@ class CalendarService
                 $end = $allDay ? $start->copy()->endOfDay() : $start->copy()->addHour();
             }
 
-            $rangeEnd = $end ?? $start;
-            // Include if event overlaps [from, to]
-            if ($rangeEnd->lt($from) || $start->gt($to)) {
+            $title = $this->unescape($props['SUMMARY']['value'] ?? 'Termin');
+            $uid = $props['UID']['value'] ?? ($start->toIso8601String() . '|' . $title);
+            $durationSeconds = $end ? $start->diffInSeconds($end, false) : ($allDay ? 86399 : 3600);
+            if ($durationSeconds < 0) {
+                $durationSeconds = abs($durationSeconds);
+            }
+
+            $exdates = $this->parseExdates($props, $block);
+            $rrule = isset($props['RRULE']) ? $this->parseRrule($props['RRULE']['value']) : null;
+
+            if ($rrule === null) {
+                $rangeEnd = $end ?? $start;
+                if ($rangeEnd->lt($from) || $start->gt($to)) {
+                    continue;
+                }
+                $events[] = $this->makeEvent($uid, $title, $start, $end, $allDay);
                 continue;
             }
 
-            $title = $this->unescape($props['SUMMARY']['value'] ?? 'Termin');
-            $uid = $props['UID']['value'] ?? ($start->toIso8601String() . '|' . $title);
-
-            $events[] = [
-                'uid' => $uid,
-                'title' => $title,
-                'start' => $start->toIso8601String(),
-                'end' => $end ? $end->toIso8601String() : null,
-                'all_day' => $allDay,
-            ];
+            foreach ($this->expandRrule($start, $rrule, $from, $to, $exdates) as $occurrence) {
+                $occEnd = $occurrence->copy()->addSeconds($durationSeconds);
+                $events[] = $this->makeEvent(
+                    $uid . '_' . $occurrence->format('Ymd'),
+                    $title,
+                    $occurrence,
+                    $occEnd,
+                    $allDay,
+                );
+            }
         }
 
         usort($events, fn ($a, $b) => strcmp($a['start'], $b['start']));
 
         return array_values($events);
+    }
+
+    /**
+     * @return array{uid: string, title: string, start: string, end: string|null, all_day: bool}
+     */
+    private function makeEvent(string $uid, string $title, Carbon $start, ?Carbon $end, bool $allDay): array
+    {
+        return [
+            'uid' => $uid,
+            'title' => $title,
+            'start' => $start->toIso8601String(),
+            'end' => $end ? $end->toIso8601String() : null,
+            'all_day' => $allDay,
+        ];
+    }
+
+    /**
+     * @return array{freq: string, interval: int, until: ?Carbon, count: ?int, byday: list<string>}
+     */
+    private function parseRrule(string $value): array
+    {
+        $parts = [];
+        foreach (explode(';', $value) as $part) {
+            if (!str_contains($part, '=')) {
+                continue;
+            }
+            [$k, $v] = explode('=', $part, 2);
+            $parts[strtoupper(trim($k))] = trim($v);
+        }
+
+        $until = null;
+        if (!empty($parts['UNTIL'])) {
+            $until = $this->parseDateTime($parts['UNTIL'], str_ends_with($parts['UNTIL'], 'Z') ? [] : []);
+        }
+
+        $byday = [];
+        if (!empty($parts['BYDAY'])) {
+            foreach (explode(',', $parts['BYDAY']) as $d) {
+                $d = strtoupper(preg_replace('/[^A-Z]/', '', $d) ?? '');
+                if (isset(self::WEEKDAY_MAP[$d])) {
+                    $byday[] = $d;
+                }
+            }
+        }
+
+        return [
+            'freq' => strtoupper($parts['FREQ'] ?? 'DAILY'),
+            'interval' => max(1, (int) ($parts['INTERVAL'] ?? 1)),
+            'until' => $until,
+            'count' => isset($parts['COUNT']) ? max(1, (int) $parts['COUNT']) : null,
+            'byday' => $byday,
+        ];
+    }
+
+    /**
+     * Collect EXDATE values (may appear multiple times in ICS — last parseProps wins; also scan raw).
+     *
+     * @param  array<string, array{value: string, params: array<string, string>}>  $props
+     * @return list<string> Ymd keys
+     */
+    private function parseExdates(array $props, string $block): array
+    {
+        $keys = [];
+        if (isset($props['EXDATE'])) {
+            foreach (explode(',', $props['EXDATE']['value']) as $raw) {
+                $dt = $this->parseDateTime(trim($raw), $props['EXDATE']['params']);
+                if ($dt) {
+                    $keys[] = $dt->format('Ymd');
+                }
+            }
+        }
+        // Multiple EXDATE lines
+        if (preg_match_all('/^EXDATE[^:]*:(.+)$/mi', $block, $m)) {
+            foreach ($m[1] as $line) {
+                foreach (explode(',', trim($line)) as $raw) {
+                    $dt = $this->parseDateTime(trim($raw), []);
+                    if ($dt) {
+                        $keys[] = $dt->format('Ymd');
+                    }
+                }
+            }
+        }
+
+        return array_values(array_unique($keys));
+    }
+
+    /**
+     * @param  array{freq: string, interval: int, until: ?Carbon, count: ?int, byday: list<string>}  $rrule
+     * @param  list<string>  $exdates
+     * @return list<Carbon>
+     */
+    private function expandRrule(Carbon $dtStart, array $rrule, Carbon $from, Carbon $to, array $exdates): array
+    {
+        $occurrences = [];
+        $countLimit = $rrule['count'] ?? 500;
+        $until = $rrule['until'];
+        $interval = $rrule['interval'];
+        $freq = $rrule['freq'];
+
+        $windowEnd = $to->copy();
+        if ($until !== null && $until->lt($windowEnd)) {
+            $windowEnd = $until->copy();
+        }
+
+        // Don't expand infinitely before window
+        $cursor = $dtStart->copy();
+        $emitted = 0;
+        $guard = 0;
+        $maxGuard = 2000;
+
+        while ($emitted < $countLimit && $guard < $maxGuard) {
+            $guard++;
+
+            if ($cursor->gt($windowEnd)) {
+                break;
+            }
+
+            $candidates = $this->occurrenceCandidates($cursor, $dtStart, $freq, $rrule['byday']);
+
+            foreach ($candidates as $cand) {
+                if ($cand->lt($dtStart)) {
+                    continue;
+                }
+                if ($until !== null && $cand->gt($until)) {
+                    continue;
+                }
+                if ($cand->gt($windowEnd)) {
+                    continue;
+                }
+                if (in_array($cand->format('Ymd'), $exdates, true)) {
+                    continue;
+                }
+
+                // COUNT applies to series from DTSTART, including before window
+                $seriesIndex = $this->estimateSeriesIndex($dtStart, $cand, $freq, $interval, $rrule['byday']);
+                if ($rrule['count'] !== null && $seriesIndex >= $rrule['count']) {
+                    continue;
+                }
+
+                if ($cand->lte($to) && ($cand->copy()->endOfDay()->gte($from) || $cand->gte($from))) {
+                    $key = $cand->format('YmdHis');
+                    if (!isset($occurrences[$key])) {
+                        $occurrences[$key] = $cand->copy();
+                        $emitted++;
+                    }
+                }
+            }
+
+            // Advance cursor by interval
+            if ($freq === 'WEEKLY') {
+                $cursor->addWeeks($interval);
+            } elseif ($freq === 'MONTHLY') {
+                $cursor->addMonthsNoOverflow($interval);
+            } elseif ($freq === 'YEARLY') {
+                $cursor->addYears($interval);
+            } else {
+                $cursor->addDays($interval);
+            }
+
+            // Skip far past if still before window (optimization)
+            if ($cursor->copy()->endOfDay()->lt($from) && $freq === 'DAILY') {
+                $days = $from->diffInDays($cursor);
+                if ($days > $interval) {
+                    $steps = intdiv((int) $days, $interval);
+                    $cursor->addDays($steps * $interval);
+                }
+            }
+        }
+
+        ksort($occurrences);
+
+        return array_values($occurrences);
+    }
+
+    /**
+     * @param  list<string>  $byday
+     * @return list<Carbon>
+     */
+    private function occurrenceCandidates(Carbon $cursor, Carbon $dtStart, string $freq, array $byday): array
+    {
+        if ($freq === 'WEEKLY' && $byday !== []) {
+            $weekStart = $cursor->copy()->startOfWeek(Carbon::MONDAY);
+            $out = [];
+            foreach ($byday as $code) {
+                $dow = self::WEEKDAY_MAP[$code];
+                $d = $weekStart->copy();
+                while ($d->dayOfWeek !== $dow) {
+                    $d->addDay();
+                }
+                // Preserve time from DTSTART
+                $d->setTime($dtStart->hour, $dtStart->minute, $dtStart->second);
+                $out[] = $d;
+            }
+
+            return $out;
+        }
+
+        if ($freq === 'WEEKLY' && $byday === []) {
+            // Same weekday as DTSTART
+            $d = $cursor->copy()->setTime($dtStart->hour, $dtStart->minute, $dtStart->second);
+            // Align to same day-of-week as start within this week bucket
+            $target = $dtStart->dayOfWeek;
+            $weekStart = $cursor->copy()->startOfWeek(Carbon::MONDAY);
+            $d = $weekStart->copy();
+            while ($d->dayOfWeek !== $target) {
+                $d->addDay();
+            }
+            $d->setTime($dtStart->hour, $dtStart->minute, $dtStart->second);
+
+            return [$d];
+        }
+
+        // DAILY / MONTHLY / YEARLY / default: one candidate at cursor with DTSTART time
+        $d = $cursor->copy()->setTime($dtStart->hour, $dtStart->minute, $dtStart->second);
+
+        return [$d];
+    }
+
+    /**
+     * Rough index for COUNT filtering (0-based from DTSTART).
+     *
+     * @param  list<string>  $byday
+     */
+    private function estimateSeriesIndex(Carbon $dtStart, Carbon $cand, string $freq, int $interval, array $byday): int
+    {
+        if ($freq === 'WEEKLY') {
+            $weeks = (int) floor($dtStart->diffInDays($cand) / 7);
+            return (int) floor($weeks / max(1, $interval));
+        }
+        if ($freq === 'MONTHLY') {
+            $months = ($cand->year - $dtStart->year) * 12 + ($cand->month - $dtStart->month);
+
+            return (int) floor($months / max(1, $interval));
+        }
+        if ($freq === 'YEARLY') {
+            return (int) floor(($cand->year - $dtStart->year) / max(1, $interval));
+        }
+        $days = (int) $dtStart->diffInDays($cand);
+
+        return (int) floor($days / max(1, $interval));
     }
 
     /**
@@ -146,7 +408,6 @@ class CalendarService
             [$left, $value] = explode(':', $line, 2);
             $parts = explode(';', $left);
             $name = strtoupper(array_shift($parts));
-            // Prefer primary fields; skip overrides like DTSTART;TZID already in params
             $params = [];
             foreach ($parts as $part) {
                 if (!str_contains($part, '=')) {
@@ -155,7 +416,12 @@ class CalendarService
                 [$pk, $pv] = explode('=', $part, 2);
                 $params[strtoupper($pk)] = $pv;
             }
-            $props[$name] = ['value' => $value, 'params' => $params];
+            // Keep first for most; for EXDATE merge would be better — last wins for RRULE
+            if ($name === 'EXDATE' && isset($props['EXDATE'])) {
+                $props['EXDATE']['value'] .= ',' . $value;
+            } else {
+                $props[$name] = ['value' => $value, 'params' => $params];
+            }
         }
 
         return $props;
