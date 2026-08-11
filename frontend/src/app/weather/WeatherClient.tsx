@@ -106,17 +106,22 @@ export default function WeatherClient({ initial }: Props) {
 
       {hourly.length > 0 && (
         <div className="rounded-2xl border bg-card p-4 sm:p-5">
-          <p className="text-sm font-semibold mb-3">Tagesverlauf</p>
+          <div className="flex items-baseline justify-between gap-2 mb-3">
+            <p className="text-sm font-semibold">Nächste 24 Stunden</p>
+            <p className="text-[11px] text-muted-foreground">% = Regenwahrsch.</p>
+          </div>
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
             {hourly.map(h => (
               <div
                 key={h.time}
-                className="flex-shrink-0 w-[4.5rem] rounded-xl bg-muted/50 px-2 py-3 flex flex-col items-center gap-1.5"
+                className="flex-shrink-0 w-[4.25rem] rounded-xl bg-muted/50 px-2 py-3 flex flex-col items-center gap-1.5"
               >
                 <span className="text-[11px] text-muted-foreground tabular-nums">{formatClock(h.time)}</span>
                 <WeatherIcon icon={h.icon} className="h-6 w-6 text-amber-500" />
                 <span className="text-sm font-semibold tabular-nums">{h.temp}{unit}</span>
-                <span className="text-[10px] text-sky-600 dark:text-sky-400 tabular-nums">{h.pop}%</span>
+                <span className="text-[10px] text-sky-600 dark:text-sky-400 tabular-nums" title="Regenwahrscheinlichkeit">
+                  Regen {h.pop}%
+                </span>
               </div>
             ))}
           </div>
@@ -125,14 +130,19 @@ export default function WeatherClient({ initial }: Props) {
 
       {daily.length > 0 && (
         <div className="rounded-2xl border bg-card p-4 sm:p-5">
-          <p className="text-sm font-semibold mb-3">Wochenverlauf</p>
+          <div className="flex items-baseline justify-between gap-2 mb-3">
+            <p className="text-sm font-semibold">Wochenverlauf</p>
+            <p className="text-[11px] text-muted-foreground">% = Regenwahrsch.</p>
+          </div>
           <ul className="divide-y">
             {daily.map(d => (
               <li key={d.date} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
                 <span className="w-24 text-sm font-medium shrink-0">{formatDay(d.date)}</span>
                 <WeatherIcon icon={d.icon} className="h-6 w-6 text-amber-500 shrink-0" />
                 <span className="text-xs text-muted-foreground capitalize flex-1 min-w-0 truncate">{d.description}</span>
-                <span className="text-xs text-sky-600 dark:text-sky-400 tabular-nums w-10 text-right shrink-0">{d.pop}%</span>
+                <span className="text-xs text-sky-600 dark:text-sky-400 tabular-nums w-14 text-right shrink-0" title="Regenwahrscheinlichkeit">
+                  {d.pop}%
+                </span>
                 <span className="text-sm tabular-nums shrink-0 w-[4.5rem] text-right">
                   <span className="text-muted-foreground">{d.tempMin}°</span>
                   {' '}

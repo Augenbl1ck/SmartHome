@@ -31,6 +31,24 @@ type OwForecastItem = {
   wind?: { speed?: number };
 };
 
+type OwOneCallHourly = {
+  dt: number;
+  temp?: number;
+  humidity?: number;
+  pop?: number;
+  wind_speed?: number;
+  weather?: { description?: string; icon?: string }[];
+};
+
+type OwOneCallDaily = {
+  dt: number;
+  temp?: { min?: number; max?: number };
+  humidity?: number;
+  pop?: number;
+  wind_speed?: number;
+  weather?: { description?: string; icon?: string }[];
+};
+
 function windSpeed(mps: number, unit: string): number {
   return unit === 'imperial' ? Math.round(mps) : Math.round(mps * 3.6);
 }
@@ -43,13 +61,70 @@ function ymdUtc(ms: number): string {
   return `${y}-${m}-${day}`;
 }
 
-function buildSeries(
+/** Build 24 hourly points from 3-hour forecast (linear temp between slots). */
+function hourlyFrom3hForecast(
+  list: OwForecastItem[],
+  unit: string,
+  nowSec: number,
+): WeatherHourly[] {
+  const future = list
+    .filter(i => i.dt >= nowSec - 30 * 60)
+    .sort((a, b) => a.dt - b.dt);
+
+  if (future.length === 0) return [];
+
+  const endSec = nowSec + 24 * 3600;
+  const out: WeatherHourly[] = [];
+
+  // Start at the next full hour
+  const startHour = Math.ceil(nowSec / 3600) * 3600;
+
+  for (let t = startHour; t <= endSec && out.length < 24; t += 3600) {
+    // Find surrounding 3h points
+    let prev = future[0];
+    let next = future[0];
+    for (let i = 0; i < future.length; i++) {
+      if (future[i].dt <= t) prev = future[i];
+      if (future[i].dt >= t) {
+        next = future[i];
+        break;
+      }
+      next = future[i];
+    }
+
+    let temp: number;
+    if (prev.dt === next.dt || t <= prev.dt) {
+      temp = prev.main?.temp ?? 0;
+    } else if (t >= next.dt) {
+      temp = next.main?.temp ?? 0;
+    } else {
+      const ratio = (t - prev.dt) / (next.dt - prev.dt);
+      const a = prev.main?.temp ?? 0;
+      const b = next.main?.temp ?? 0;
+      temp = a + (b - a) * ratio;
+    }
+
+    // Prefer the nearer slot for icon / pop / humidity / wind
+    const nearer = Math.abs(t - prev.dt) <= Math.abs(t - next.dt) ? prev : next;
+    out.push({
+      time: new Date(t * 1000).toISOString(),
+      temp: Math.round(temp),
+      icon: nearer.weather?.[0]?.icon ?? '01d',
+      description: nearer.weather?.[0]?.description ?? '',
+      pop: Math.round((nearer.pop ?? 0) * 100),
+      humidity: nearer.main?.humidity ?? 0,
+      windSpeed: windSpeed(nearer.wind?.speed ?? 0, unit),
+    });
+  }
+
+  return out;
+}
+
+function dailyFrom3hForecast(
   list: OwForecastItem[],
   unit: string,
   tzOffset: number,
-): { hourly: WeatherHourly[]; daily: WeatherDaily[] } {
-  const today = ymdUtc(Date.now() + tzOffset * 1000);
-  const hourly: WeatherHourly[] = [];
+): WeatherDaily[] {
   const byDay = new Map<string, {
     date: string;
     tempMin: number;
@@ -63,8 +138,7 @@ function buildSeries(
   }>();
 
   for (const item of list) {
-    const dt = item.dt;
-    const localMs = (dt + tzOffset) * 1000;
+    const localMs = (item.dt + tzOffset) * 1000;
     const dayKey = ymdUtc(localMs);
     const temp = item.main?.temp ?? 0;
     const tempMin = item.main?.temp_min ?? temp;
@@ -74,18 +148,6 @@ function buildSeries(
     const pop = item.pop ?? 0;
     const humidity = item.main?.humidity ?? 0;
     const ws = windSpeed(item.wind?.speed ?? 0, unit);
-
-    if (dayKey === today && hourly.length < 8) {
-      hourly.push({
-        time: new Date(dt * 1000).toISOString(),
-        temp: Math.round(temp),
-        icon,
-        description,
-        pop: Math.round(pop * 100),
-        humidity,
-        windSpeed: ws,
-      });
-    }
 
     const existing = byDay.get(dayKey);
     if (!existing) {
@@ -115,7 +177,7 @@ function buildSeries(
     }
   }
 
-  const daily: WeatherDaily[] = [...byDay.values()].slice(0, 7).map(d => ({
+  return [...byDay.values()].slice(0, 7).map(d => ({
     date: d.date,
     tempMin: Math.round(d.tempMin),
     tempMax: Math.round(d.tempMax),
@@ -125,7 +187,57 @@ function buildSeries(
     humidity: Math.round(d.humiditySum / Math.max(1, d.humidityN)),
     windSpeed: d.windMax,
   }));
+}
 
+async function tryOneCall(
+  lat: number,
+  lon: number,
+  unit: string,
+  apiKey: string,
+): Promise<{ hourly: WeatherHourly[]; daily: WeatherDaily[] } | null> {
+  // One Call 3.0 (hourly) — falls Key freigeschaltet
+  const url = new URL('https://api.openweathermap.org/data/3.0/onecall');
+  url.searchParams.set('lat', String(lat));
+  url.searchParams.set('lon', String(lon));
+  url.searchParams.set('appid', apiKey);
+  url.searchParams.set('units', unit);
+  url.searchParams.set('lang', 'de');
+  url.searchParams.set('exclude', 'minutely,alerts');
+
+  const res = await fetch(url, { next: { revalidate: 300 } });
+  if (!res.ok) return null;
+
+  const data = await res.json() as {
+    hourly?: OwOneCallHourly[];
+    daily?: OwOneCallDaily[];
+  };
+
+  const now = Math.floor(Date.now() / 1000);
+  const hourly: WeatherHourly[] = (data.hourly ?? [])
+    .filter(h => h.dt >= now - 1800)
+    .slice(0, 24)
+    .map(h => ({
+      time: new Date(h.dt * 1000).toISOString(),
+      temp: Math.round(h.temp ?? 0),
+      icon: h.weather?.[0]?.icon ?? '01d',
+      description: h.weather?.[0]?.description ?? '',
+      pop: Math.round((h.pop ?? 0) * 100),
+      humidity: h.humidity ?? 0,
+      windSpeed: windSpeed(h.wind_speed ?? 0, unit),
+    }));
+
+  const daily: WeatherDaily[] = (data.daily ?? []).slice(0, 7).map(d => ({
+    date: ymdUtc(d.dt * 1000),
+    tempMin: Math.round(d.temp?.min ?? 0),
+    tempMax: Math.round(d.temp?.max ?? 0),
+    icon: d.weather?.[0]?.icon ?? '01d',
+    description: d.weather?.[0]?.description ?? '',
+    pop: Math.round((d.pop ?? 0) * 100),
+    humidity: d.humidity ?? 0,
+    windSpeed: windSpeed(d.wind_speed ?? 0, unit),
+  }));
+
+  if (hourly.length === 0) return null;
   return { hourly, daily };
 }
 
@@ -188,22 +300,29 @@ export async function fetchWeatherData(settings: Pick<PanelSettings, 'weather'>)
     let daily: WeatherDaily[] = [];
 
     if (c.coord?.lat != null && c.coord?.lon != null) {
-      const forecastUrl = new URL('https://api.openweathermap.org/data/2.5/forecast');
-      forecastUrl.searchParams.set('lat', String(c.coord.lat));
-      forecastUrl.searchParams.set('lon', String(c.coord.lon));
-      forecastUrl.searchParams.set('appid', apiKey);
-      forecastUrl.searchParams.set('units', unit);
-      forecastUrl.searchParams.set('lang', 'de');
+      const oneCall = await tryOneCall(c.coord.lat, c.coord.lon, unit, apiKey);
+      if (oneCall) {
+        hourly = oneCall.hourly;
+        daily = oneCall.daily;
+      } else {
+        // Fallback: 5-Tage/3-Std-Forecast → 24 Stundenpunkte + Tagesaggregate
+        const forecastUrl = new URL('https://api.openweathermap.org/data/2.5/forecast');
+        forecastUrl.searchParams.set('lat', String(c.coord.lat));
+        forecastUrl.searchParams.set('lon', String(c.coord.lon));
+        forecastUrl.searchParams.set('appid', apiKey);
+        forecastUrl.searchParams.set('units', unit);
+        forecastUrl.searchParams.set('lang', 'de');
 
-      const forecastRes = await fetch(forecastUrl, { next: { revalidate: 300 } });
-      if (forecastRes.ok) {
-        const fj = await forecastRes.json() as {
-          list?: OwForecastItem[];
-          city?: { timezone?: number };
-        };
-        const built = buildSeries(fj.list ?? [], unit, fj.city?.timezone ?? 0);
-        hourly = built.hourly;
-        daily = built.daily;
+        const forecastRes = await fetch(forecastUrl, { next: { revalidate: 300 } });
+        if (forecastRes.ok) {
+          const fj = await forecastRes.json() as {
+            list?: OwForecastItem[];
+            city?: { timezone?: number };
+          };
+          const nowSec = Math.floor(Date.now() / 1000);
+          hourly = hourlyFrom3hForecast(fj.list ?? [], unit, nowSec);
+          daily = dailyFrom3hForecast(fj.list ?? [], unit, fj.city?.timezone ?? 0);
+        }
       }
     }
 
