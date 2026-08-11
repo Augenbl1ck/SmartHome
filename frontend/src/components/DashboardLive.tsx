@@ -14,6 +14,7 @@ import WeatherWidget from '@/components/WeatherWidget';
 import CalendarWidget from '@/components/CalendarWidget';
 import TransitWidget from '@/components/TransitWidget';
 import EnergyWidget from '@/components/EnergyWidget';
+import SpotifyWidget from '@/components/SpotifyWidget';
 
 interface Props {
   initialDevices: Device[];
@@ -107,7 +108,7 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes, in
 
   const sectionOrder: SectionId[] = layout.sectionOrder.length > 0
     ? layout.sectionOrder
-    : ['weather', 'calendar', 'transit', 'energy', 'scenes', 'rooms'];
+    : ['weather', 'calendar', 'transit', 'energy', 'spotify', 'scenes', 'rooms'];
   const hiddenSections = new Set(layout.hiddenSections);
   const fieldsById = useMemo(
     () => new Map(layout.fields.map(f => [f.id, f])),
@@ -185,6 +186,12 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes, in
         if (sectionId === 'energy') return (
           <div key="energy">
             <EnergyWidget initial={initialEnergy} />
+          </div>
+        );
+
+        if (sectionId === 'spotify') return (
+          <div key="spotify">
+            <SpotifyWidget />
           </div>
         );
 

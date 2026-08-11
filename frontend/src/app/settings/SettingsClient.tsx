@@ -371,7 +371,7 @@ function deviceToForm(d: Device): DeviceForm {
 // ─────────────────────────────────────────────────────────────────
 
 function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms: Room[] }) {
-  const [sectionOrder, setSectionOrder] = useState<SectionId[]>(['weather', 'calendar', 'transit', 'energy', 'scenes', 'rooms']);
+  const [sectionOrder, setSectionOrder] = useState<SectionId[]>(['weather', 'calendar', 'transit', 'energy', 'spotify', 'scenes', 'rooms']);
   const [hiddenSections, setHiddenSections] = useState<SectionId[]>([]);
   const [roomOrder, setRoomOrder] = useState<number[]>([]);
   const [fields, setFields] = useState<DashboardField[]>([]);
@@ -1154,6 +1154,100 @@ function WidgetsSection() {
       <CalendarSection />
       <TransitSection />
       <EnergySection />
+      <SpotifySection />
+    </div>
+  );
+}
+
+function SpotifySection() {
+  const [connected, setConnected] = useState(false);
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [flash, setFlash] = useState('');
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('spotify') === 'connected') {
+      setFlash('Spotify verbunden');
+      setTimeout(() => setFlash(''), 3000);
+    } else if (params.get('spotify') === 'error') {
+      setError(params.get('reason') || 'Verbindung fehlgeschlagen');
+    }
+  }, []);
+
+  useEffect(() => {
+    api.getSpotifyStatus()
+      .then((s) => {
+        setConnected(!!s.connected);
+        setDisplayName(s.display_name ?? null);
+      })
+      .catch(() => setError('Status konnte nicht geladen werden'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const connect = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const { url, error: err } = await api.getSpotifyAuthUrl();
+      if (err || !url) throw new Error(err || 'Auth-URL fehlt');
+      window.location.href = url;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Verbindung fehlgeschlagen');
+      setBusy(false);
+    }
+  };
+
+  const disconnect = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const s = await api.disconnectSpotify();
+      setConnected(!!s.connected);
+      setDisplayName(s.display_name ?? null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Trennen fehlgeschlagen');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl border bg-card p-5 animate-pulse space-y-3">
+        <div className="h-4 bg-muted rounded w-40" />
+        <div className="h-10 bg-muted rounded w-full" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="divide-y rounded-2xl border bg-card overflow-hidden">
+      <div className="px-4 py-3 space-y-3">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Spotify</p>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Premium erforderlich. Nach dem Verbinden steuerst du Wiedergabe, Geräte und Queue im Dashboard.
+          Wiedergabe über Panel-Lautsprecher ist möglich (Browser als Connect-Gerät „SmartHome Panel“).
+        </p>
+        {connected ? (
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm">
+              Verbunden{displayName ? ` als ${displayName}` : ''}
+            </p>
+            <Button onClick={disconnect} size="sm" variant="outline" disabled={busy}>
+              {busy ? '…' : 'Trennen'}
+            </Button>
+          </div>
+        ) : (
+          <Button onClick={connect} size="sm" disabled={busy}>
+            {busy ? 'Weiterleiten…' : 'Mit Spotify verbinden'}
+          </Button>
+        )}
+        {flash && <p className="text-sm text-green-600 dark:text-green-400">{flash}</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+      </div>
     </div>
   );
 }
@@ -1714,7 +1808,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     if (typeof window === 'undefined') return null;
     try {
       const v = new URLSearchParams(window.location.search).get('view');
-      if (v === 'weather' || v === 'calendar' || v === 'transit' || v === 'energy') return 'widgets';
+      if (v === 'weather' || v === 'calendar' || v === 'transit' || v === 'energy' || v === 'spotify') return 'widgets';
       return v;
     } catch {
       return null;
@@ -1940,7 +2034,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     { id: 'scenes',   icon: Clapperboard, color: 'text-amber-500  bg-amber-500/10',  label: 'Szenen',           desc: 'Szenen verwalten',         href: '/scenes' },
     { id: 'automat',  icon: Zap,          color: 'text-green-500  bg-green-500/10',  label: 'Automationen',     desc: 'Regeln & Zeitpl\u00e4ne',        href: '/automations' },
     { id: 'dashboard',icon: LayoutDashboard, color: 'text-indigo-500 bg-indigo-500/10',label: 'Dashboard',      desc: 'Felder & Anordnung' },
-    { id: 'widgets',  icon: Cloud,        color: 'text-sky-500    bg-sky-500/10',    label: 'Widgets',         desc: 'Wetter, Kalender, Bahn & Energie' },
+    { id: 'widgets',  icon: Cloud,        color: 'text-sky-500    bg-sky-500/10',    label: 'Widgets',         desc: 'Wetter, Kalender, Bahn, Energie & Spotify' },
     { id: 'system',   icon: Activity,     color: 'text-emerald-500 bg-emerald-500/10', label: 'System',         desc: 'CPU-Temp & Status' },
     { id: 'security', icon: LockKeyhole,  color: 'text-orange-500 bg-orange-500/10', label: 'Sicherheit',       desc: 'PIN & Bildschirmsperre' },
     { id: 'kiosk',    icon: Monitor,      color: 'text-teal-500   bg-teal-500/10',   label: 'Kiosk-Modus',      desc: 'Wandbildschirm einrichten' },
