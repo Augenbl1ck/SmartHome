@@ -97,6 +97,15 @@ export const api = {
     request<PanelSettings>('/panel-settings'),
   updatePanelSettings: (data: Partial<PanelSettings>) =>
     request<PanelSettings>('/panel-settings', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Kalender (FamilyWall / iCal)
+  getCalendarEvents: (params?: { from?: string; to?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.from) q.set('from', params.from);
+    if (params?.to) q.set('to', params.to);
+    const qs = q.toString();
+    return request<CalendarEventsResponse>(`/calendar/events${qs ? `?${qs}` : ''}`);
+  },
 };
 
 export interface PanelSettings {
@@ -105,6 +114,21 @@ export interface PanelSettings {
   lock_timeout: number;
   screen_timeout: number;
   kiosk_mode: boolean;
+  calendar_ical_url?: string | null;
+}
+
+export interface CalendarEvent {
+  uid: string;
+  title: string;
+  start: string;
+  end: string | null;
+  all_day: boolean;
+}
+
+export interface CalendarEventsResponse {
+  events: CalendarEvent[];
+  configured: boolean;
+  error?: string;
 }
 
 // Types

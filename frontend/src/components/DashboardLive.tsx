@@ -11,6 +11,7 @@ import DeviceFieldPanel from '@/components/DeviceFieldPanel';
 import { useDashboardLayout, parseFieldSectionId, type SectionId } from '@/hooks/useDashboardLayout';
 import DashboardActions from '@/components/DashboardActions';
 import WeatherWidget from '@/components/WeatherWidget';
+import CalendarWidget from '@/components/CalendarWidget';
 
 interface Props {
   initialDevices: Device[];
@@ -136,8 +137,13 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes }: 
 
         <div className="flex-1" />
 
-        {/* Wetter (kompakt) */}
-        {mounted && <WeatherWidget compact />}
+        {/* Wetter + nächster Termin (kompakt) */}
+        {mounted && (
+          <div className="flex flex-col items-end gap-1.5 min-w-0">
+            <WeatherWidget compact />
+            <CalendarWidget compact />
+          </div>
+        )}
 
         {/* Aktiv-Badge — immer sichtbar (Server-Daten vorhanden) */}
         <div className={cn(
@@ -156,6 +162,8 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes }: 
         {/* Alle ausschalten */}
         <DashboardActions devices={list} />
       </div>
+
+      {mounted && <CalendarWidget />}
 
       {sectionOrder.map(sectionId => {
         if (hiddenSections.has(sectionId)) return null;

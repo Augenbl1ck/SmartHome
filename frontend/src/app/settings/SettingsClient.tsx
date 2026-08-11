@@ -17,7 +17,7 @@ import {
   Pencil, Plus, Trash2, Wifi, LockKeyhole, LockKeyholeOpen, Timer,
   ChevronDown, Home, Cpu, Cloud, LayoutDashboard, Search, Loader2, Radio,
   ChevronUp, X, ChevronRight, ArrowLeft, Clapperboard, Zap, Monitor, RefreshCw, Check, Bell, Activity,
-  Eye, EyeOff,
+  Eye, EyeOff, CalendarDays,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePinLockContext } from '@/components/PinLockProvider';
@@ -734,6 +734,73 @@ function WeatherSection() {
   );
 }
 
+function CalendarSection() {
+  const [url, setUrl] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    api.getPanelSettings()
+      .then(s => setUrl(s.calendar_ical_url ?? ''))
+      .catch(() => setError('Einstellungen konnten nicht geladen werden'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const trimmed = url.trim();
+      if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+        setError('URL muss mit http:// oder https:// beginnen');
+        setSaving(false);
+        return;
+      }
+      await api.updatePanelSettings({ calendar_ical_url: trimmed || null });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Speichern fehlgeschlagen');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl border bg-card p-5 animate-pulse space-y-3">
+        <div className="h-4 bg-muted rounded w-40" />
+        <div className="h-10 bg-muted rounded w-full" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="divide-y rounded-2xl border bg-card overflow-hidden">
+      <div className="px-4 py-3 space-y-3">
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          FamilyWall → Kalender → Einstellungen → Kreis-Kalender →{' '}
+          <span className="font-medium text-foreground">iCal generieren</span> und den Link hier einfügen.
+          Termine werden nur angezeigt (einseitig), Aktualisierung ca. alle 15 Minuten.
+        </p>
+        <Field
+          label="iCal-URL"
+          value={url}
+          onChange={setUrl}
+          placeholder="https://…"
+          hint="Privater Feed-Link aus FamilyWall"
+        />
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <Button onClick={save} size="sm" disabled={saving}>
+          {saving ? 'Speichern…' : saved ? '✓ Gespeichert' : 'Speichern'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Zigbee-Verwaltung
 // ─────────────────────────────────────────────────────────────────
@@ -1217,11 +1284,26 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
   const [rooms, setRooms]     = useState(initialRooms);
   const [devices, setDevices] = useState(initialDevices);
   const pinLock = usePinLockContext();
-  const [view, setView] = useState<string | null>(null);
+  const [view, setView] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      return new URLSearchParams(window.location.search).get('view');
+    } catch {
+      return null;
+    }
+  });
   const [isPending, startTransition] = useTransition();
 
   const navigate = (target: string | null) =>
-    startTransition(() => setView(target));
+    startTransition(() => {
+      setView(target);
+      try {
+        const url = new URL(window.location.href);
+        if (target) url.searchParams.set('view', target);
+        else url.searchParams.delete('view');
+        window.history.replaceState(null, '', url.pathname + url.search);
+      } catch { /* */ }
+    });
 
   // WebSocket-Updates für Geräte (Status, Attribute, last_seen)
   useEffect(() => {
@@ -1431,6 +1513,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     { id: 'automat',  icon: Zap,          color: 'text-green-500  bg-green-500/10',  label: 'Automationen',     desc: 'Regeln & Zeitpl\u00e4ne',        href: '/automations' },
     { id: 'dashboard',icon: LayoutDashboard, color: 'text-indigo-500 bg-indigo-500/10',label: 'Dashboard',      desc: 'Felder & Anordnung' },
     { id: 'weather',  icon: Cloud,        color: 'text-sky-500    bg-sky-500/10',    label: 'Wetter-Widget',    desc: 'Ort & Einheiten' },
+    { id: 'calendar', icon: CalendarDays, color: 'text-violet-500 bg-violet-500/10', label: 'Kalender',         desc: 'FamilyWall / iCal' },
     { id: 'system',   icon: Activity,     color: 'text-emerald-500 bg-emerald-500/10', label: 'System',         desc: 'CPU-Temp & Status' },
     { id: 'security', icon: LockKeyhole,  color: 'text-orange-500 bg-orange-500/10', label: 'Sicherheit',       desc: 'PIN & Bildschirmsperre' },
     { id: 'kiosk',    icon: Monitor,      color: 'text-teal-500   bg-teal-500/10',   label: 'Kiosk-Modus',      desc: 'Wandbildschirm einrichten' },
@@ -1652,6 +1735,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
 
       {view === 'dashboard' && <div key="dashboard" className="animate-page-in"><DashboardWidgetsSection devices={devices} rooms={rooms} /></div>}
       {view === 'weather'   && <div key="weather"   className="animate-page-in"><WeatherSection /></div>}
+      {view === 'calendar'  && <div key="calendar"  className="animate-page-in"><CalendarSection /></div>}
       {view === 'system'    && <div key="system"    className="animate-page-in"><SystemSection /></div>}
       {view === 'kiosk'     && <div key="kiosk"     className="animate-page-in"><KioskSection /></div>}
       {view === 'zigbee'    && <div key="zigbee"    className="animate-page-in"><ZigbeeSection rooms={rooms} onDeviceImported={d => setDevices(prev => [...prev, d])} /></div>}
