@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { api, Device, DeviceType } from '@/lib/api';
-import { deviceIcons, isToggleable } from '@/lib/devices';
+import { deviceIcons, isSensor } from '@/lib/devices';
 import { Bluetooth, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { shellyBle } from '@/lib/bluetooth';
@@ -10,6 +11,71 @@ import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 
 function isBle(device: Device): boolean {
   return device.attributes?.protocol === 'bluetooth_shelly_gen3';
+}
+
+/** Geräte die per Tap An/Aus schalten */
+function isOnOffToggle(type: DeviceType): boolean {
+  return ['light', 'plug', 'switch', 'dimmer', 'rgb', 'led', 'fan'].includes(type);
+}
+
+function isCoverLike(type: DeviceType): boolean {
+  return type === 'cover' || type === 'valve';
+}
+
+function statusLabel(device: Device): string {
+  const type = device.type as DeviceType;
+  const attrs = device.attributes ?? {};
+
+  if (type === 'thermostat') {
+    const local = attrs.local_temperature;
+    const set = attrs.setpoint;
+    const parts: string[] = [];
+    if (typeof local === 'number' || (typeof local === 'string' && local !== '')) {
+      parts.push(`${Number(local).toFixed(1)}°C`);
+    }
+    if (typeof set === 'number' || (typeof set === 'string' && set !== '')) {
+      parts.push(`Soll ${Number(set).toFixed(1)}°C`);
+    }
+    if (parts.length) return parts.join(' · ');
+    return device.status === 'heat' ? 'Heizen' : device.status === 'off' ? 'Aus' : (device.status || '—');
+  }
+
+  if (isSensor(type)) {
+    if (type === 'sensor_temperature' || attrs.temperature != null || attrs.local_temperature != null) {
+      const t = attrs.local_temperature ?? attrs.temperature ?? device.status;
+      if (t !== '' && t != null && !Number.isNaN(Number(t))) return `${Number(t).toFixed(1)}°C`;
+    }
+    if (type === 'sensor_humidity' || attrs.humidity != null) {
+      const h = attrs.humidity ?? device.status;
+      if (h !== '' && h != null && !Number.isNaN(Number(h))) return `${Number(h).toFixed(0)}%`;
+    }
+    if (type === 'sensor_door') return device.status === 'open' ? 'Offen' : device.status === 'closed' ? 'Geschlossen' : device.status;
+    if (type === 'sensor_motion') return device.status === 'on' ? 'Bewegung' : 'Ruhe';
+    if (type === 'energy_meter' && attrs.power_w != null) return `${Number(attrs.power_w).toFixed(0)} W`;
+    return device.status || '—';
+  }
+
+  if (isCoverLike(type)) {
+    if (device.status === 'open') return 'Offen';
+    if (device.status === 'close' || device.status === 'closed') return 'Geschlossen';
+    if (device.status === 'stop') return 'Stopp';
+    if (!['on', 'off', 'unknown', ''].includes(device.status) && !Number.isNaN(Number(device.status))) {
+      return `${device.status}%`;
+    }
+    return device.status || '—';
+  }
+
+  return device.status === 'on' ? 'An' : 'Aus';
+}
+
+function isActiveLook(device: Device): boolean {
+  const type = device.type as DeviceType;
+  if (isOnOffToggle(type)) return device.status === 'on';
+  if (isCoverLike(type)) return device.status === 'open';
+  if (type === 'thermostat') return device.status === 'heat' || String(device.attributes?.running_state).toLowerCase() === 'heat';
+  if (type === 'sensor_motion') return device.status === 'on';
+  if (type === 'sensor_door') return device.status === 'open';
+  return false;
 }
 
 interface Props {
@@ -36,7 +102,7 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
   useEffect(() => {
     setDevices(prev => prev.map(d => {
       const fresh = initialDevices.find(f => f.id === d.id);
-      return fresh && !toggling.has(d.id) ? { ...d, status: fresh.status } : d;
+      return fresh && !toggling.has(d.id) ? { ...d, ...fresh } : d;
     }));
   }, [initialDevices, toggling]);
 
@@ -51,13 +117,14 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
 
   const fieldDevices = useMemo(() => {
     const byId = new Map(devices.map(d => [d.id, d]));
-    return deviceIds
-      .map(id => byId.get(id))
-      .filter((d): d is Device => !!d && isToggleable(d.type as DeviceType));
+    return deviceIds.map(id => byId.get(id)).filter((d): d is Device => !!d);
   }, [devices, deviceIds]);
 
-  const toggle = async (device: Device) => {
-    if (!isToggleable(device.type as DeviceType)) return;
+  const activate = async (device: Device) => {
+    const type = device.type as DeviceType;
+
+    // Sensoren / Thermostate: nur Anzeige → Raum öffnen über Link (kein Tap-Handler)
+    if (!isOnOffToggle(type) && !isCoverLike(type)) return;
 
     const ble = isBle(device);
     const hasMac = !!(device.attributes?.ble_address as string | undefined)?.trim();
@@ -69,21 +136,35 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
 
     setError(null);
     setToggling(t => new Set(t).add(device.id));
-    const newStatus = device.status === 'on' ? 'off' : 'on';
+
+    let newStatus: string;
+    if (isCoverLike(type)) {
+      newStatus = device.status === 'open' ? 'close' : 'open';
+    } else {
+      newStatus = device.status === 'on' ? 'off' : 'on';
+    }
+
+    const prevStatus = device.status;
     setDevices(prev => prev.map(d => d.id === device.id ? { ...d, status: newStatus } : d));
     emitDeviceUpdate(device.id, newStatus);
     try {
-      if (ble && !hasMac && shellyBle.isSupported()) {
-        try { await shellyBle.switchSet(device.id, newStatus === 'on'); } catch { /* Bridge */ }
-      }
-      const updated = await api.toggleDevice(device.id);
-      if (updated.status !== newStatus) {
-        setDevices(prev => prev.map(d => d.id === device.id ? updated : d));
+      if (isOnOffToggle(type)) {
+        if (ble && !hasMac && shellyBle.isSupported()) {
+          try { await shellyBle.switchSet(device.id, newStatus === 'on'); } catch { /* Bridge */ }
+        }
+        const updated = await api.toggleDevice(device.id);
+        if (updated.status !== newStatus) {
+          setDevices(prev => prev.map(d => d.id === device.id ? updated : d));
+          emitDeviceUpdate(device.id, updated.status);
+        }
+      } else {
+        const updated = await api.setDeviceStatus(device.id, newStatus);
+        setDevices(prev => prev.map(d => d.id === device.id ? { ...d, ...updated } : d));
         emitDeviceUpdate(device.id, updated.status);
       }
     } catch (err) {
-      setDevices(prev => prev.map(d => d.id === device.id ? { ...d, status: device.status } : d));
-      emitDeviceUpdate(device.id, device.status);
+      setDevices(prev => prev.map(d => d.id === device.id ? { ...d, status: prevStatus } : d));
+      emitDeviceUpdate(device.id, prevStatus);
       const msg = err instanceof Error ? err.message : String(err);
       setError(`Fehler bei "${device.name}": ${msg}`);
     } finally {
@@ -104,34 +185,36 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
         <div className="mb-3 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2">
           <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
           <p className="text-xs text-destructive flex-1">{error}</p>
-          <button onClick={() => setError(null)} className="cursor-pointer text-xs text-muted-foreground hover:text-foreground shrink-0">✕</button>
+          <button type="button" onClick={() => setError(null)} className="cursor-pointer text-xs text-muted-foreground hover:text-foreground shrink-0">✕</button>
         </div>
       )}
 
       {fieldDevices.length === 0 ? (
         <div className="rounded-2xl border border-dashed p-5 text-center text-muted-foreground">
-          <p className="text-xs">Keine schaltbaren Geräte in diesem Feld.</p>
+          <p className="text-xs">Keine Geräte in diesem Feld (vielleicht gelöscht).</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {fieldDevices.map(device => {
-            const isOn = device.status === 'on';
+            const type = device.type as DeviceType;
+            const interactive = isOnOffToggle(type) || isCoverLike(type);
+            const isOn = isActiveLook(device);
             const isRunning = toggling.has(device.id);
             const ble = isBle(device);
             const hasMac = !!(device.attributes?.ble_address as string | undefined)?.trim();
             const connected = !ble || hasMac || shellyBle.isConnected(device.id);
-            const Icon = deviceIcons[device.type as DeviceType];
-            return (
-              <button
-                key={device.id}
-                onClick={() => toggle(device)}
-                disabled={isRunning}
-                className={cn(
-                  'cursor-pointer rounded-2xl border p-4 flex items-center gap-3 text-left transition-all active:scale-95',
-                  isOn && connected ? 'bg-amber-500/15 border-amber-400/40 shadow-sm' : 'bg-card border-border',
-                  isRunning && 'opacity-50',
-                )}
-              >
+            const Icon = deviceIcons[type];
+            const label = statusLabel(device);
+
+            const className = cn(
+              'rounded-2xl border p-4 flex items-center gap-3 text-left transition-all w-full',
+              interactive && 'cursor-pointer active:scale-95',
+              isOn && connected ? 'bg-amber-500/15 border-amber-400/40 shadow-sm' : 'bg-card border-border',
+              isRunning && 'opacity-50',
+            );
+
+            const inner = (
+              <>
                 <div className={cn(
                   'h-11 w-11 rounded-full flex items-center justify-center shrink-0 transition-colors',
                   isOn && connected ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground',
@@ -142,10 +225,35 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
                   <p className="text-sm font-medium truncate">{device.name}</p>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     {ble && <Bluetooth className={cn('h-3 w-3 shrink-0', connected ? 'text-blue-500' : '')} />}
-                    {ble && !connected ? 'Nicht verbunden' : isOn ? 'An' : 'Aus'}
+                    {ble && !connected ? 'Nicht verbunden' : label}
                   </p>
                 </div>
-              </button>
+              </>
+            );
+
+            if (interactive) {
+              return (
+                <button
+                  key={device.id}
+                  type="button"
+                  onClick={() => activate(device)}
+                  disabled={isRunning}
+                  className={className}
+                >
+                  {inner}
+                </button>
+              );
+            }
+
+            // Sensor / Thermostat: Link zum Raum
+            return (
+              <Link
+                key={device.id}
+                href={device.room_id ? `/rooms/${device.room_id}` : '/'}
+                className={className}
+              >
+                {inner}
+              </Link>
             );
           })}
         </div>

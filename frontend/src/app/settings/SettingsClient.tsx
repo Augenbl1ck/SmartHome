@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useTransition, useCallback } from 'react';
+import { useState, useEffect, useTransition, useCallback, useMemo } from 'react';
 import { api, Device, DeviceType, Room, ZigbeeDevice } from '@/lib/api';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
-import { deviceLabels, CUSTOM_COLORS, isToggleable } from '@/lib/devices';
+import { deviceLabels, CUSTOM_COLORS } from '@/lib/devices';
 import { getEcho } from '@/lib/echo';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -507,7 +507,11 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
     persist({ fields: nextFields });
   };
 
-  const toggleableDevices = devices.filter(d => isToggleable(d.type as DeviceType));
+  // Alle Geräte wählbar (Schaltbare, Thermostate, Sensoren …)
+  const selectableDevices = useMemo(
+    () => [...devices].sort((a, b) => a.name.localeCompare(b.name, 'de')),
+    [devices],
+  );
 
   return (
     <div className="space-y-6">
@@ -597,7 +601,7 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
         <div className="space-y-3">
           {fields.map(field => {
             const isOpen = expandedField === field.id;
-            const available = toggleableDevices.filter(d => !field.deviceIds.includes(d.id));
+            const available = selectableDevices.filter(d => !field.deviceIds.includes(d.id));
             return (
               <div key={field.id} className="rounded-xl border bg-card overflow-hidden">
                 <div className="flex items-center gap-2 px-3 py-2.5">
