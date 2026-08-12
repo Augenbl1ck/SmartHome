@@ -1162,6 +1162,7 @@ function WidgetsSection() {
 function SpotifySection() {
   const [connected, setConnected] = useState(false);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [hasStreaming, setHasStreaming] = useState(true);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -1182,6 +1183,7 @@ function SpotifySection() {
       .then((s) => {
         setConnected(!!s.connected);
         setDisplayName(s.display_name ?? null);
+        setHasStreaming(!!s.has_streaming);
       })
       .catch(() => setError('Status konnte nicht geladen werden'))
       .finally(() => setLoading(false));
@@ -1207,6 +1209,7 @@ function SpotifySection() {
       const s = await api.disconnectSpotify();
       setConnected(!!s.connected);
       setDisplayName(s.display_name ?? null);
+      setHasStreaming(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Trennen fehlgeschlagen');
     } finally {
@@ -1228,18 +1231,25 @@ function SpotifySection() {
       <div className="px-4 py-3 space-y-3">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Spotify</p>
         <p className="text-xs text-muted-foreground leading-relaxed">
-          Premium erforderlich. Nach dem Verbinden steuerst du Wiedergabe, Geräte und Queue im Dashboard.
-          Wiedergabe über Panel-Lautsprecher ist möglich (Browser als Connect-Gerät „SmartHome Panel“).
-          Bei „Invalid token scopes“: einmal trennen und neu verbinden, damit das Streaming-Recht gesetzt wird.
+          Premium erforderlich. Steuerung anderer Geräte funktioniert ohne HTTPS.
+          „Hier abspielen“ (Panel-Lautsprecher) braucht HTTPS (z.B. Tailscale) und das Recht <code className="text-[10px]">streaming</code>.
         </p>
         {connected ? (
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm">
-              Verbunden{displayName ? ` als ${displayName}` : ''}
-            </p>
-            <Button onClick={disconnect} size="sm" variant="outline" disabled={busy}>
-              {busy ? '…' : 'Trennen'}
-            </Button>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm">
+                Verbunden{displayName ? ` als ${displayName}` : ''}
+              </p>
+              <Button onClick={disconnect} size="sm" variant="outline" disabled={busy}>
+                {busy ? '…' : 'Trennen'}
+              </Button>
+            </div>
+            {!hasStreaming && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Streaming-Recht fehlt oder ist unbekannt — bitte trennen und neu verbinden
+                (alle Rechte bestätigen), sonst erscheint „Invalid token scopes“.
+              </p>
+            )}
           </div>
         ) : (
           <Button onClick={connect} size="sm" disabled={busy}>

@@ -172,6 +172,9 @@ class PanelSettingsController extends Controller
             'spotify'           => [
                 'connected' => $spotifyConnected,
                 'display_name' => $spotifyName,
+                'has_streaming' => $spotifyConnected && is_array($spotifyRaw)
+                    ? (bool) preg_match('/(?:^|\s)streaming(?:\s|$)/i', (string) ($spotifyRaw['scope'] ?? ''))
+                    : false,
             ],
             'theme'             => $theme,
             'favorites'         => array_values(array_map('intval', $favorites)),

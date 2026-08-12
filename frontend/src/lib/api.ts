@@ -130,7 +130,7 @@ export const api = {
   disconnectSpotify: () =>
     request<{ connected: boolean; display_name: string | null }>('/spotify/disconnect', { method: 'DELETE' }),
   getSpotifyStatus: () =>
-    request<{ connected: boolean; display_name: string | null }>('/spotify/status'),
+    request<{ connected: boolean; display_name: string | null; has_streaming?: boolean }>('/spotify/status'),
   getSpotifyToken: () =>
     request<{ access_token: string; expires_in: number }>('/spotify/token'),
   getSpotifyPlayer: () => request<SpotifyPlayerState>('/spotify/player'),
@@ -180,7 +180,7 @@ export interface PanelSettings {
   weather?: { city?: string; unit?: 'metric' | 'imperial' } | null;
   transit?: TransitConfig | null;
   energy?: { price_per_kwh?: number } | null;
-  spotify?: { connected?: boolean; display_name?: string | null } | null;
+  spotify?: { connected?: boolean; display_name?: string | null; has_streaming?: boolean } | null;
   theme?: 'light' | 'dark' | 'system';
   favorites?: number[];
   scene_snapshots?: Record<string, unknown> | null;

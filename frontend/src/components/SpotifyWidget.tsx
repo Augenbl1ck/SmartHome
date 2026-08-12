@@ -46,6 +46,7 @@ export default function SpotifyWidget() {
   const [actionError, setActionError] = useState<string | null>(null);
   const sdkRef = useRef<SpotifyWebPlayer | null>(null);
   const panelIdRef = useRef<string | null>(null);
+  const sdkInitRef = useRef<Promise<string> | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -74,37 +75,55 @@ export default function SpotifyWidget() {
   }, [refresh]);
 
   useEffect(() => {
-    if (!player?.connected) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const p = await createPanelPlayer(
-          (id) => {
-            if (cancelled) return;
-            panelIdRef.current = id;
-            setPanelDeviceId(id);
-          },
-          (msg) => {
-            if (!cancelled) setSdkError(msg);
-          },
-        );
-        if (cancelled) {
-          p.disconnect();
-          return;
-        }
-        sdkRef.current = p;
-      } catch (e) {
-        if (!cancelled) {
-          setSdkError(e instanceof Error ? e.message : 'Panel-Player fehlgeschlagen');
-        }
-      }
-    })();
     return () => {
-      cancelled = true;
       sdkRef.current?.disconnect();
       sdkRef.current = null;
+      sdkInitRef.current = null;
     };
-  }, [player?.connected]);
+  }, []);
+
+  /** Web Playback SDK nur bei Bedarf („Hier“) — sonst kein Gerätewechsel aufs Panel. */
+  const ensurePanelPlayer = useCallback(async (): Promise<string> => {
+    if (panelIdRef.current) return panelIdRef.current;
+    if (sdkInitRef.current) return sdkInitRef.current;
+
+    const host = typeof window !== 'undefined' ? window.location.hostname : '';
+    const secure =
+      typeof window !== 'undefined' &&
+      (window.location.protocol === 'https:' || host === 'localhost' || host === '127.0.0.1');
+    if (!secure) {
+      throw new Error(
+        'Panel-Wiedergabe braucht HTTPS (z.B. Tailscale-URL). Steuerung anderer Geräte geht weiter über HTTP.',
+      );
+    }
+
+    sdkInitRef.current = (async () => {
+      setSdkError(null);
+      const p = await createPanelPlayer(
+        (id) => {
+          panelIdRef.current = id;
+          setPanelDeviceId(id);
+        },
+        (msg) => setSdkError(msg),
+      );
+      sdkRef.current = p;
+      // ready-Event kann schon gefeuert haben — kurz warten
+      for (let i = 0; i < 40; i++) {
+        if (panelIdRef.current) return panelIdRef.current;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      throw new Error('Panel-Gerät nicht bereit (Premium + streaming-Scope nötig)');
+    })();
+
+    try {
+      return await sdkInitRef.current;
+    } catch (e) {
+      sdkInitRef.current = null;
+      sdkRef.current?.disconnect();
+      sdkRef.current = null;
+      throw e;
+    }
+  }, []);
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -124,7 +143,8 @@ export default function SpotifyWidget() {
       if (player?.is_playing) {
         await api.spotifyPause();
       } else {
-        await api.spotifyPlay(panelDeviceId ? { device_id: panelDeviceId } : undefined);
+        // Ohne device_id → aktuelles Gerät behalten (kein Auto-Switch aufs Panel)
+        await api.spotifyPlay();
       }
     });
   };
@@ -133,9 +153,11 @@ export default function SpotifyWidget() {
     void run(async () => {
       try {
         await sdkRef.current?.activateElement();
-      } catch { /* gesture may already be consumed */ }
-      const id = panelIdRef.current ?? panelDeviceId;
-      if (!id) throw new Error('Panel-Gerät noch nicht bereit');
+      } catch { /* gesture */ }
+      const id = await ensurePanelPlayer();
+      try {
+        await sdkRef.current?.activateElement();
+      } catch { /* */ }
       await api.spotifyTransfer(id, true);
     });
   };
@@ -143,9 +165,12 @@ export default function SpotifyWidget() {
   const onVolume = (v: number) => {
     void run(async () => {
       await api.spotifyVolume(v);
-      try {
-        await sdkRef.current?.setVolume(v / 100);
-      } catch { /* remote device */ }
+      const onPanel = !!panelDeviceId && player?.device?.id === panelDeviceId;
+      if (onPanel) {
+        try {
+          await sdkRef.current?.setVolume(v / 100);
+        } catch { /* */ }
+      }
     });
   };
 
@@ -340,7 +365,7 @@ export default function SpotifyWidget() {
               type="button"
               size="sm"
               variant="outline"
-              disabled={busy || !panelDeviceId}
+              disabled={busy}
               onClick={playHere}
             >
               Hier
@@ -384,7 +409,7 @@ export default function SpotifyWidget() {
                   size="icon-xs"
                   variant="ghost"
                   disabled={busy}
-                  onClick={() => void run(() => api.spotifyPlay({ uri: t.uri, device_id: panelDeviceId ?? undefined }))}
+                  onClick={() => void run(() => api.spotifyPlay({ uri: t.uri }))}
                   aria-label="Abspielen"
                 >
                   <Play className="h-3.5 w-3.5" />
@@ -418,7 +443,7 @@ export default function SpotifyWidget() {
                   size="icon-xs"
                   variant="ghost"
                   disabled={busy}
-                  onClick={() => void run(() => api.spotifyPlay({ uri: pl.uri, device_id: panelDeviceId ?? undefined }))}
+                  onClick={() => void run(() => api.spotifyPlay({ uri: pl.uri }))}
                   aria-label="Playlist abspielen"
                 >
                   <Play className="h-3.5 w-3.5" />

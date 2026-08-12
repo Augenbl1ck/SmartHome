@@ -41,13 +41,13 @@ class SpotifyService
     }
 
     /**
-     * @return array{connected: bool, display_name: string|null}
+     * @return array{connected: bool, display_name: string|null, has_streaming: bool}
      */
     public function publicStatus(): array
     {
         $raw = PanelSetting::getValue('spotify');
         if (!is_array($raw) || empty($raw['refresh_token'])) {
-            return ['connected' => false, 'display_name' => null];
+            return ['connected' => false, 'display_name' => null, 'has_streaming' => false];
         }
 
         $name = isset($raw['display_name']) ? trim((string) $raw['display_name']) : '';
@@ -55,6 +55,7 @@ class SpotifyService
         return [
             'connected' => true,
             'display_name' => $name !== '' ? $name : null,
+            'has_streaming' => $this->hasStreamingScope($raw),
         ];
     }
 
@@ -132,6 +133,7 @@ class SpotifyService
             'refresh_token' => $refresh,
             'expires_at' => now()->addSeconds(max(60, $expiresIn - 60))->timestamp,
             'display_name' => is_string($displayName) ? $displayName : ($existing['display_name'] ?? null),
+            'scope' => (string) ($data['scope'] ?? ($existing['scope'] ?? '')),
         ]);
     }
 
@@ -145,6 +147,13 @@ class SpotifyService
      */
     public function getAccessTokenForClient(): array
     {
+        $raw = PanelSetting::getValue('spotify');
+        if (is_array($raw) && isset($raw['scope']) && trim((string) $raw['scope']) !== '' && !$this->hasStreamingScope($raw)) {
+            throw new RuntimeException(
+                'Token ohne streaming-Scope — Spotify in den Einstellungen trennen und neu verbinden'
+            );
+        }
+
         $token = $this->ensureAccessToken();
         $raw = PanelSetting::getValue('spotify');
         $expiresAt = is_array($raw) ? (int) ($raw['expires_at'] ?? 0) : 0;
@@ -486,9 +495,29 @@ class SpotifyService
             'refresh_token' => $refresh,
             'expires_at' => now()->addSeconds(max(60, $expiresIn - 60))->timestamp,
             'display_name' => $raw['display_name'] ?? null,
+            'scope' => (string) ($data['scope'] ?? ($raw['scope'] ?? '')),
         ]);
 
         return $access;
+    }
+
+    /**
+     * @param  array<string, mixed>  $raw
+     */
+    private function hasStreamingScope(array $raw): bool
+    {
+        $scope = strtolower(trim((string) ($raw['scope'] ?? '')));
+        if ($scope === '') {
+            // Alte Verbindungen ohne gespeicherte Scopes: unbekannt → UI kann neu verbinden anbieten
+            return false;
+        }
+        foreach (preg_split('/\s+/', $scope) ?: [] as $part) {
+            if ($part === 'streaming') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function simplePlayerPut(string $path, string $label): void
