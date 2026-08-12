@@ -123,7 +123,7 @@ class SpotifyService
             if ($me->successful()) {
                 $displayName = $me->json('display_name') ?: $me->json('id');
             }
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
             /* ignore */
         }
 
@@ -227,23 +227,28 @@ class SpotifyService
     {
         $token = $this->ensureAccessToken();
         $query = [];
-        if ($deviceId) {
+        if ($deviceId !== null && $deviceId !== '') {
             $query['device_id'] = $deviceId;
         }
-        $body = [];
-        if ($uri) {
-            if (str_starts_with($uri, 'spotify:track:')) {
-                $body['uris'] = [$uri];
+
+        // Spotify erwartet immer ein JSON-Objekt ({} zum Fortsetzen) — nie [] oder leeren Body mit JSON-Header.
+        $payload = new \stdClass();
+        if ($uri !== null && $uri !== '') {
+            if (strpos($uri, 'spotify:track:') === 0) {
+                $payload = (object) ['uris' => [$uri]];
             } else {
-                $body['context_uri'] = $uri;
+                $payload = (object) ['context_uri' => $uri];
             }
         }
 
-        $req = Http::withToken($token)->acceptJson();
         $url = self::API . '/me/player/play' . ($query ? ('?' . http_build_query($query)) : '');
-        $res = $body === []
-            ? $req->put($url)
-            : $req->withBody(json_encode($body), 'application/json')->put($url);
+        $res = Http::withToken($token)
+            ->withHeaders([
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+            ])
+            ->withBody(json_encode($payload), 'application/json')
+            ->put($url);
 
         if (!$res->successful() && $res->status() !== 204) {
             throw new RuntimeException($this->spotifyError($res, 'Play fehlgeschlagen'));
@@ -310,11 +315,14 @@ class SpotifyService
     {
         $token = $this->ensureAccessToken();
         $res = Http::withToken($token)
-            ->acceptJson()
+            ->withHeaders([
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+            ])
             ->withBody(json_encode([
                 'device_ids' => [$deviceId],
                 'play' => $play,
-            ]), 'application/json')
+            ], JSON_THROW_ON_ERROR), 'application/json')
             ->put(self::API . '/me/player');
 
         if (!$res->successful() && $res->status() !== 204) {
@@ -486,7 +494,13 @@ class SpotifyService
     private function simplePlayerPut(string $path, string $label): void
     {
         $token = $this->ensureAccessToken();
-        $res = Http::withToken($token)->acceptJson()->put(self::API . $path);
+        $res = Http::withToken($token)
+            ->withHeaders([
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+            ])
+            ->withBody('{}', 'application/json')
+            ->put(self::API . $path);
         if (!$res->successful() && $res->status() !== 204) {
             throw new RuntimeException($this->spotifyError($res, $label));
         }

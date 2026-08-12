@@ -1230,6 +1230,7 @@ function SpotifySection() {
         <p className="text-xs text-muted-foreground leading-relaxed">
           Premium erforderlich. Nach dem Verbinden steuerst du Wiedergabe, Geräte und Queue im Dashboard.
           Wiedergabe über Panel-Lautsprecher ist möglich (Browser als Connect-Gerät „SmartHome Panel“).
+          Bei „Invalid token scopes“: einmal trennen und neu verbinden, damit das Streaming-Recht gesetzt wird.
         </p>
         {connected ? (
           <div className="flex items-center justify-between gap-3">

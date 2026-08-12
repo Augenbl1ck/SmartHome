@@ -231,7 +231,18 @@ export default function SpotifyWidget() {
       </div>
 
       {(sdkError || actionError) && (
-        <p className="text-xs text-destructive">{actionError ?? sdkError}</p>
+        <div className="space-y-1">
+          <p className="text-xs text-destructive">{actionError ?? sdkError}</p>
+          {(sdkError ?? actionError ?? '').toLowerCase().includes('scope') && (
+            <p className="text-xs text-muted-foreground">
+              Unter{' '}
+              <Link href="/settings?view=widgets" className="text-primary underline underline-offset-2">
+                Einstellungen → Widgets
+              </Link>{' '}
+              Spotify trennen und erneut verbinden (Streaming-Recht nötig).
+            </p>
+          )}
+        </div>
       )}
 
       {tab === 'now' && (
