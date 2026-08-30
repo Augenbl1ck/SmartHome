@@ -147,3 +147,39 @@ export function formatMacAddress(raw: string): string {
 export function isSensor(type: DeviceType): boolean {
   return type.startsWith('sensor_') || type === 'energy_meter';
 }
+
+/** Grund falls dieser Befehl gerade durch eine Sperre verboten ist. */
+export function commandBlocked(device: Device, command: string): string | undefined {
+  const map = device.blocked_commands;
+  if (!map) return undefined;
+  const key = command.toLowerCase();
+  if (map[key]) return map[key];
+  if (device.type === 'thermostat' && (key === 'on' || key === 'heat' || key === 'auto')) {
+    return map.heat ?? map.on;
+  }
+  return undefined;
+}
+
+/** Nächster Toggle-Befehl (an/aus bzw. heat/off, open/close) und ob der blockiert ist. */
+export function nextToggleCommand(device: Device): string {
+  const type = device.type as DeviceType;
+  if (type === 'thermostat') {
+    const active = ['auto', 'heat', 'on'].includes(device.status);
+    return active ? 'off' : 'heat';
+  }
+  if (type === 'cover' || type === 'valve') {
+    return device.status === 'open' ? 'close' : 'open';
+  }
+  if (isComputer(type)) {
+    return 'on';
+  }
+  return device.status === 'on' ? 'off' : 'on';
+}
+
+export function nextCommandBlocked(device: Device): string | undefined {
+  return commandBlocked(device, nextToggleCommand(device));
+}
+
+export function isInterlockAutomation(a: { trigger?: Record<string, unknown> }): boolean {
+  return (a.trigger?.type ?? '') === 'interlock';
+}

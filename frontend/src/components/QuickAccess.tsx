@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api, Device } from '@/lib/api';
-import { deviceIcons, isToggleable, isComputer } from '@/lib/devices';
+import { deviceIcons, isToggleable, isComputer, nextCommandBlocked, commandBlocked } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
 import { Star, Bluetooth, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { shellyBle } from '@/lib/bluetooth';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { loadFavoritesLocal, saveFavorites, syncFavoritesFromServer, subscribeFavorites } from '@/lib/favorites';
+import { toast } from 'sonner';
 
 function isBle(device: Device): boolean {
   return device.attributes?.protocol === 'bluetooth_shelly_gen3';
@@ -67,6 +68,11 @@ export default function QuickAccess({ initialDevices }: Props) {
   const toggle = async (device: Device) => {
     if (isComputer(device.type as DeviceType)) {
       if (device.status === 'on' || toggling.has(device.id)) return;
+      const blockedOn = commandBlocked(device, 'on');
+      if (blockedOn) {
+        setError(blockedOn.startsWith('Gesperrt') ? blockedOn : `Gesperrt: ${blockedOn}`);
+        return;
+      }
       setError(null);
       setToggling(t => new Set(t).add(device.id));
       try {
@@ -81,6 +87,13 @@ export default function QuickAccess({ initialDevices }: Props) {
     }
 
     if (!isToggleable(device.type as DeviceType)) return;
+
+    const blocked = nextCommandBlocked(device);
+    if (blocked) {
+      setError(blocked.startsWith('Gesperrt') ? blocked : `Gesperrt: ${blocked}`);
+      toast.warning(blocked.startsWith('Gesperrt') ? blocked : `Gesperrt: ${blocked}`);
+      return;
+    }
 
     const ble = isBle(device);
     const hasMac = !!(device.attributes?.ble_address as string | undefined)?.trim();
@@ -155,12 +168,13 @@ export default function QuickAccess({ initialDevices }: Props) {
             // Bridge-Geräte (hasMac) gelten als verbunden; Web-BLE prüft isConnected()
             const connected = !ble || hasMac || shellyBle.isConnected(device.id);
             const computer = isComputer(device.type as DeviceType);
+            const lockReason = computer && isOn ? undefined : nextCommandBlocked(device);
             const Icon = deviceIcons[device.type as DeviceType];
             const className = cn(
               'rounded-2xl border p-4 flex items-center gap-3 text-left transition-all',
               isOn && connected ? 'bg-amber-500/15 border-amber-400/40 shadow-sm' : 'bg-card border-border',
               isRunning && 'opacity-50',
-              computer && isOn ? 'cursor-default' : 'cursor-pointer active:scale-95',
+              computer && isOn ? 'cursor-default' : lockReason ? 'cursor-not-allowed opacity-70' : 'cursor-pointer active:scale-95',
             );
             const inner = (
               <>
@@ -174,7 +188,7 @@ export default function QuickAccess({ initialDevices }: Props) {
                   <p className="text-sm font-medium truncate">{device.name}</p>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     {ble && <Bluetooth className={cn('h-3 w-3 shrink-0', connected ? 'text-blue-500' : '')} />}
-                    {ble && !connected ? 'Nicht verbunden' : computer ? (isOn ? 'An' : 'Aus — antippen zum Starten') : 'Verbunden'}
+                    {ble && !connected ? 'Nicht verbunden' : lockReason ? lockReason : computer ? (isOn ? 'An' : 'Aus — antippen zum Starten') : 'Verbunden'}
                   </p>
                 </div>
               </>
@@ -190,7 +204,7 @@ export default function QuickAccess({ initialDevices }: Props) {
               <button
                 key={device.id}
                 onClick={() => toggle(device)}
-                disabled={isRunning}
+                disabled={isRunning || !!lockReason}
                 className={className}
               >
                 {inner}

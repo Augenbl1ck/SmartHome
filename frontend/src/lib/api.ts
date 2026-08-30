@@ -1,5 +1,17 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1';
 
+export class ApiError extends Error {
+  status: number;
+  blocked: boolean;
+
+  constructor(message: string, status: number, blocked = false) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.blocked = blocked;
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -8,7 +20,15 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
 
   if (!res.ok) {
-    throw new Error(`API error ${res.status}: ${await res.text()}`);
+    const text = await res.text();
+    let message = `API error ${res.status}: ${text}`;
+    let blocked = false;
+    try {
+      const j = JSON.parse(text) as { message?: string; blocked?: boolean };
+      if (typeof j.message === 'string' && j.message) message = j.message;
+      if (j.blocked === true) blocked = true;
+    } catch { /* not JSON */ }
+    throw new ApiError(message, res.status, blocked);
   }
 
   if (res.status === 204) return undefined as T;
@@ -493,6 +513,8 @@ export interface Device {
   attributes?: Record<string, unknown>;
   last_seen?: string;
   active: boolean;
+  /** Aktive Sperren: Befehl → Automationsname */
+  blocked_commands?: Record<string, string>;
 }
 
 export type DeviceType =

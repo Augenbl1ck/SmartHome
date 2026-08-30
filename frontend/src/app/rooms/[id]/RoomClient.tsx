@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, Device, Room } from '@/lib/api';
 import { shellyBle, BleState } from '@/lib/bluetooth';
-import { deviceIcons, isSensor, isToggleable, isComputer, countsAsActive, getDeviceColors, getDeviceEmoji } from '@/lib/devices';
+import { deviceIcons, isSensor, isToggleable, isComputer, countsAsActive, getDeviceColors, getDeviceEmoji, commandBlocked, nextCommandBlocked } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
 import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Star, ChevronUp, ChevronDown, Square, Minus, Plus, PowerOff, Loader2, Power, Lock, Unlock, Wind, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -25,6 +25,7 @@ import {
   getRunningStateLabel,
 } from '@/lib/thermostat-capabilities';
 import { Switch } from '@/components/ui/switch';
+import { toast } from 'sonner';
 
 // Tile-Hintergrundfarbe wenn Gerät aktiv ist (nach Typ)
 function getActiveTileClasses(device: Device): string {
@@ -236,6 +237,11 @@ export default function RoomClient({ room, initialDevices }: Props) {
 
   const handleCoverCmd = async (device: Device, cmd: 'open' | 'close' | 'stop') => {
     if (pending.has(device.id)) return;
+    const blocked = commandBlocked(device, cmd);
+    if (blocked) {
+      toast.warning(blocked.startsWith('Gesperrt') ? blocked : `Gesperrt: ${blocked}`);
+      return;
+    }
     const optimisticStatus = cmd === 'open' ? 'on' : cmd === 'close' ? 'off' : device.status;
     setPending(p => new Set(p).add(device.id));
     setDevices(prev => prev.map(d => d.id === device.id ? { ...d, status: optimisticStatus } : d));
@@ -321,6 +327,11 @@ export default function RoomClient({ room, initialDevices }: Props) {
 
   const handleWake = async (device: Device) => {
     if (pending.has(device.id) || device.status === 'on') return;
+    const blocked = commandBlocked(device, 'on');
+    if (blocked) {
+      toast.warning(blocked.startsWith('Gesperrt') ? blocked : `Gesperrt: ${blocked}`);
+      return;
+    }
     setPending((p) => new Set(p).add(device.id));
     try {
       await api.setDeviceStatus(device.id, 'on');
@@ -340,6 +351,11 @@ export default function RoomClient({ room, initialDevices }: Props) {
       return;
     }
     if (pending.has(device.id)) return;
+    const blocked = nextCommandBlocked(device);
+    if (blocked) {
+      toast.warning(blocked.startsWith('Gesperrt') ? blocked : `Gesperrt: ${blocked}`);
+      return;
+    }
     const newStatus = device.status === 'on' ? 'off' : 'on';
     setPending((p) => new Set(p).add(device.id));
     setDevices((prev) =>
@@ -375,16 +391,22 @@ export default function RoomClient({ room, initialDevices }: Props) {
   const turnRoomOff = async () => {
     if (turningOff) return;
     const active = devices.filter(d => d.status === 'on' && isToggleable(d.type as DeviceType));
-    if (active.length === 0) return;
+    const free = active.filter(d => !commandBlocked(d, 'off'));
+    const skipped = active.length - free.length;
+    if (free.length === 0) {
+      if (skipped > 0) toast.warning('Geräte durch Sperre geschützt — nichts ausgeschaltet.');
+      return;
+    }
     setTurningOff(true);
     await Promise.allSettled(
-      active.map(d =>
+      free.map(d =>
         api.setDeviceStatus(d.id, 'off')
           .then(() => { setDevices(prev => prev.map(x => x.id === d.id ? { ...x, status: 'off' } : x)); emitDeviceUpdate(d.id, 'off'); })
           .catch(() => {})
       )
     );
     setTurningOff(false);
+    if (skipped > 0) toast.warning(`${skipped} Gerät${skipped === 1 ? '' : 'e'} wegen Sperre nicht ausgeschaltet.`);
   };
 
   return (
@@ -479,7 +501,8 @@ export default function RoomClient({ room, initialDevices }: Props) {
             // Thermostat: nur echte Heiz-Modi — nicht jede Zahl/Setpoint als "An"
             || (isTherm && ['auto', 'heat', 'on'].includes(device.status));
           const isPending  = pending.has(device.id);
-          const isDisabled = isPending;
+          const lockReason = nextCommandBlocked(device);
+          const isDisabled = isPending || (!isComputerDev && !!lockReason);
 
           const isMqttShelly = ['shelly_gen3', 'shelly_gen1', 'shelly_gen3_http'].includes(
             (device.attributes?.protocol as string) ?? ''
@@ -499,6 +522,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
             : (isDimmer || isRgb || isLed || isCover) ? null
             : isComputerDev && wakeHint === device.id ? 'Startsignal gesendet'
             : isComputerDev && !((typeof device.attributes?.ip === 'string' && device.attributes.ip) || device.mqtt_topic) ? 'Keine IP'
+            : lockReason ? lockReason
             : isOn ? 'An' : 'Aus';
 
           return (
@@ -551,8 +575,12 @@ export default function RoomClient({ room, initialDevices }: Props) {
                     onClick={e => {
                       e.stopPropagation();
                       if (isTherm) {
-                        // Thermostat: 'heat' ↔ 'off' (Zigbee system_mode)
                         const newStatus = isActive ? 'off' : 'heat';
+                        const blocked = commandBlocked(device, newStatus);
+                        if (blocked) {
+                          toast.warning(blocked.startsWith('Gesperrt') ? blocked : `Gesperrt: ${blocked}`);
+                          return;
+                        }
                         setDevices(prev => prev.map(d => d.id === device.id ? { ...d, status: newStatus } : d));
                         api.setDeviceStatus(device.id, newStatus)
                           .then(updated => setDevices(prev => prev.map(d => d.id === device.id ? { ...d, ...updated } : d)))
@@ -682,20 +710,20 @@ export default function RoomClient({ room, initialDevices }: Props) {
                 {isCover && (
                   <>
                     <div className="mt-4 flex gap-2">
-                      <button onClick={() => handleCoverCmd(device, 'open')} disabled={isDisabled}
+                      <button onClick={() => handleCoverCmd(device, 'open')} disabled={isPending || !!commandBlocked(device, 'open')}
                         className={cn('cursor-pointer flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-xl text-sm font-medium transition-colors',
                           isOn ? 'bg-green-500/15 text-green-600 dark:text-green-400' : 'bg-muted hover:bg-accent',
-                          isDisabled && 'opacity-40 cursor-not-allowed')}>
+                          (isPending || commandBlocked(device, 'open')) && 'opacity-40 cursor-not-allowed')}>
                         <ChevronUp className="h-5 w-5" /> Öffnen
                       </button>
-                      <button onClick={() => handleCoverCmd(device, 'stop')} disabled={isDisabled}
+                      <button onClick={() => handleCoverCmd(device, 'stop')} disabled={isPending}
                         className={cn('cursor-pointer flex items-center justify-center p-3.5 rounded-xl bg-muted hover:bg-accent transition-colors',
-                          isDisabled && 'opacity-40 cursor-not-allowed')} aria-label="Stop">
+                          isPending && 'opacity-40 cursor-not-allowed')} aria-label="Stop">
                         <Square className="h-5 w-5" />
                       </button>
-                      <button onClick={() => handleCoverCmd(device, 'close')} disabled={isDisabled}
+                      <button onClick={() => handleCoverCmd(device, 'close')} disabled={isPending || !!commandBlocked(device, 'close')}
                         className={cn('cursor-pointer flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-xl text-sm font-medium transition-colors bg-muted hover:bg-accent',
-                          isDisabled && 'opacity-40 cursor-not-allowed')}>
+                          (isPending || commandBlocked(device, 'close')) && 'opacity-40 cursor-not-allowed')}>
                         <ChevronDown className="h-4 w-4" /> Schließen
                       </button>
                     </div>

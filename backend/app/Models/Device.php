@@ -19,6 +19,10 @@ class Device extends Model
         'active'     => 'boolean',
     ];
 
+    protected $appends = [
+        'blocked_commands',
+    ];
+
     public function room(): BelongsTo
     {
         return $this->belongsTo(Room::class);
@@ -71,5 +75,13 @@ class Device extends Model
         $raw = $this->getAttribute('attributes');
 
         return is_array($raw) ? $raw : [];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function getBlockedCommandsAttribute(): array
+    {
+        return app(\App\Services\InterlockService::class)->blockedCommands($this);
     }
 }

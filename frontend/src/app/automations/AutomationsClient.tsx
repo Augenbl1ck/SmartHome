@@ -16,9 +16,10 @@ import {
 import {
   Pencil, Plus, Trash2, Clock, Zap, ChevronRight,
   Thermometer, Droplets, Activity, DoorOpen, Timer, History,
-  Waves, Flame, Battery, Gauge, Filter, Clapperboard,
+  Waves, Flame, Battery, Gauge, Filter, Clapperboard, Shield,
 } from 'lucide-react';
 import { getEcho } from '@/lib/echo';
+import { isInterlockAutomation } from '@/lib/devices';
 
 // ── Aktions-Typen ─────────────────────────────────────────────────────────────
 
@@ -136,16 +137,22 @@ const newAction = (): ActionFormItem => ({
 
 interface FormState {
   name: string;
+  kind: 'automation' | 'lock';
   conditionLogic: ConditionLogic;
   conditions: ConditionFormItem[];
   actions: ActionFormItem[];
+  blockDeviceId: string;
+  blockStatus: ActionDeviceStatus | 'heat';
 }
 
 const emptyForm = (): FormState => ({
   name: '',
+  kind: 'automation',
   conditionLogic: 'and',
   conditions: [newCondition()],
   actions: [newAction()],
+  blockDeviceId: '',
+  blockStatus: 'off',
 });
 
 function conditionFromJson(item: Record<string, unknown>): ConditionFormItem {
@@ -266,9 +273,12 @@ function automationToForm(a: Automation): FormState {
 
   return {
     name: a.name,
+    kind: t.type === 'interlock' ? 'lock' : 'automation',
     conditionLogic: (cond?.logic as ConditionLogic) ?? 'and',
     conditions: mappedConditions,
     actions: mappedActions.length > 0 ? mappedActions : [newAction()],
+    blockDeviceId: ac.device_id != null ? String(ac.device_id) : '',
+    blockStatus: (ac.status as FormState['blockStatus']) ?? 'off',
   };
 }
 
@@ -361,6 +371,7 @@ function statusActionLabel(status: unknown): string {
   switch (status) {
     case 'on': return 'einschalten';
     case 'off': return 'ausschalten';
+    case 'heat': return 'heizen';
     case 'open': return 'oeffnen';
     case 'close': return 'schliessen';
     case 'stop': return 'stopp';
@@ -433,8 +444,8 @@ function describeConditions(
 function describeTrigger(trigger: Record<string, unknown>, devices: Device[]): string {
   const dev = (id: unknown) => devices.find((d) => d.id === Number(id))?.name ?? '?';
   switch (trigger.type) {
-    case 'conditions':
-      return 'Bedingungen';
+    case 'interlock':
+      return 'Sperre';
     case 'time':
       return `Taeglich um ${trigger.time} Uhr`;
     case 'weekday_time': {
@@ -485,8 +496,8 @@ function describeActionItem(
   const room = (id: unknown) => rooms.find((r) => r.id === Number(id))?.name ?? '?';
   const scene = (id: unknown) => scenes.find((s) => s.id === Number(id))?.name ?? '?';
   switch (action.type) {
-    case 'set_device_status':
-      return `"${dev(action.device_id)}" ${statusActionLabel(action.status)}`;
+    case 'block_command':
+      return `"${dev(action.device_id)}" nicht ${statusActionLabel(action.status)}`;
     case 'toggle_device':
       return `"${dev(action.device_id)}" umschalten`;
     case 'set_room_devices':
@@ -545,6 +556,7 @@ function getTriggerIcon(type: string) {
   if (type === 'battery_low') return Battery;
   if (type === 'power_above') return Gauge;
   if (type === 'conditions') return Filter;
+  if (type === 'interlock') return Shield;
   return Zap;
 }
 
@@ -680,7 +692,7 @@ interface Props {
 export default function AutomationsClient({ initialAutomations, devices, rooms, scenes, initialLogs }: Props) {
   const [automations, setAutomations] = useState(initialAutomations);
   const [logs, setLogs]               = useState<AutomationLog[]>(initialLogs);
-  const [activeTab, setActiveTab]     = useState<'automations' | 'history'>('automations');
+  const [activeTab, setActiveTab]     = useState<'automations' | 'locks' | 'history'>('automations');
 
   const [dialog, setDialog] = useState<{
     open: boolean;
@@ -738,7 +750,12 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
   const validate = (f: FormState): string => {
     if (!f.name.trim()) return 'Name ist erforderlich.';
     if (f.conditions.length < 1) return 'Mindestens eine Bedingung ist erforderlich.';
-    if (f.actions.length < 1) return 'Mindestens eine Aktion ist erforderlich.';
+    if (f.kind === 'lock') {
+      if (!f.blockDeviceId) return 'Bitte ein Gerät wählen, das gesperrt werden soll.';
+      if (!f.blockStatus) return 'Bitte den verbotenen Befehl wählen.';
+    } else if (f.actions.length < 1) {
+      return 'Mindestens eine Aktion ist erforderlich.';
+    }
 
     for (let i = 0; i < f.conditions.length; i++) {
       const c = f.conditions[i];
@@ -782,6 +799,7 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
       'set_thermostat_calibration', 'set_thermostat_frost_protection',
     ];
 
+    if (f.kind !== 'lock') {
     for (let i = 0; i < f.actions.length; i++) {
       const a = f.actions[i];
       const label = `Aktion ${i + 1}`;
@@ -809,6 +827,7 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
       if (a.type === 'notify' && !a.notifyMessage.trim())
         return `${label}: bitte eine Benachrichtigungs-Nachricht eingeben.`;
     }
+    }
     return '';
   };
 
@@ -818,12 +837,23 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
     if (err) { setDialog((s) => ({ ...s, error: err })); return; }
     setDialog((s) => ({ ...s, saving: true, error: '' }));
     try {
-      const payload = {
-        name: form.name.trim(),
-        trigger: { type: 'conditions' },
-        action: buildAction(form),
-        conditions: buildConditions(form),
-      };
+      const payload = form.kind === 'lock'
+        ? {
+            name: form.name.trim(),
+            trigger: { type: 'interlock' },
+            action: {
+              type: 'block_command',
+              device_id: Number(form.blockDeviceId),
+              status: form.blockStatus,
+            },
+            conditions: buildConditions(form),
+          }
+        : {
+            name: form.name.trim(),
+            trigger: { type: 'conditions' },
+            action: buildAction(form),
+            conditions: buildConditions(form),
+          };
       if (editing) {
         const updated = await api.updateAutomation(editing.id, payload);
         setAutomations((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
@@ -850,6 +880,11 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
   const thermostats = devices.filter((d) => d.type === 'thermostat');
   const switchableDevices = devices.filter((d) => SWITCHABLE_TYPES.includes(d.type));
 
+  const regularAutomations = automations.filter((a) => !isInterlockAutomation(a));
+  const lockAutomations = automations.filter((a) => isInterlockAutomation(a));
+  const blockableDevices = devices.filter((d) =>
+    [...SWITCHABLE_TYPES, 'thermostat'].includes(d.type)
+  );
   const { form } = dialog;
 
   return (
@@ -860,6 +895,11 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
         {activeTab === 'automations' && (
           <Button size="sm" onClick={() => setDialog({ open: true, form: emptyForm(), saving: false, error: '' })}>
             <Plus className="h-4 w-4 mr-1" /> Neue Automation
+          </Button>
+        )}
+        {activeTab === 'locks' && (
+          <Button size="sm" onClick={() => setDialog({ open: true, form: { ...emptyForm(), kind: 'lock' }, saving: false, error: '' })}>
+            <Plus className="h-4 w-4 mr-1" /> Neue Sperre
           </Button>
         )}
       </div>
@@ -878,7 +918,22 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
           <Zap className="h-3.5 w-3.5" />
           Automationen
           <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
-            {automations.length}
+            {regularAutomations.length}
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveTab('locks')}
+          className={cn(
+            'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+            activeTab === 'locks'
+              ? 'bg-primary text-primary-foreground'
+              : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <Shield className="h-3.5 w-3.5" />
+          Sperren
+          <span className="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
+            {lockAutomations.length}
           </span>
         </button>
         <button
@@ -935,12 +990,12 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
       {/* ── Automationen-Tab ───────────────────────────────────────────── */}
       {activeTab === 'automations' && (<>
 
-      {automations.length === 0 && (
+      {regularAutomations.length === 0 && (
         <p className="text-muted-foreground text-sm">Noch keine Automationen vorhanden.</p>
       )}
 
       <div className="space-y-3">
-        {automations.map((automation) => {
+        {regularAutomations.map((automation) => {
           const trigger = automation.trigger as Record<string, unknown>;
           const action = automation.action as Record<string, unknown>;
           const condText = describeConditions(automation.conditions, devices);
@@ -982,6 +1037,56 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
           );
         })}
       </div>
+      </>)}
+
+      {activeTab === 'locks' && (<>
+      {lockAutomations.length === 0 && (
+        <p className="text-muted-foreground text-sm">
+          Noch keine Sperren. Kopple Geräte, z.B. PC an → Steckdose nicht aus.
+        </p>
+      )}
+      <div className="space-y-3">
+        {lockAutomations.map((automation) => {
+          const action = automation.action as Record<string, unknown>;
+          const condText = describeConditions(automation.conditions, devices);
+          return (
+            <Card key={automation.id} className={!automation.enabled ? 'opacity-60' : ''}>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Shield className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <CardTitle className="text-base truncate">{automation.name}</CardTitle>
+                  {!automation.enabled && (
+                    <Badge variant="secondary" className="text-xs shrink-0">Deaktiviert</Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 shrink-0 ml-2">
+                  <Switch checked={automation.enabled} onCheckedChange={() => handleToggle(automation)} />
+                  <Button variant="ghost" size="icon" onClick={() =>
+                    setDialog({ open: true, editing: automation, form: automationToForm(automation), saving: false, error: '' })
+                  }>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive"
+                    onClick={() => setDeleteConfirm({ open: true, id: automation.id, name: automation.name })}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2 text-sm flex-wrap">
+                  <span className="flex items-center gap-1 text-muted-foreground">
+                    <Filter className="h-3.5 w-3.5 shrink-0" />
+                    {condText ?? 'Bedingung'}
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="font-medium">{describeAction(action, devices, rooms, scenes)}</span>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+      </>)}
 
       {/* ── Automations-Dialog ─────────────────────────────────────────── */}
       <Dialog open={dialog.open} onOpenChange={(open) =>
@@ -989,14 +1094,18 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
       }>
         <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{dialog.editing ? 'Automation bearbeiten' : 'Neue Automation'}</DialogTitle>
+            <DialogTitle>
+              {form.kind === 'lock'
+                ? (dialog.editing ? 'Sperre bearbeiten' : 'Neue Sperre')
+                : (dialog.editing ? 'Automation bearbeiten' : 'Neue Automation')}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-5 py-2">
             {/* Name */}
             <div className="space-y-1">
               <FieldLabel>Name</FieldLabel>
-              <TextInput value={form.name} onChange={(v) => patchForm({ name: v })} placeholder="z.B. Nachtmodus" />
+              <TextInput value={form.name} onChange={(v) => patchForm({ name: v })} placeholder={form.kind === 'lock' ? 'z.B. PC schützt Steckdose' : 'z.B. Nachtmodus'} />
             </div>
 
             {/* BEDINGUNGEN (einziger Wenn-Block) */}
@@ -1298,7 +1407,79 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
               })}
             </div>
 
+            {form.kind === 'lock' && (
+              <div className="space-y-3 rounded-lg border p-4">
+                <p className="text-sm font-semibold flex items-center gap-1.5">
+                  <Shield className="h-4 w-4" /> dann darf nicht ...
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <FieldLabel>Gerät</FieldLabel>
+                    {blockableDevices.length > 0 ? (
+                      <DeviceSelect
+                        value={form.blockDeviceId}
+                        onChange={(v) => {
+                          const d = devices.find((x) => String(x.id) === v);
+                          let status = form.blockStatus;
+                          if (d?.type === 'thermostat' && (status === 'on' || status === 'open' || status === 'close')) status = 'heat';
+                          if (d?.type === 'cover' || d?.type === 'valve') {
+                            if (status === 'on' || status === 'heat') status = 'open';
+                            if (status === 'off') status = 'close';
+                          }
+                          if (d && d.type !== 'thermostat' && d.type !== 'cover' && d.type !== 'valve' && (status === 'heat' || status === 'open' || status === 'close')) {
+                            status = status === 'close' ? 'off' : 'on';
+                          }
+                          patchForm({ blockDeviceId: v, blockStatus: status });
+                        }}
+                        devices={blockableDevices}
+                        rooms={rooms}
+                      />
+                    ) : (
+                      <p className="text-xs text-muted-foreground py-2">Keine schaltbaren Geräte.</p>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <FieldLabel>Verbotener Befehl</FieldLabel>
+                    <Select
+                      value={form.blockStatus}
+                      onValueChange={(v) => patchForm({ blockStatus: v as FormState['blockStatus'] })}
+                    >
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {(() => {
+                          const d = devices.find((x) => String(x.id) === form.blockDeviceId);
+                          if (d?.type === 'thermostat') {
+                            return (
+                              <>
+                                <SelectItem value="heat">Heizen / einschalten</SelectItem>
+                                <SelectItem value="off">Ausschalten</SelectItem>
+                              </>
+                            );
+                          }
+                          if (d?.type === 'cover' || d?.type === 'valve') {
+                            return (
+                              <>
+                                <SelectItem value="open">Öffnen</SelectItem>
+                                <SelectItem value="close">Schließen</SelectItem>
+                              </>
+                            );
+                          }
+                          return (
+                            <>
+                              <SelectItem value="on">Einschalten</SelectItem>
+                              <SelectItem value="off">Ausschalten</SelectItem>
+                            </>
+                          );
+                        })()}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* AKTIONEN */}
+            {form.kind !== 'lock' && (
             <div className="space-y-3 rounded-lg border p-4">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-semibold flex items-center gap-1.5">
@@ -1654,14 +1835,32 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
                 );
               })}
             </div>
+            )}
 
             {/* Vorschau */}
             {(() => {
               const hasConditions = form.conditions.length >= 1;
-              const hasAction = form.actions.length >= 1 && form.actions.every(actionIsComplete);
-              if (!hasConditions || !hasAction) return null;
               const condText = describeConditions(buildConditions(form), devices);
               if (!condText) return null;
+              if (form.kind === 'lock') {
+                if (!form.blockDeviceId) return null;
+                const lockAction = {
+                  type: 'block_command',
+                  device_id: Number(form.blockDeviceId),
+                  status: form.blockStatus,
+                };
+                return (
+                  <div className="rounded-md bg-muted px-4 py-3 text-sm space-y-1">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Vorschau</p>
+                    <p><span className="text-muted-foreground">Wenn: </span>{condText}</p>
+                    <p><span className="text-muted-foreground">Dann darf nicht: </span>
+                      <span className="font-medium">{describeAction(lockAction, devices, rooms, scenes)}</span>
+                    </p>
+                  </div>
+                );
+              }
+              const hasAction = form.actions.length >= 1 && form.actions.every(actionIsComplete);
+              if (!hasConditions || !hasAction) return null;
               return (
                 <div className="rounded-md bg-muted px-4 py-3 text-sm space-y-1">
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Vorschau</p>
@@ -1702,7 +1901,6 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>)}
     </div>
   );
 }

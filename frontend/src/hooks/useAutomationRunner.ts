@@ -12,6 +12,7 @@ import { useEffect, useRef } from 'react';
 import { api, Automation, Device } from '@/lib/api';
 import { shellyBle } from '@/lib/bluetooth';
 import { encodeCapStatus } from '@/lib/thermostat-capabilities';
+import { commandBlocked, isInterlockAutomation } from '@/lib/devices';
 
 const fired = new Map<number, string>();
 const conditionsMet = new Map<number, boolean>();
@@ -220,6 +221,12 @@ async function executeAction(action: Record<string, unknown>, devices: Device[])
         ? device.status === 'on' ? 'off' : 'on'
         : targetStatus;
 
+    const blocked = commandBlocked(device, newStatus);
+    if (blocked) {
+      console.info(`[AutomationRunner] Übersprungen ${device.name} → ${newStatus}: ${blocked}`);
+      return;
+    }
+
     if (isBle) {
       if (!shellyBle.isConnected(deviceId)) {
         console.warn(`[AutomationRunner] BLE-Gerät ${device.name} nicht verbunden`);
@@ -234,10 +241,16 @@ async function executeAction(action: Record<string, unknown>, devices: Device[])
 
   if (t === 'set_device_status') {
     const status = String(action.status ?? 'off');
+    const deviceId = Number(action.device_id);
+    const target = devices.find((d) => d.id === deviceId);
+    if (target && commandBlocked(target, status)) {
+      console.info(`[AutomationRunner] Übersprungen ${target.name} → ${status}`);
+      return;
+    }
     if (status === 'on' || status === 'off') {
-      await executeToggle(Number(action.device_id), status);
+      await executeToggle(deviceId, status);
     } else {
-      await api.setDeviceStatus(Number(action.device_id), status);
+      await api.setDeviceStatus(deviceId, status);
     }
   } else if (t === 'toggle_device') {
     await executeToggle(Number(action.device_id), 'toggle');
@@ -259,6 +272,11 @@ async function executeAction(action: Record<string, unknown>, devices: Device[])
     await api.setDeviceStatus(Number(action.device_id), String(setpoint));
   } else if (t === 'set_thermostat_mode') {
     const mode = String(action.mode ?? 'heat');
+    const thermo = devices.find((d) => d.id === Number(action.device_id));
+    if (thermo && commandBlocked(thermo, mode)) {
+      console.info(`[AutomationRunner] Übersprungen ${thermo.name} → ${mode}`);
+      return;
+    }
     if (['off', 'auto', 'heat'].includes(mode)) {
       await api.setDeviceStatus(Number(action.device_id), mode);
     }
@@ -341,6 +359,8 @@ async function runAutomations() {
 
       const trigger = automation.trigger as Record<string, unknown>;
       const action = automation.action as Record<string, unknown>;
+
+      if (trigger.type === 'interlock' || isInterlockAutomation(automation)) continue;
 
       if (fired.get(automation.id) === key) continue;
 

@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { api, Device, DeviceType } from '@/lib/api';
-import { deviceIcons, isSensor, isComputer } from '@/lib/devices';
+import { deviceIcons, isSensor, isComputer, commandBlocked, nextCommandBlocked } from '@/lib/devices';
 import { Bluetooth, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { shellyBle } from '@/lib/bluetooth';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
+import { toast } from 'sonner';
 
 function isBle(device: Device): boolean {
   return device.attributes?.protocol === 'bluetooth_shelly_gen3';
@@ -147,6 +148,12 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
         setToggling(t => { const n = new Set(t); n.delete(device.id); return n; });
         return;
       }
+      const blockedOn = commandBlocked(device, 'on');
+      if (blockedOn) {
+        setError(blockedOn.startsWith('Gesperrt') ? blockedOn : `Gesperrt: ${blockedOn}`);
+        setToggling(t => { const n = new Set(t); n.delete(device.id); return n; });
+        return;
+      }
       try {
         await api.setDeviceStatus(device.id, 'on');
       } catch (err) {
@@ -163,6 +170,15 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
       newStatus = device.status === 'open' ? 'close' : 'open';
     } else {
       newStatus = device.status === 'on' ? 'off' : 'on';
+    }
+
+    const blocked = commandBlocked(device, newStatus);
+    if (blocked) {
+      const msg = blocked.startsWith('Gesperrt') ? blocked : `Gesperrt: ${blocked}`;
+      setError(msg);
+      toast.warning(msg);
+      setToggling(t => { const n = new Set(t); n.delete(device.id); return n; });
+      return;
     }
 
     const prevStatus = device.status;
@@ -219,6 +235,7 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
           {fieldDevices.map(device => {
             const type = device.type as DeviceType;
             const interactive = isOnOffToggle(type) || isCoverLike(type) || (isWakeable(type) && device.status !== 'on');
+            const lockReason = interactive ? nextCommandBlocked(device) : undefined;
             const isOn = isActiveLook(device);
             const isRunning = toggling.has(device.id);
             const ble = isBle(device);
@@ -229,7 +246,8 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
 
             const className = cn(
               'rounded-2xl border p-4 flex items-center gap-3 text-left transition-all w-full',
-              interactive && 'cursor-pointer active:scale-95',
+              interactive && !lockReason && 'cursor-pointer active:scale-95',
+              interactive && lockReason && 'cursor-not-allowed opacity-70',
               isOn && connected ? 'bg-amber-500/15 border-amber-400/40 shadow-sm' : 'bg-card border-border',
               isRunning && 'opacity-50',
             );
@@ -246,7 +264,7 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
                   <p className="text-sm font-medium truncate">{device.name}</p>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     {ble && <Bluetooth className={cn('h-3 w-3 shrink-0', connected ? 'text-blue-500' : '')} />}
-                    {ble && !connected ? 'Nicht verbunden' : label}
+                    {ble && !connected ? 'Nicht verbunden' : lockReason ? lockReason : label}
                   </p>
                 </div>
               </>
@@ -258,7 +276,7 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
                   key={device.id}
                   type="button"
                   onClick={() => activate(device)}
-                  disabled={isRunning}
+                  disabled={isRunning || !!lockReason}
                   className={className}
                 >
                   {inner}

@@ -33,9 +33,9 @@ class AutomationEngine
         // Neue Conditions-only Automationen
         $this->evaluateConditionsAutomations();
 
-        // Legacy-Trigger (nicht type=conditions)
+        // Legacy-Trigger (nicht type=conditions / interlock)
         foreach (Automation::where('enabled', true)->get() as $automation) {
-            if ($this->isConditionsOnly($automation)) {
+            if ($this->isConditionsOnly($automation) || $this->isInterlock($automation)) {
                 continue;
             }
             if (!$this->deviceTriggerFires($automation->trigger ?? [], $device, $previousStatus)) {
@@ -58,7 +58,7 @@ class AutomationEngine
         $weekday = (int) now()->format('w');
 
         foreach (Automation::where('enabled', true)->get() as $automation) {
-            if ($this->isConditionsOnly($automation)) {
+            if ($this->isConditionsOnly($automation) || $this->isInterlock($automation)) {
                 continue;
             }
 
@@ -170,6 +170,11 @@ class AutomationEngine
     private function isConditionsOnly(Automation $automation): bool
     {
         return ($automation->trigger['type'] ?? '') === 'conditions';
+    }
+
+    private function isInterlock(Automation $automation): bool
+    {
+        return ($automation->trigger['type'] ?? '') === 'interlock';
     }
 
     private function hasConditionItems(Automation $automation): bool

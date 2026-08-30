@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\DeviceCommandBlockedException;
 use App\Models\Device;
 use App\Models\DeviceLog;
 use Illuminate\Support\Facades\Http;
@@ -27,6 +28,11 @@ class DeviceService
 
     public function setStatus(Device $device, string $status): void
     {
+        $reason = app(InterlockService::class)->blockedReason($device, $status);
+        if ($reason !== null) {
+            throw new DeviceCommandBlockedException($device, $status, $reason);
+        }
+
         $protocol = $device->attributes['protocol'] ?? 'simple';
 
         if ($protocol === 'wake_on_lan' || $device->type === 'computer') {

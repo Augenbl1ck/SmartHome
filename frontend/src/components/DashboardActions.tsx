@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { api, Device } from '@/lib/api';
-import { isToggleable } from '@/lib/devices';
+import { isToggleable, commandBlocked } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
 import { PowerOff, Loader2 } from 'lucide-react';
 import { emitDeviceUpdate } from '@/lib/device-events';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 interface Props { devices: Device[] }
@@ -18,11 +19,16 @@ export default function DashboardActions({ devices }: Props) {
     const active = devices.filter(
       d => d.status === 'on' && isToggleable(d.type as DeviceType)
     );
-    if (active.length === 0) return;
+    const free = active.filter(d => !commandBlocked(d, 'off'));
+    const skipped = active.length - free.length;
+    if (free.length === 0) {
+      if (skipped > 0) toast.warning('Geräte durch Sperre geschützt — nichts ausgeschaltet.');
+      return;
+    }
 
     setLoading(true);
     await Promise.allSettled(
-      active.map(d =>
+      free.map(d =>
         api.setDeviceStatus(d.id, 'off')
           .then(() => emitDeviceUpdate(d.id, 'off'))
           .catch(() => {})
@@ -31,6 +37,7 @@ export default function DashboardActions({ devices }: Props) {
     setLoading(false);
     setDone(true);
     setTimeout(() => setDone(false), 3000);
+    if (skipped > 0) toast.warning(`${skipped} Gerät${skipped === 1 ? '' : 'e'} wegen Sperre nicht ausgeschaltet.`);
   };
 
   const activeCount = devices.filter(

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\DeviceCommandBlockedException;
 use App\Jobs\DelayedDeviceAction;
 use App\Models\Device;
 use App\Models\Scene;
@@ -28,13 +29,14 @@ class ActionExecutor
                     $status = (string) ($action['status'] ?? 'off');
                     if ($device->isWakeOnLan()) {
                         if (in_array(strtolower($status), ['on', 'wake'], true)) {
-                            $this->deviceService->setStatus($device, 'on');
+                            $this->trySetStatus($device, 'on');
                         }
                         break;
                     }
-                    $this->deviceService->setStatus($device, $status);
-                    if (in_array($status, ['on', 'off', 'open', 'close', 'stop'], true)) {
-                        $device->update(['status' => $status, 'last_seen' => now()]);
+                    if ($this->trySetStatus($device, $status)) {
+                        if (in_array($status, ['on', 'off', 'open', 'close', 'stop', 'heat', 'auto'], true)) {
+                            $device->update(['status' => $status, 'last_seen' => now()]);
+                        }
                     }
                 }
                 break;
@@ -44,13 +46,14 @@ class ActionExecutor
                 if ($device) {
                     if ($device->isWakeOnLan()) {
                         if ($device->status !== 'on') {
-                            $this->deviceService->setStatus($device, 'on');
+                            $this->trySetStatus($device, 'on');
                         }
                         break;
                     }
                     $status = $device->status === 'on' ? 'off' : 'on';
-                    $this->deviceService->setStatus($device, $status);
-                    $device->update(['status' => $status, 'last_seen' => now()]);
+                    if ($this->trySetStatus($device, $status)) {
+                        $device->update(['status' => $status, 'last_seen' => now()]);
+                    }
                 }
                 break;
 
@@ -63,12 +66,13 @@ class ActionExecutor
                         $status = (string) ($action['status'] ?? 'off');
                         if ($d->isWakeOnLan()) {
                             if (in_array(strtolower($status), ['on', 'wake'], true)) {
-                                $this->deviceService->setStatus($d, 'on');
+                                $this->trySetStatus($d, 'on');
                             }
                             return;
                         }
-                        $this->deviceService->setStatus($d, $status);
-                        $d->update(['status' => $status, 'last_seen' => now()]);
+                        if ($this->trySetStatus($d, $status)) {
+                            $d->update(['status' => $status, 'last_seen' => now()]);
+                        }
                     });
                 break;
 
@@ -104,8 +108,7 @@ class ActionExecutor
                 $device = Device::find($action['device_id'] ?? null);
                 if ($device && $device->type === 'thermostat') {
                     $mode = strtolower((string) ($action['mode'] ?? 'heat'));
-                    if (in_array($mode, ['off', 'auto', 'heat'], true)) {
-                        $this->deviceService->setStatus($device, $mode);
+                    if (in_array($mode, ['off', 'auto', 'heat'], true) && $this->trySetStatus($device, $mode)) {
                         $device->update(['status' => $mode, 'last_seen' => now()]);
                     }
                 }
@@ -184,6 +187,19 @@ class ActionExecutor
                 app(PushNotificationService::class)->send('SmartHome', $message);
                 Log::info('[ActionExecutor] Push gesendet: ' . $message);
                 break;
+        }
+    }
+
+    private function trySetStatus(Device $device, string $status): bool
+    {
+        try {
+            $this->deviceService->setStatus($device, $status);
+
+            return true;
+        } catch (DeviceCommandBlockedException $e) {
+            Log::info("[ActionExecutor] Übersprungen {$device->name} → {$status}: {$e->getMessage()}");
+
+            return false;
         }
     }
 }
