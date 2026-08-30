@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { api, Device, DeviceType } from '@/lib/api';
-import { deviceIcons, isSensor } from '@/lib/devices';
+import { deviceIcons, isSensor, isComputer } from '@/lib/devices';
 import { Bluetooth, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { shellyBle } from '@/lib/bluetooth';
@@ -20,6 +20,10 @@ function isOnOffToggle(type: DeviceType): boolean {
 
 function isCoverLike(type: DeviceType): boolean {
   return type === 'cover' || type === 'valve';
+}
+
+function isWakeable(type: DeviceType): boolean {
+  return isComputer(type);
 }
 
 function statusLabel(device: Device): string {
@@ -73,6 +77,7 @@ function isActiveLook(device: Device): boolean {
   if (isOnOffToggle(type)) return device.status === 'on';
   if (isCoverLike(type)) return device.status === 'open';
   if (type === 'thermostat') return device.status === 'heat' || String(device.attributes?.running_state).toLowerCase() === 'heat';
+  if (type === 'computer') return device.status === 'on';
   if (type === 'sensor_motion') return device.status === 'on';
   if (type === 'sensor_door') return device.status === 'open';
   return false;
@@ -124,7 +129,7 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
     const type = device.type as DeviceType;
 
     // Sensoren / Thermostate: nur Anzeige → Raum öffnen über Link (kein Tap-Handler)
-    if (!isOnOffToggle(type) && !isCoverLike(type)) return;
+    if (!isOnOffToggle(type) && !isCoverLike(type) && !isWakeable(type)) return;
 
     const ble = isBle(device);
     const hasMac = !!(device.attributes?.ble_address as string | undefined)?.trim();
@@ -136,6 +141,22 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
 
     setError(null);
     setToggling(t => new Set(t).add(device.id));
+
+    if (isWakeable(type)) {
+      if (device.status === 'on') {
+        setToggling(t => { const n = new Set(t); n.delete(device.id); return n; });
+        return;
+      }
+      try {
+        await api.setDeviceStatus(device.id, 'on');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(`Fehler bei "${device.name}": ${msg}`);
+      } finally {
+        setToggling(t => { const n = new Set(t); n.delete(device.id); return n; });
+      }
+      return;
+    }
 
     let newStatus: string;
     if (isCoverLike(type)) {
@@ -197,7 +218,7 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {fieldDevices.map(device => {
             const type = device.type as DeviceType;
-            const interactive = isOnOffToggle(type) || isCoverLike(type);
+            const interactive = isOnOffToggle(type) || isCoverLike(type) || (isWakeable(type) && device.status !== 'on');
             const isOn = isActiveLook(device);
             const isRunning = toggling.has(device.id);
             const ble = isBle(device);

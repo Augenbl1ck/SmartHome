@@ -36,9 +36,18 @@ class MqttController extends Controller
 
     public function toggleDevice(Request $request, Device $device): JsonResponse
     {
+        if ($device->isWakeOnLan()) {
+            if ($device->status !== 'on') {
+                $this->deviceService->setStatus($device, 'on');
+                $device->update(['last_seen' => now()]);
+            }
+
+            return response()->json($device->fresh());
+        }
+
         $newStatus = $device->status === 'on' ? 'off' : 'on';
 
-        // DeviceService kennt alle Protokolle: MQTT, HTTP, BLE Bridge
+        // DeviceService kennt alle Protokolle: MQTT, HTTP, BLE Bridge, WOL
         $this->deviceService->setStatus($device, $newStatus);
 
         $device->update(['status' => $newStatus, 'last_seen' => now()]);

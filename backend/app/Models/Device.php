@@ -28,4 +28,31 @@ class Device extends Model
     {
         return $this->hasMany(DeviceLog::class);
     }
+
+    public function isWakeOnLan(): bool
+    {
+        return $this->type === 'computer'
+            || (($this->attributes['protocol'] ?? null) === 'wake_on_lan');
+    }
+
+    public function wolMac(): ?string
+    {
+        $mac = $this->attributes['mac'] ?? null;
+
+        return is_string($mac) && $mac !== '' ? $mac : null;
+    }
+
+    public function wolIp(): ?string
+    {
+        $ip = $this->attributes['ip'] ?? null;
+        if (is_string($ip) && filter_var($ip, FILTER_VALIDATE_IP)) {
+            return $ip;
+        }
+        $topic = $this->mqtt_topic;
+        if (is_string($topic) && filter_var($topic, FILTER_VALIDATE_IP)) {
+            return $topic;
+        }
+
+        return null;
+    }
 }

@@ -19,12 +19,27 @@ use PhpMqtt\Client\MqttClient;
  *   shelly_gen3_http        → direktes HTTP (LAN)
  *   bluetooth_shelly_gen3   → BLE Bridge (Node.js Daemon auf dem Pi)
  *   zigbee2mqtt             → MQTT über Zigbee2MQTT (<topic>/set)
+ *   wake_on_lan             → UDP Magic Packet (nur Starten)
  */
 class DeviceService
 {
+    public function __construct(private readonly WakeOnLanService $wakeOnLan) {}
+
     public function setStatus(Device $device, string $status): void
     {
         $protocol = $device->attributes['protocol'] ?? 'simple';
+
+        if ($protocol === 'wake_on_lan' || $device->type === 'computer') {
+            $this->sendWakeOnLan($device, $status);
+            if (in_array(strtolower($status), ['on', 'wake'], true)) {
+                DeviceLog::create([
+                    'device_id'   => $device->id,
+                    'status'      => 'on',
+                    'recorded_at' => now(),
+                ]);
+            }
+            return;
+        }
 
         match (true) {
             $protocol === 'shelly_gen3_http'      => $this->sendHttp($device, $status),
@@ -37,6 +52,21 @@ class DeviceService
             'status'      => $status,
             'recorded_at' => now(),
         ]);
+    }
+
+    // -------------------------------------------------------------------------
+    // Wake-on-LAN
+    // -------------------------------------------------------------------------
+
+    private function sendWakeOnLan(Device $device, string $status): void
+    {
+        $lower = strtolower($status);
+        if ($lower !== 'on' && $lower !== 'wake') {
+            Log::info("[DeviceService] WOL ignoriert Status \"{$status}\" für {$device->name} (kein Ausschalten)");
+            return;
+        }
+
+        $this->wakeOnLan->wakeDevice($device);
     }
 
     // -------------------------------------------------------------------------

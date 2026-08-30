@@ -26,6 +26,12 @@ class ActionExecutor
                 $device = Device::find($action['device_id'] ?? null);
                 if ($device) {
                     $status = (string) ($action['status'] ?? 'off');
+                    if ($device->isWakeOnLan()) {
+                        if (in_array(strtolower($status), ['on', 'wake'], true)) {
+                            $this->deviceService->setStatus($device, 'on');
+                        }
+                        break;
+                    }
                     $this->deviceService->setStatus($device, $status);
                     if (in_array($status, ['on', 'off', 'open', 'close', 'stop'], true)) {
                         $device->update(['status' => $status, 'last_seen' => now()]);
@@ -36,6 +42,12 @@ class ActionExecutor
             case 'toggle_device':
                 $device = Device::find($action['device_id'] ?? null);
                 if ($device) {
+                    if ($device->isWakeOnLan()) {
+                        if ($device->status !== 'on') {
+                            $this->deviceService->setStatus($device, 'on');
+                        }
+                        break;
+                    }
                     $status = $device->status === 'on' ? 'off' : 'on';
                     $this->deviceService->setStatus($device, $status);
                     $device->update(['status' => $status, 'last_seen' => now()]);
@@ -49,6 +61,12 @@ class ActionExecutor
                     ->get()
                     ->each(function ($d) use ($action) {
                         $status = (string) ($action['status'] ?? 'off');
+                        if ($d->isWakeOnLan()) {
+                            if (in_array(strtolower($status), ['on', 'wake'], true)) {
+                                $this->deviceService->setStatus($d, 'on');
+                            }
+                            return;
+                        }
                         $this->deviceService->setStatus($d, $status);
                         $d->update(['status' => $status, 'last_seen' => now()]);
                     });
@@ -56,7 +74,7 @@ class ActionExecutor
 
             case 'delayed_off':
                 $device = Device::find($action['device_id'] ?? null);
-                if ($device) {
+                if ($device && ! $device->isWakeOnLan()) {
                     DelayedDeviceAction::dispatch($device->id, 'off')
                         ->delay(now()->addMinutes((int) ($action['minutes'] ?? 10)));
                 }

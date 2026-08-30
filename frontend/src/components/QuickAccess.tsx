@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api, Device } from '@/lib/api';
-import { deviceIcons, isToggleable } from '@/lib/devices';
+import { deviceIcons, isToggleable, isComputer } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
 import { Star, Bluetooth, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -65,6 +65,21 @@ export default function QuickAccess({ initialDevices }: Props) {
   }, []);
 
   const toggle = async (device: Device) => {
+    if (isComputer(device.type as DeviceType)) {
+      if (device.status === 'on' || toggling.has(device.id)) return;
+      setError(null);
+      setToggling(t => new Set(t).add(device.id));
+      try {
+        await api.setDeviceStatus(device.id, 'on');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(`Fehler bei "${device.name}": ${msg}`);
+      } finally {
+        setToggling(t => { const n = new Set(t); n.delete(device.id); return n; });
+      }
+      return;
+    }
+
     if (!isToggleable(device.type as DeviceType)) return;
 
     const ble = isBle(device);
@@ -104,7 +119,7 @@ export default function QuickAccess({ initialDevices }: Props) {
   };
 
   const favoriteDevices = mounted
-    ? devices.filter(d => favorites.includes(d.id) && isToggleable(d.type as DeviceType))
+    ? devices.filter(d => favorites.includes(d.id) && (isToggleable(d.type as DeviceType) || isComputer(d.type as DeviceType)))
     : [];
 
   if (!mounted) return null;
@@ -139,16 +154,18 @@ export default function QuickAccess({ initialDevices }: Props) {
             const hasMac = !!(device.attributes?.ble_address as string | undefined)?.trim();
             // Bridge-Geräte (hasMac) gelten als verbunden; Web-BLE prüft isConnected()
             const connected = !ble || hasMac || shellyBle.isConnected(device.id);
+            const computer = isComputer(device.type as DeviceType);
             const Icon = deviceIcons[device.type as DeviceType];
             return (
               <button
                 key={device.id}
                 onClick={() => toggle(device)}
-                disabled={isRunning}
+                disabled={isRunning || (computer && isOn)}
                 className={cn(
                   'cursor-pointer rounded-2xl border p-4 flex items-center gap-3 text-left transition-all active:scale-95',
                   isOn && connected ? 'bg-amber-500/15 border-amber-400/40 shadow-sm' : 'bg-card border-border',
-                  isRunning && 'opacity-50'
+                  isRunning && 'opacity-50',
+                  computer && isOn && 'cursor-default active:scale-100',
                 )}
               >
                 <div className={cn(
@@ -161,7 +178,7 @@ export default function QuickAccess({ initialDevices }: Props) {
                   <p className="text-sm font-medium truncate">{device.name}</p>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     {ble && <Bluetooth className={cn('h-3 w-3 shrink-0', connected ? 'text-blue-500' : '')} />}
-                    {ble && !connected ? 'Nicht verbunden' : 'Verbunden'}
+                    {ble && !connected ? 'Nicht verbunden' : computer ? (isOn ? 'An' : 'Aus') : 'Verbunden'}
                   </p>
                 </div>
               </button>

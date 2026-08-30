@@ -156,6 +156,7 @@ export const api = {
     }),
   spotifySearch: (q: string) =>
     request<SpotifySearchResult>(`/spotify/search?q=${encodeURIComponent(q)}`),
+  discoverLan: () => request<LanHost[]>('/discover/lan'),
   getSpotifyQueue: () => request<SpotifyQueueResponse>('/spotify/queue'),
   spotifyAddToQueue: (uri: string) =>
     request<{ ok?: boolean; error?: string }>('/spotify/queue', {
@@ -444,10 +445,17 @@ export interface Device {
 export type DeviceType =
   | 'light' | 'plug' | 'switch' | 'dimmer' | 'rgb' | 'led'
   | 'fan' | 'cover' | 'thermostat' | 'valve' | 'button'
+  | 'computer'
   | 'energy_meter'
   | 'sensor_temperature' | 'sensor_humidity' | 'sensor_motion'
   | 'sensor_door' | 'sensor_flood' | 'sensor_smoke' | 'sensor_lux' | 'sensor_vibration'
   | 'other';
+
+export interface LanHost {
+  hostname: string | null;
+  ip: string;
+  mac: string;
+}
 
 export interface Scene {
   id: number;

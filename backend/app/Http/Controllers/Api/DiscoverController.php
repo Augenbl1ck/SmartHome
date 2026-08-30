@@ -187,4 +187,20 @@ class DiscoverController
 
         return 'plug';
     }
+
+    /**
+     * Hosts im lokalen Netz (IP + MAC) für Wake-on-LAN.
+     */
+    public function lan(): JsonResponse
+    {
+        try {
+            $hosts = app(\App\Services\LanDiscoveryService::class)->scan();
+
+            return response()->json($hosts);
+        } catch (\Throwable $e) {
+            Log::warning('[Discover] LAN-Scan fehlgeschlagen: ' . $e->getMessage());
+
+            return response()->json(['error' => 'Netzwerk-Scan fehlgeschlagen.'], 500);
+        }
+    }
 }

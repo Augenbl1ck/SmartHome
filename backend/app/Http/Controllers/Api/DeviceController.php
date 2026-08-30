@@ -80,6 +80,13 @@ class DeviceController extends Controller
         $status = $data['status'];
         $this->deviceService->setStatus($device, $status);
 
+        // Wake-on-LAN: Status kommt vom Ping, nicht vom Magic Packet
+        if ($device->isWakeOnLan()) {
+            $device->update(['last_seen' => now()]);
+
+            return response()->json($device->fresh());
+        }
+
         // Thermostat: Solltemperatur → attributes.setpoint; Caps → attributes; Mode → status
         if ($device->type === 'thermostat') {
             $attrs = $device->attributes ?? [];

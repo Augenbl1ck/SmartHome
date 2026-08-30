@@ -15,7 +15,7 @@ import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 
 const SCENE_ICONS = ['🎬', '💡', '🌙', '☀️', '🎵', '🍿', '🏠', '😴', '🚗', '🌿', '🎮', '📖'];
 const SNAPSHOTS_KEY = 'smarthome_scene_snapshots';
-const SWITCHABLE_TYPES = ['light', 'plug', 'switch', 'dimmer', 'rgb', 'led', 'fan', 'cover', 'valve', 'other'];
+const SWITCHABLE_TYPES = ['light', 'plug', 'switch', 'dimmer', 'rgb', 'led', 'fan', 'cover', 'valve', 'other', 'computer'];
 
 type DeviceSnapshot = { device_id: number; status: 'on' | 'off' };
 type Snapshots = Record<number, DeviceSnapshot[]>;
@@ -271,7 +271,7 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
         const id = actionDeviceId(a);
         if (id == null) return null;
         const d = devices.find((x) => x.id === id);
-        if (!d) return null;
+        if (!d || d.type === 'computer') return null;
         const status: 'on' | 'off' = d.status === 'on' ? 'on' : 'off';
         return { device_id: id, status };
       })
@@ -583,8 +583,13 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
                 const target = switchableDevices.find((d) => String(d.id) === action.deviceId)
                   ?? thermostats.find((d) => String(d.id) === action.deviceId);
                 const isCover = target?.type === 'cover';
+                const isComputer = target?.type === 'computer';
                 const needsThermostat = action.type.startsWith('set_thermostat_');
-                const deviceList = needsThermostat ? thermostats : switchableDevices;
+                const deviceList = needsThermostat
+                  ? thermostats
+                  : action.type === 'toggle_device'
+                    ? switchableDevices.filter((d) => d.type !== 'computer')
+                    : switchableDevices;
 
                 return (
                   <div key={action.id} className="rounded-md border bg-muted/30 p-3 space-y-2">
@@ -646,6 +651,9 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
                         const patch: Partial<SceneActionForm> = { deviceId: v };
                         if (next?.type === 'cover' && !['open', 'close', 'stop'].includes(action.deviceStatus)) {
                           patch.deviceStatus = 'open';
+                        } else if (next?.type === 'computer') {
+                          patch.deviceStatus = 'on';
+                          if (action.type === 'toggle_device') patch.type = 'set_device_status';
                         } else if (next && next.type !== 'cover' && ['open', 'close', 'stop'].includes(action.deviceStatus)) {
                           patch.deviceStatus = 'on';
                         }
@@ -682,6 +690,8 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
                               <SelectItem value="close">Schließen</SelectItem>
                               <SelectItem value="stop">Stopp</SelectItem>
                             </>
+                          ) : isComputer ? (
+                            <SelectItem value="on">Starten</SelectItem>
                           ) : (
                             <>
                               <SelectItem value="on">Einschalten</SelectItem>

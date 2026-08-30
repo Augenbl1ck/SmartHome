@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, Device, Room } from '@/lib/api';
 import { shellyBle, BleState } from '@/lib/bluetooth';
-import { deviceIcons, isSensor, isToggleable, getDeviceColors, getDeviceEmoji } from '@/lib/devices';
+import { deviceIcons, isSensor, isToggleable, isComputer, getDeviceColors, getDeviceEmoji } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
 import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Star, ChevronUp, ChevronDown, Square, Minus, Plus, PowerOff, Loader2, Power, Lock, Unlock, Wind, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -52,6 +52,8 @@ function getActiveTileClasses(device: Device): string {
       return 'bg-orange-500/15 border-orange-400/40 shadow-sm';
     case 'valve':
       return 'bg-teal-500/15 border-teal-400/40 shadow-sm';
+    case 'computer':
+      return 'bg-sky-500/15 border-sky-400/40 shadow-sm';
     default:
       return 'bg-primary/10 border-primary/30 shadow-sm';
   }
@@ -97,6 +99,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
   const [favorites, setFavorites] = useState<number[]>([]);
   const [scanDevice, setScanDevice] = useState<Device | null>(null);
   const [turningOff, setTurningOff] = useState(false);
+  const [wakeHint, setWakeHint] = useState<number | null>(null);
   const [thermoConfigOpen, setThermoConfigOpen] = useState<Set<number>>(new Set());
   const [editingSetpointId, setEditingSetpointId] = useState<number | null>(null);
   const [setpointDraft, setSetpointDraft] = useState('');
@@ -316,7 +319,26 @@ export default function RoomClient({ room, initialDevices }: Props) {
     }
   };
 
+  const handleWake = async (device: Device) => {
+    if (pending.has(device.id) || device.status === 'on') return;
+    setPending((p) => new Set(p).add(device.id));
+    try {
+      await api.setDeviceStatus(device.id, 'on');
+      setWakeHint(device.id);
+      window.setTimeout(() => setWakeHint(id => (id === device.id ? null : id)), 4000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setBleError(msg);
+    } finally {
+      setPending((p) => { const n = new Set(p); n.delete(device.id); return n; });
+    }
+  };
+
   const handleToggle = async (device: Device) => {
+    if (isComputer(device.type as DeviceType)) {
+      await handleWake(device);
+      return;
+    }
     if (pending.has(device.id)) return;
     const newStatus = device.status === 'on' ? 'off' : 'on';
     setPending((p) => new Set(p).add(device.id));
@@ -438,6 +460,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
           const toggleable = isToggleable(device.type as DeviceType);
           const sensor     = isSensor(device.type as DeviceType);
           const isCover    = device.type === 'cover';
+          const isComputerDev = isComputer(device.type as DeviceType);
           const isButton   = device.type === 'button';
           const isTherm    = device.type === 'thermostat';
           const isDimmer   = device.type === 'dimmer';
@@ -462,14 +485,18 @@ export default function RoomClient({ room, initialDevices }: Props) {
           );
           const powerW = typeof device.attributes?.power_w === 'number' ? device.attributes.power_w as number : null;
 
-          // Ganzes Tile = Tap für einfache An/Aus-Geräte
-          const isTileTap = !sensor && ['light', 'plug', 'switch', 'valve', 'fan'].includes(device.type);
+          // Ganzes Tile = Tap für einfache An/Aus-Geräte; Computer nur zum Starten wenn aus
+          const isTileTap = !sensor && (
+            ['light', 'plug', 'switch', 'valve', 'fan'].includes(device.type)
+            || (isComputerDev && !isOn)
+          );
 
           // Statustext unter dem Gerätenamen
           const statusLabel: string | null = sensor ? null
             : isFan ? (device.status === 'low' ? 'Niedrig' : device.status === 'medium' ? 'Mittel' : device.status === 'high' ? 'Hoch' : isOn ? 'An' : 'Aus')
             : isTherm ? (isActive ? 'Aktiv' : 'Aus')
             : (isDimmer || isRgb || isLed || isCover) ? null
+            : isComputerDev && wakeHint === device.id ? 'Startsignal gesendet'
             : isOn ? 'An' : 'Aus';
 
           return (
@@ -517,7 +544,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
                 </div>
 
                 {/* Power-Button für alle schaltbaren Nicht-Sensor-Geräte + Thermostat */}
-                {(toggleable || isTherm) && !sensor && !isCover && (
+                {(toggleable || isTherm || isComputerDev) && !sensor && !isCover && (
                   <button
                     onClick={e => {
                       e.stopPropagation();
@@ -528,12 +555,14 @@ export default function RoomClient({ room, initialDevices }: Props) {
                         api.setDeviceStatus(device.id, newStatus)
                           .then(updated => setDevices(prev => prev.map(d => d.id === device.id ? { ...d, ...updated } : d)))
                           .catch(() => setDevices(prev => prev.map(d => d.id === device.id ? device : d)));
+                      } else if (isComputerDev) {
+                        handleWake(device);
                       } else {
                         handleToggle(device);
                       }
                     }}
-                    disabled={isDisabled}
-                    aria-label={isActive ? 'Ausschalten' : 'Einschalten'}
+                    disabled={isDisabled || (isComputerDev && isOn)}
+                    aria-label={isComputerDev ? (isOn ? 'Bereits an' : 'Starten') : isActive ? 'Ausschalten' : 'Einschalten'}
                     className={cn(
                       'h-12 w-12 rounded-full flex items-center justify-center shrink-0 transition-all duration-300',
                       'focus:outline-none active:scale-90',

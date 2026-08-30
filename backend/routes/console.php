@@ -11,5 +11,8 @@ Artisan::command('inspire', function () {
 // Automationen jede Minute prüfen
 Schedule::command('automations:run')->everyMinute();
 
+// Computer-Online-Status (Wake-on-LAN) per Ping
+Schedule::command('devices:ping-computers')->everyMinute();
+
 // Energie-Samples alle 5 Minuten
 Schedule::command('energy:sample')->everyFiveMinutes();

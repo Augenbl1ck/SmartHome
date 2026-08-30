@@ -2,7 +2,7 @@ import {
   LucideIcon,
   Lightbulb, Plug, Thermometer, Droplets, Activity, DoorOpen, Lamp, Wind, Cpu,
   ToggleLeft, SunDim, Palette, ArrowUpDown, Gauge, Droplet, Radio,
-  Zap, Waves, CloudFog, Sun, Vibrate,
+  Zap, Waves, CloudFog, Sun, Vibrate, Monitor,
 } from 'lucide-react';
 import { Device, DeviceType } from '@/lib/api';
 
@@ -18,6 +18,7 @@ export const deviceIcons: Record<DeviceType, LucideIcon> = {
   thermostat:         Gauge,
   valve:              Droplet,
   button:             Radio,
+  computer:           Monitor,
   energy_meter:       Zap,
   sensor_temperature: Thermometer,
   sensor_humidity:    Droplets,
@@ -42,6 +43,7 @@ export const deviceLabels: Record<DeviceType, string> = {
   thermostat:         'Thermostat',
   valve:              'Ventil',
   button:             'Szenen-Taster',
+  computer:           'Computer',
   energy_meter:       'Energiemessung',
   sensor_temperature: 'Temperatur',
   sensor_humidity:    'Luftfeuchtigkeit',
@@ -68,6 +70,7 @@ export const deviceColors: Record<DeviceType, DeviceColorSet> = {
   thermostat:         { text: 'text-orange-400',       bg: 'bg-orange-500/10' },
   valve:              { text: 'text-teal-400',         bg: 'bg-teal-500/10' },
   button:             { text: 'text-indigo-400',       bg: 'bg-indigo-500/10' },
+  computer:           { text: 'text-sky-400',         bg: 'bg-sky-500/10' },
   energy_meter:       { text: 'text-yellow-500',       bg: 'bg-yellow-500/10' },
   sensor_temperature: { text: 'text-orange-400',       bg: 'bg-orange-500/10' },
   sensor_humidity:    { text: 'text-sky-400',          bg: 'bg-sky-500/10' },
@@ -124,6 +127,16 @@ export function getDeviceEmoji(device: Device): string | null {
 
 export function isToggleable(type: DeviceType): boolean {
   return ['light', 'plug', 'switch', 'dimmer', 'rgb', 'led', 'fan', 'cover', 'valve'].includes(type);
+}
+
+export function isComputer(type: DeviceType): boolean {
+  return type === 'computer';
+}
+
+/** MAC als AA:BB:CC:DD:EE:FF formatieren (Eingabe darf Bindestriche/Leerzeichen enthalten). */
+export function formatMacAddress(raw: string): string {
+  const hex = raw.replace(/[^0-9a-fA-F]/g, '').slice(0, 12).toUpperCase();
+  return (hex.match(/.{1,2}/g) ?? []).join(':');
 }
 
 export function isSensor(type: DeviceType): boolean {

@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useTransition, useCallback, useMemo } from 'react';
-import { api, Device, DeviceType, Room, ZigbeeDevice, type TransitConfig, type TransitConnection, type TransitStop, type TransitStopRef } from '@/lib/api';
+import { api, Device, DeviceType, Room, ZigbeeDevice, type LanHost, type TransitConfig, type TransitConnection, type TransitStop, type TransitStopRef } from '@/lib/api';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
-import { deviceLabels, CUSTOM_COLORS } from '@/lib/devices';
+import { deviceLabels, CUSTOM_COLORS, formatMacAddress } from '@/lib/devices';
 import { getEcho } from '@/lib/echo';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -36,7 +36,7 @@ const DEVICE_TYPES: DeviceType[] = [
   // Licht & Schalten
   'light', 'plug', 'switch', 'dimmer', 'rgb', 'led',
   // Steuerung
-  'fan', 'cover', 'thermostat', 'valve', 'button',
+  'fan', 'cover', 'thermostat', 'valve', 'button', 'computer',
   // Energie
   'energy_meter',
   // Sensoren
@@ -48,7 +48,7 @@ const DEVICE_TYPES: DeviceType[] = [
 
 const ROOM_ICONS = ['🛋️', '🛏️', '🍳', '🚿', '🏠', '💡', '📦', '🪴', '🖥️', '🎮'];
 
-type DeviceProtocol = 'simple' | 'shelly_gen3' | 'shelly_gen1' | 'shelly_gen3_http' | 'bluetooth_shelly_gen3' | 'zigbee2mqtt';
+type DeviceProtocol = 'simple' | 'shelly_gen3' | 'shelly_gen1' | 'shelly_gen3_http' | 'bluetooth_shelly_gen3' | 'zigbee2mqtt' | 'wake_on_lan';
 
 // Vereinfachte Hersteller-Auswahl (ersetzt Protokoll-Dropdown für normale Nutzer)
 const VENDOR_PRESETS: {
@@ -322,17 +322,21 @@ interface DeviceForm {
   vendorId: string;
   custom_emoji: string;
   custom_color: string;
+  mac: string;
+  ip: string;
 }
 
 const emptyDevice = (): DeviceForm => ({
   name: '', type: 'plug', room_id: '', mqtt_topic: '',
   mqtt_protocol: 'zigbee2mqtt', ble_address: '', shelly_ip: '', active: true, vendorId: 'zigbee',
   custom_emoji: '', custom_color: '',
+  mac: '', ip: '',
 });
 
 function deviceToForm(d: Device): DeviceForm {
   const proto = (d.attributes?.protocol as DeviceProtocol) ?? 'simple';
-  const vendorId = proto === 'zigbee2mqtt' ? 'zigbee'
+  const vendorId = proto === 'wake_on_lan' || d.type === 'computer' ? ''
+    : proto === 'zigbee2mqtt' ? 'zigbee'
     : proto === 'shelly_gen3' || proto === 'shelly_gen1' || proto === 'shelly_gen3_http' || proto === 'bluetooth_shelly_gen3'
       ? (() => {
           // Shelly-Modell aus Topic ableiten
@@ -349,16 +353,20 @@ function deviceToForm(d: Device): DeviceForm {
   const displayTopic = prefix && fullTopic.startsWith(prefix)
     ? fullTopic.slice(prefix.length)
     : fullTopic;
+  const ip = (d.attributes?.ip as string) ?? (d.type === 'computer' ? fullTopic : '');
+  const mac = (d.attributes?.mac as string) ?? '';
   return {
     name: d.name, type: d.type, room_id: String(d.room_id),
-    mqtt_topic: displayTopic,
-    mqtt_protocol: proto,
+    mqtt_topic: d.type === 'computer' ? '' : displayTopic,
+    mqtt_protocol: d.type === 'computer' ? 'wake_on_lan' : proto,
     ble_address: (d.attributes?.ble_address as string) ?? '',
     shelly_ip: (d.attributes?.shelly_ip as string) ?? '',
     active: d.active,
     vendorId,
     custom_emoji: (d.attributes?.custom_emoji as string) ?? '',
     custom_color: (d.attributes?.custom_color as string) ?? '',
+    mac,
+    ip,
   };
 }
 
@@ -1865,10 +1873,17 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     discovered: DiscoveredDevice[] | null; discovering: boolean; discoverError: string;
   }>({ open: false, form: emptyDevice(), saving: false, error: '', discovered: null, discovering: false, discoverError: '' });
 
-  const openDevice = (d?: Device) => setDeviceDialog({
-    open: true, editing: d, form: d ? deviceToForm(d) : emptyDevice(),
-    saving: false, error: '', discovered: null, discovering: false, discoverError: '',
+  const [lanScan, setLanScan] = useState<{ hosts: LanHost[] | null; scanning: boolean; error: string }>({
+    hosts: null, scanning: false, error: '',
   });
+
+  const openDevice = (d?: Device) => {
+    setLanScan({ hosts: null, scanning: false, error: '' });
+    setDeviceDialog({
+      open: true, editing: d, form: d ? deviceToForm(d) : emptyDevice(),
+      saving: false, error: '', discovered: null, discovering: false, discoverError: '',
+    });
+  };
   const patchDevice = (patch: Partial<DeviceForm>) =>
     setDeviceDialog(s => ({ ...s, form: { ...s.form, ...patch } }));
 
@@ -1915,13 +1930,54 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     setDeviceDialog(s => ({ ...s, discovered: null }));
   };
 
+  const discoverLan = async () => {
+    setLanScan({ hosts: null, scanning: true, error: '' });
+    try {
+      const hosts = await api.discoverLan();
+      const existingMacs = new Set(
+        devices
+          .map(d => String(d.attributes?.mac ?? '').toUpperCase().replace(/[^0-9A-F]/g, ''))
+          .filter(m => m.length === 12),
+      );
+      const fresh = hosts.filter(h => {
+        const hex = h.mac.replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
+        return !existingMacs.has(hex);
+      });
+      setLanScan({ hosts: fresh, scanning: false, error: '' });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Netzwerk-Scan fehlgeschlagen';
+      setLanScan({ hosts: null, scanning: false, error: msg });
+    }
+  };
+
+  const selectLanHost = (h: LanHost) => {
+    patchDevice({
+      name: h.hostname || h.ip,
+      mac: h.mac,
+      ip: h.ip,
+      type: 'computer',
+      mqtt_protocol: 'wake_on_lan',
+      vendorId: '',
+    });
+    setLanScan(s => ({ ...s, hosts: null }));
+  };
+
   const saveDevice = async () => {
     const { form, editing } = deviceDialog;
     if (!form.name.trim()) { setDeviceDialog(s => ({ ...s, error: 'Name ist erforderlich.' })); return; }
     if (!form.room_id)     { setDeviceDialog(s => ({ ...s, error: 'Bitte einen Raum wählen.' })); return; }
+    const isComputer = form.type === 'computer';
+    if (isComputer && formatMacAddress(form.mac).replace(/:/g, '').length !== 12) {
+      setDeviceDialog(s => ({ ...s, error: 'Bitte eine gültige MAC-Adresse eintragen.' }));
+      return;
+    }
     setDeviceDialog(s => ({ ...s, saving: true, error: '' }));
     try {
-  const attrs: Record<string, unknown> = { protocol: form.mqtt_protocol };
+      const attrs: Record<string, unknown> = { protocol: isComputer ? 'wake_on_lan' : form.mqtt_protocol };
+      if (isComputer) {
+        attrs.mac = formatMacAddress(form.mac);
+        if (form.ip.trim()) attrs.ip = form.ip.trim();
+      }
       if (form.ble_address.trim()) attrs.ble_address = form.ble_address.trim();
       if (form.shelly_ip.trim())   attrs.shelly_ip   = form.shelly_ip.trim();
       if (form.custom_emoji.trim()) attrs.custom_emoji = form.custom_emoji.trim();
@@ -1937,7 +1993,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
       // Prefix automatisch voranstellen (z.B. "zigbee2mqtt/" für Zigbee-Geräte)
       const vendor = VENDOR_PRESETS.find(v => v.id === form.vendorId);
       const prefix = vendor?.topicPrefix ?? '';
-      const rawTopic = form.mqtt_topic.trim();
+      const rawTopic = isComputer ? form.ip.trim() : form.mqtt_topic.trim();
       const fullTopic = rawTopic
         ? (prefix && !rawTopic.startsWith(prefix) ? prefix + rawTopic : rawTopic)
         : null;
@@ -1953,6 +2009,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
         const created = await api.createDevice(payload);
         setDevices(prev => [...prev, created]);
       }
+      setLanScan({ hosts: null, scanning: false, error: '' });
       setDeviceDialog({ open: false, form: emptyDevice(), saving: false, error: '', discovered: null, discovering: false, discoverError: '' });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -2120,9 +2177,14 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                     <Badge variant="outline" className="text-xs py-0">{deviceLabels[device.type] ?? device.type}</Badge>
                     {room && <span className="text-xs text-muted-foreground">{room.icon} {room.name}</span>}
-                    {device.mqtt_topic && (
+                    {device.mqtt_topic && device.type !== 'computer' && (
                       <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
                         <Wifi className="h-3 w-3" />{device.mqtt_topic}
+                      </span>
+                    )}
+                    {device.type === 'computer' && typeof device.attributes?.mac === 'string' && (
+                      <span className="flex items-center gap-0.5 text-xs text-muted-foreground font-mono">
+                        {device.attributes.mac}
                       </span>
                     )}
                   </div>
@@ -2278,7 +2340,12 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
 
       {/* ── Gerät-Dialog ──────────────────────────────────────────── */}
       <Dialog open={deviceDialog.open}
-        onOpenChange={open => !open && setDeviceDialog({ open: false, form: emptyDevice(), saving: false, error: '', discovered: null, discovering: false, discoverError: '' })}>
+        onOpenChange={open => {
+          if (!open) {
+            setLanScan({ hosts: null, scanning: false, error: '' });
+            setDeviceDialog({ open: false, form: emptyDevice(), saving: false, error: '', discovered: null, discovering: false, discoverError: '' });
+          }
+        }}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{deviceDialog.editing ? 'Gerät bearbeiten' : 'Neues Gerät'}</DialogTitle>
@@ -2286,7 +2353,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
           <div className="space-y-4 py-2">
 
             {/* ── Zigbee Discovery ──────────────────────────────── */}
-            {!deviceDialog.editing && (
+            {!deviceDialog.editing && deviceDialog.form.type !== 'computer' && (
               <div className="rounded-xl border bg-muted/30 p-3 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm font-medium">
@@ -2359,7 +2426,16 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
             <div className="space-y-1">
               <label className="block text-sm font-medium">Typ</label>
               <Select value={deviceDialog.form.type}
-                onValueChange={v => patchDevice({ type: v as DeviceType })}>
+                onValueChange={v => {
+                  const type = v as DeviceType;
+                  if (type === 'computer') {
+                    patchDevice({ type, mqtt_protocol: 'wake_on_lan', vendorId: '' });
+                  } else if (deviceDialog.form.type === 'computer') {
+                    patchDevice({ type, mqtt_protocol: 'zigbee2mqtt', vendorId: 'zigbee', mac: '', ip: '' });
+                  } else {
+                    patchDevice({ type });
+                  }
+                }}>
                 <SelectTrigger className="h-11 text-base"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {DEVICE_TYPES.map(t => <SelectItem key={t} value={t}>{deviceLabels[t] ?? t}</SelectItem>)}
@@ -2380,7 +2456,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
             </div>
 
             {/* ── Hersteller / Verbindung ───────────────────────── */}
-            {!deviceDialog.editing && deviceDialog.form.vendorId !== '' && (() => {
+            {!deviceDialog.editing && deviceDialog.form.type !== 'computer' && deviceDialog.form.vendorId !== '' && (() => {
               const isShelly = deviceDialog.form.vendorId.startsWith('shelly');
               const shellyModels = VENDOR_PRESETS.filter(v => v.group === 'shelly');
               const mainPresets  = VENDOR_PRESETS.filter(v => !v.group);
@@ -2433,8 +2509,60 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
               );
             })()}
 
-            {/* ── Topic ─────────────────────────────────────────── */}
-            {(() => {
+            {/* ── Topic / Wake-on-LAN ───────────────────────────── */}
+            {deviceDialog.form.type === 'computer' || deviceDialog.form.mqtt_protocol === 'wake_on_lan' ? (
+              <div className="space-y-3">
+                <div className="rounded-xl border bg-muted/30 p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Search className="h-4 w-4 text-primary" />
+                      Im Netzwerk suchen
+                    </div>
+                    <Button size="sm" variant="outline" onClick={discoverLan} disabled={lanScan.scanning}>
+                      {lanScan.scanning
+                        ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Suche…</>
+                        : <><Search className="h-3 w-3 mr-1" /> Suchen</>}
+                    </Button>
+                  </div>
+                  {lanScan.error && <p className="text-xs text-destructive">{lanScan.error}</p>}
+                  {lanScan.hosts !== null && lanScan.hosts.length === 0 && (
+                    <p className="text-xs text-muted-foreground">Keine neuen Geräte gefunden. PC muss eingeschaltet sein, oder MAC unten eintragen.</p>
+                  )}
+                  {lanScan.hosts && lanScan.hosts.length > 0 && (
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                      {lanScan.hosts.map(h => (
+                        <button key={h.mac} type="button"
+                          onClick={() => selectLanHost(h)}
+                          className="w-full text-left rounded-lg border bg-background px-3 py-2.5 hover:bg-accent transition-colors">
+                          <p className="font-medium text-sm truncate">{h.hostname || h.ip}</p>
+                          <p className="text-xs text-muted-foreground font-mono truncate">{h.ip} · {h.mac}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    Gerät antippen, um Name, IP und MAC zu übernehmen. Der PC muss dafür eingeschaltet sein.
+                  </p>
+                </div>
+                <Field
+                  label="MAC-Adresse"
+                  value={deviceDialog.form.mac}
+                  onChange={v => patchDevice({ mac: formatMacAddress(v) })}
+                  placeholder="AA:BB:CC:DD:EE:FF"
+                  hint="Ethernet-MAC der Netzwerkkarte (nicht WLAN)."
+                  inputMode="text" autoComplete="off" />
+                <Field
+                  label="IP-Adresse (optional)"
+                  value={deviceDialog.form.ip}
+                  onChange={v => patchDevice({ ip: v })}
+                  placeholder="192.168.1.50"
+                  hint="Für Online-Anzeige. Wird beim Scan automatisch gesetzt."
+                  inputMode="decimal" autoComplete="off" />
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Im BIOS/UEFI und in Windows (Netzwerkkarte → Energieverwaltung) muss Wake-on-LAN aktiv sein.
+                </p>
+              </div>
+            ) : (() => {
               const vendor = VENDOR_PRESETS.find(v => v.id === deviceDialog.form.vendorId);
               const proto  = deviceDialog.form.mqtt_protocol;
               if (proto === 'bluetooth_shelly_gen3') return (
@@ -2553,7 +2681,10 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
           </div>
           <DialogFooter>
             <Button variant="ghost"
-              onClick={() => setDeviceDialog({ open: false, form: emptyDevice(), saving: false, error: '', discovered: null, discovering: false, discoverError: '' })}>
+              onClick={() => {
+                setLanScan({ hosts: null, scanning: false, error: '' });
+                setDeviceDialog({ open: false, form: emptyDevice(), saving: false, error: '', discovered: null, discovering: false, discoverError: '' });
+              }}>
               Abbrechen
             </Button>
             <Button onClick={saveDevice} disabled={deviceDialog.saving}>

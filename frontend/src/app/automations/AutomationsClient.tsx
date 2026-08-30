@@ -58,7 +58,7 @@ type ConditionType =
   | 'child_lock'
   | 'open_window';
 
-const SWITCHABLE_TYPES = ['light', 'plug', 'switch', 'dimmer', 'rgb', 'led', 'fan', 'cover', 'valve', 'other'];
+const SWITCHABLE_TYPES = ['light', 'plug', 'switch', 'dimmer', 'rgb', 'led', 'fan', 'cover', 'valve', 'other', 'computer'];
 
 interface ConditionFormItem {
   id: string;
@@ -1317,6 +1317,8 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
               {form.actions.map((action, idx) => {
                 const actionTargetDevice = switchableDevices.find((d) => String(d.id) === action.deviceId);
                 const actionTargetIsCover = actionTargetDevice?.type === 'cover';
+                const actionTargetIsComputer = actionTargetDevice?.type === 'computer';
+                const wakeOnlyDevices = switchableDevices.filter((d) => d.type !== 'computer');
                 const removeAction = () => {
                   if (form.actions.length <= 1) return;
                   patchForm({ actions: form.actions.filter((a) => a.id !== action.id) });
@@ -1342,7 +1344,14 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
 
                     <div className="space-y-1">
                       <FieldLabel>Aktions-Typ</FieldLabel>
-                      <Select value={action.type} onValueChange={(v) => patchAction(action.id, { type: v as ActionType })}>
+                      <Select value={action.type} onValueChange={(v) => {
+                        const type = v as ActionType;
+                        const patch: Partial<ActionFormItem> = { type };
+                        if ((type === 'delayed_off' || type === 'toggle_device') && actionTargetIsComputer) {
+                          patch.deviceId = '';
+                        }
+                        patchAction(action.id, patch);
+                      }}>
                         <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
@@ -1385,6 +1394,8 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
                               const patch: Partial<ActionFormItem> = { deviceId: v };
                               if (next?.type === 'cover' && !['open', 'close', 'stop'].includes(action.deviceStatus)) {
                                 patch.deviceStatus = 'open';
+                              } else if (next?.type === 'computer') {
+                                patch.deviceStatus = 'on';
                               } else if (next && next.type !== 'cover' && ['open', 'close', 'stop'].includes(action.deviceStatus)) {
                                 patch.deviceStatus = 'on';
                               }
@@ -1403,6 +1414,8 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
                                   <SelectItem value="close">schliessen</SelectItem>
                                   <SelectItem value="stop">stopp</SelectItem>
                                 </>
+                              ) : actionTargetIsComputer ? (
+                                <SelectItem value="on">starten</SelectItem>
                               ) : (
                                 <>
                                   <SelectItem value="on">einschalten</SelectItem>
@@ -1419,7 +1432,7 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
                       <div className="space-y-1">
                         <FieldLabel>Geraet</FieldLabel>
                         <DeviceSelect value={action.deviceId} onChange={(v) => patchAction(action.id, { deviceId: v })}
-                          devices={switchableDevices} rooms={rooms} />
+                          devices={wakeOnlyDevices} rooms={rooms} />
                       </div>
                     )}
 
@@ -1428,7 +1441,7 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
                         <div className="space-y-1">
                           <FieldLabel>Geraet</FieldLabel>
                           <DeviceSelect value={action.deviceId} onChange={(v) => patchAction(action.id, { deviceId: v })}
-                            devices={switchableDevices} rooms={rooms} />
+                            devices={action.type === 'delayed_on' ? switchableDevices : wakeOnlyDevices} rooms={rooms} />
                         </div>
                         <div className="space-y-1">
                           <FieldLabel>Verzoegerung (Minuten)</FieldLabel>

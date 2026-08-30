@@ -45,6 +45,7 @@ Route::prefix('v1')->group(function () {
     // Geräteerkennung
     Route::get('discover/zigbee', [DiscoverController::class, 'zigbee']);
     Route::get('discover/all', [DiscoverController::class, 'all']);
+    Route::get('discover/lan', [DiscoverController::class, 'lan']);
 
     // Push Notifications
     Route::post('push/subscribe',   [PushController::class, 'subscribe']);
