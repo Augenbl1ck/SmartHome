@@ -21,7 +21,7 @@ import {
 } from '@/lib/calendar-layout';
 
 function formatDayLabel(d: Date): string {
-  const today = startOfLocalDay();
+  const today = startOfLocalDay(new Date());
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
   if (isSameDay(d, today)) return 'Heute';
@@ -45,7 +45,7 @@ export default function CalendarWidget({ initial = null }: Props) {
 
   const load = useCallback(async () => {
     try {
-      const today = startOfLocalDay();
+      const today = startOfLocalDay(new Date());
       const from = startOfWeekMonday(today);
       const to = new Date(today);
       to.setDate(to.getDate() + 14);
