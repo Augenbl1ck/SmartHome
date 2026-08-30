@@ -31,20 +31,22 @@ class Device extends Model
 
     public function isWakeOnLan(): bool
     {
+        $attrs = $this->extra();
+
         return $this->type === 'computer'
-            || (($this->attributes['protocol'] ?? null) === 'wake_on_lan');
+            || (($attrs['protocol'] ?? null) === 'wake_on_lan');
     }
 
     public function wolMac(): ?string
     {
-        $mac = $this->attributes['mac'] ?? null;
+        $mac = $this->extra()['mac'] ?? null;
 
         return is_string($mac) && $mac !== '' ? $mac : null;
     }
 
     public function wolIp(): ?string
     {
-        $ip = $this->attributes['ip'] ?? null;
+        $ip = $this->extra()['ip'] ?? null;
         if (is_string($ip)) {
             $ip = trim($ip);
             if (filter_var($ip, FILTER_VALIDATE_IP)) {
@@ -57,5 +59,17 @@ class Device extends Model
         }
 
         return null;
+    }
+
+    /**
+     * JSON-Spalte `attributes` — nicht $this->attributes (das ist Eloquents Spalten-Bag).
+     *
+     * @return array<string, mixed>
+     */
+    public function extra(): array
+    {
+        $raw = $this->getAttribute('attributes');
+
+        return is_array($raw) ? $raw : [];
     }
 }

@@ -19,7 +19,6 @@ class EnergyDaily extends Model
 
     protected $casts = [
         'kwh' => 'float',
-        'day' => 'date',
     ];
 
     public function device(): BelongsTo

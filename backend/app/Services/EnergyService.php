@@ -598,9 +598,14 @@ class EnergyService
         $deviceIds = $this->sampleDeviceIds($fromUtc, $toUtc);
         foreach ($deviceIds as $deviceId) {
             $wh = $this->deviceConsumptionWh((int) $deviceId, $fromUtc, $toUtc);
-            EnergyDaily::query()->updateOrCreate(
-                ['device_id' => (int) $deviceId, 'day' => $dayStr],
-                ['kwh' => round($wh / 1000.0, 4)]
+            EnergyDaily::query()->upsert(
+                [[
+                    'device_id' => (int) $deviceId,
+                    'day' => $dayStr,
+                    'kwh' => round($wh / 1000.0, 4),
+                ]],
+                ['device_id', 'day'],
+                ['kwh']
             );
         }
     }
