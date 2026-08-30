@@ -6,54 +6,20 @@ import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api, type CalendarEvent, type CalendarEventsResponse } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import CalendarWeekBars from '@/components/CalendarWeekBars';
+import {
+  assignSlots,
+  buildMonthCells,
+  eventColor,
+  eventKey,
+  eventsByDayMap,
+  formatEventTime,
+  isoDate,
+  startOfLocalDay,
+} from '@/lib/calendar-layout';
 
 const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'] as const;
-
-function startOfLocalDay(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
-
-function isSameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear()
-    && a.getMonth() === b.getMonth()
-    && a.getDate() === b.getDate();
-}
-
-function isoDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-}
-
-function eventTimeLabel(ev: CalendarEvent): string {
-  if (ev.all_day) return 'Ganztägig';
-  const start = formatTime(ev.start);
-  if (!ev.end) return start;
-  return `${start}–${formatTime(ev.end)}`;
-}
-
-/** Monday-based week index 0–6 */
-function mondayIndex(d: Date): number {
-  return (d.getDay() + 6) % 7;
-}
-
-function buildMonthCells(year: number, month: number): Date[] {
-  const first = new Date(year, month, 1);
-  const startOffset = mondayIndex(first);
-  const gridStart = new Date(year, month, 1 - startOffset);
-  const cells: Date[] = [];
-  for (let i = 0; i < 42; i++) {
-    const d = new Date(gridStart);
-    d.setDate(gridStart.getDate() + i);
-    cells.push(d);
-  }
-  return cells;
-}
+const MONTH_SLOTS = 3;
 
 interface Props {
   initialYear: number;
@@ -96,7 +62,6 @@ export default function CalendarClient({ initialYear, initialMonth, initial }: P
     const d = new Date(year, month + delta, 1);
     setYear(d.getFullYear());
     setMonth(d.getMonth());
-    // Keep selection in new month if possible, else 1st
     const nextSelected = selected.getMonth() === d.getMonth() && selected.getFullYear() === d.getFullYear()
       ? selected
       : new Date(d.getFullYear(), d.getMonth(), Math.min(selected.getDate(), new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
@@ -105,22 +70,14 @@ export default function CalendarClient({ initialYear, initialMonth, initial }: P
   };
 
   const cells = useMemo(() => buildMonthCells(year, month), [year, month]);
+  const weeks = useMemo(() => {
+    const rows: Date[][] = [];
+    for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
+    return rows;
+  }, [cells]);
 
-  const eventsByDay = useMemo(() => {
-    const map = new Map<string, CalendarEvent[]>();
-    for (const ev of events) {
-      const start = startOfLocalDay(new Date(ev.start));
-      const end = ev.end ? startOfLocalDay(new Date(ev.end)) : start;
-      for (let cur = new Date(start); cur <= end; cur.setDate(cur.getDate() + 1)) {
-        const key = isoDate(cur);
-        const list = map.get(key) ?? [];
-        list.push(ev);
-        map.set(key, list);
-      }
-    }
-    return map;
-  }, [events]);
-
+  const eventsByDay = useMemo(() => eventsByDayMap(events), [events]);
+  const slots = useMemo(() => assignSlots(events), [events]);
   const selectedEvents = eventsByDay.get(isoDate(selected)) ?? [];
   const monthTitle = new Date(year, month, 1).toLocaleDateString('de-DE', {
     month: 'long',
@@ -166,56 +123,28 @@ export default function CalendarClient({ initialYear, initialMonth, initial }: P
         </p>
       )}
 
-      <div className={cn('rounded-2xl border bg-card p-3 sm:p-4', loading && 'opacity-60')}>
-        <div className="grid grid-cols-7 gap-1 mb-1">
+      <div className={cn('rounded-2xl border bg-card p-2 sm:p-3 overflow-hidden', loading && 'opacity-60')}>
+        <div className="grid grid-cols-7 mb-0.5">
           {WEEKDAYS.map(d => (
             <div key={d} className="text-center text-[11px] font-medium text-muted-foreground py-1">
               {d}
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-7 gap-1">
-          {cells.map(day => {
-            const key = isoDate(day);
-            const inMonth = day.getMonth() === month;
-            const isToday = isSameDay(day, today);
-            const isSelected = isSameDay(day, selected);
-            const dayEvents = eventsByDay.get(key) ?? [];
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setSelected(startOfLocalDay(day))}
-                className={cn(
-                  'relative flex flex-col items-center justify-start rounded-xl min-h-[3.25rem] sm:min-h-[4rem] p-1 transition-colors',
-                  inMonth ? 'text-foreground' : 'text-muted-foreground/40',
-                  isSelected && 'bg-primary text-primary-foreground',
-                  !isSelected && isToday && 'ring-1 ring-primary/50',
-                  !isSelected && 'hover:bg-accent/60',
-                )}
-              >
-                <span className={cn('text-sm font-medium tabular-nums', isToday && !isSelected && 'text-primary')}>
-                  {day.getDate()}
-                </span>
-                {dayEvents.length > 0 && (
-                  <span className={cn(
-                    'mt-auto mb-0.5 flex gap-0.5',
-                    isSelected ? 'opacity-90' : '',
-                  )}>
-                    {dayEvents.slice(0, 3).map((_, i) => (
-                      <span
-                        key={i}
-                        className={cn(
-                          'h-1 w-1 rounded-full',
-                          isSelected ? 'bg-primary-foreground' : 'bg-violet-500',
-                        )}
-                      />
-                    ))}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        <div className="border-b border-border/50">
+          {weeks.map((week) => (
+            <CalendarWeekBars
+              key={isoDate(week[0])}
+              weekStart={week[0]}
+              events={events}
+              slots={slots}
+              maxSlots={MONTH_SLOTS}
+              selected={selected}
+              today={today}
+              month={month}
+              onSelectDay={setSelected}
+            />
+          ))}
         </div>
       </div>
 
@@ -229,11 +158,12 @@ export default function CalendarClient({ initialYear, initialMonth, initial }: P
           <ul className="space-y-2">
             {selectedEvents.map(ev => (
               <li
-                key={ev.uid + ev.start}
+                key={eventKey(ev)}
                 className="flex items-start gap-3 rounded-xl px-2.5 py-2 bg-muted/40"
               >
+                <span className={cn('mt-1 h-8 w-1 shrink-0 rounded-full', eventColor(ev).stripe)} />
                 <span className="text-xs tabular-nums text-muted-foreground w-[4.5rem] shrink-0 pt-0.5">
-                  {eventTimeLabel(ev)}
+                  {formatEventTime(ev)}
                 </span>
                 <span className="text-sm font-medium leading-snug min-w-0 break-words">
                   {ev.title}

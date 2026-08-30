@@ -37,9 +37,12 @@ export const serverApi = {
     return serverFetch<CalendarEventsResponse>(`/calendar/events${qs ? `?${qs}` : ''}`);
   },
   getDashboardCalendar: () => {
-    const from = new Date();
-    from.setHours(0, 0, 0, 0);
-    const to = new Date(from);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const from = new Date(today);
+    const mondayOffset = (from.getDay() + 6) % 7;
+    from.setDate(from.getDate() - mondayOffset);
+    const to = new Date(today);
     to.setDate(to.getDate() + 14);
     return serverApi.getCalendarEvents({ from: isoDate(from), to: isoDate(to) });
   },

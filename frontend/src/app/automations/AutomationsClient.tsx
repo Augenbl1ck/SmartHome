@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 import { api, Automation, AutomationLog, Device, Room, Scene } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,6 +17,7 @@ import {
   Pencil, Plus, Trash2, Clock, Zap, ChevronRight,
   Thermometer, Droplets, Activity, DoorOpen, Timer, History,
   Waves, Flame, Battery, Gauge, Filter, Clapperboard, Shield,
+  List, LayoutGrid,
 } from 'lucide-react';
 import { getEcho } from '@/lib/echo';
 import { isInterlockAutomation } from '@/lib/devices';
@@ -546,6 +547,225 @@ function describeAction(
   return describeActionItem(action, devices, rooms, scenes);
 }
 
+function unwrapActions(action: Record<string, unknown> | undefined): Record<string, unknown>[] {
+  if (!action) return [];
+  if (action.type === 'multi' && Array.isArray(action.actions)) {
+    return action.actions as Record<string, unknown>[];
+  }
+  return [action];
+}
+
+function collectDeviceIds(a: Automation): number[] {
+  const ids = new Set<number>();
+  const add = (v: unknown) => {
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) ids.add(n);
+  };
+  add(a.trigger?.device_id);
+  for (const item of a.conditions?.items ?? []) add(item.device_id);
+  for (const ac of unwrapActions(a.action)) add(ac.device_id);
+  return [...ids];
+}
+
+function collectDirectRoomIds(a: Automation): number[] {
+  const ids = new Set<number>();
+  for (const ac of unwrapActions(a.action)) {
+    if (ac.type === 'set_room_devices' && ac.room_id != null) {
+      const n = Number(ac.room_id);
+      if (Number.isFinite(n) && n > 0) ids.add(n);
+    }
+  }
+  return [...ids];
+}
+
+function roomIdsForAutomation(a: Automation, devices: Device[]): number[] {
+  const fromDevices = collectDeviceIds(a)
+    .map((id) => devices.find((d) => d.id === id)?.room_id)
+    .filter((id): id is number => typeof id === 'number' && id > 0);
+  return [...new Set([...fromDevices, ...collectDirectRoomIds(a)])];
+}
+
+type RoomGroupItem = { automation: Automation; otherRoomNames: string[] };
+type RoomGroup = { key: string; room: Room | null; items: RoomGroupItem[] };
+
+function groupAutomationsByRoom(
+  list: Automation[],
+  devices: Device[],
+  rooms: Room[],
+): RoomGroup[] {
+  const nameOf = (id: number) => rooms.find((r) => r.id === id)?.name ?? `Raum ${id}`;
+  const byRoom = new Map<number, RoomGroupItem[]>();
+  const none: RoomGroupItem[] = [];
+
+  for (const a of list) {
+    const ids = roomIdsForAutomation(a, devices);
+    if (ids.length === 0) {
+      none.push({ automation: a, otherRoomNames: [] });
+      continue;
+    }
+    for (const id of ids) {
+      const otherRoomNames = ids.filter((x) => x !== id).map(nameOf);
+      const bucket = byRoom.get(id) ?? [];
+      bucket.push({ automation: a, otherRoomNames });
+      byRoom.set(id, bucket);
+    }
+  }
+
+  const groups: RoomGroup[] = [];
+  const used = new Set<number>();
+  for (const room of rooms) {
+    const items = byRoom.get(room.id);
+    if (!items?.length) continue;
+    groups.push({ key: String(room.id), room, items });
+    used.add(room.id);
+  }
+  for (const [id, items] of byRoom) {
+    if (used.has(id)) continue;
+    groups.push({
+      key: String(id),
+      room: { id, name: `Raum ${id}`, icon: '🏠' },
+      items,
+    });
+  }
+  if (none.length) groups.push({ key: 'none', room: null, items: none });
+  return groups;
+}
+
+function AutomationCard({
+  automation,
+  devices,
+  rooms,
+  scenes,
+  extraBadge,
+  isLock = false,
+  onToggle,
+  onEdit,
+  onDelete,
+}: {
+  automation: Automation;
+  devices: Device[];
+  rooms: Room[];
+  scenes: Scene[];
+  extraBadge?: string;
+  isLock?: boolean;
+  onToggle: (a: Automation) => void;
+  onEdit: (a: Automation) => void;
+  onDelete: (a: Automation) => void;
+}) {
+  const trigger = automation.trigger as Record<string, unknown>;
+  const action = automation.action as Record<string, unknown>;
+  const condText = describeConditions(automation.conditions, devices);
+  const wennText = isLock ? (condText ?? 'Bedingung') : (condText ?? describeTrigger(trigger, devices));
+  const WennIcon = isLock || condText ? Filter : getTriggerIcon(trigger.type as string);
+
+  return (
+    <Card className={!automation.enabled ? 'opacity-60' : ''}>
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <div className="flex items-center gap-2 min-w-0">
+          {isLock && <Shield className="h-4 w-4 text-muted-foreground shrink-0" />}
+          <CardTitle className="text-base truncate">{automation.name}</CardTitle>
+          {!automation.enabled && (
+            <Badge variant="secondary" className="text-xs shrink-0">Deaktiviert</Badge>
+          )}
+          {extraBadge && (
+            <Badge variant="outline" className="text-xs shrink-0 max-w-[14rem] truncate" title={extraBadge}>
+              {extraBadge}
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-1 shrink-0 ml-2">
+          <Switch checked={automation.enabled} onCheckedChange={() => onToggle(automation)} />
+          <Button variant="ghost" size="icon" onClick={() => onEdit(automation)}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive"
+            onClick={() => onDelete(automation)}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center gap-2 text-sm flex-wrap">
+          <span className="flex items-center gap-1 text-muted-foreground">
+            <WennIcon className="h-3.5 w-3.5 shrink-0" />
+            {wennText}
+          </span>
+          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+          <span className="font-medium">{describeAction(action, devices, rooms, scenes)}</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AutomationList({
+  items,
+  groups,
+  view,
+  empty,
+  isLock = false,
+  devices,
+  rooms,
+  scenes,
+  onToggle,
+  onEdit,
+  onDelete,
+}: {
+  items: Automation[];
+  groups: RoomGroup[];
+  view: 'flat' | 'byRoom';
+  empty: ReactNode;
+  isLock?: boolean;
+  devices: Device[];
+  rooms: Room[];
+  scenes: Scene[];
+  onToggle: (a: Automation) => void;
+  onEdit: (a: Automation) => void;
+  onDelete: (a: Automation) => void;
+}) {
+  if (items.length === 0) return <>{empty}</>;
+
+  const card = (automation: Automation, extraBadge?: string, key?: string) => (
+    <AutomationCard
+      key={key ?? String(automation.id)}
+      automation={automation}
+      devices={devices}
+      rooms={rooms}
+      scenes={scenes}
+      extraBadge={extraBadge}
+      isLock={isLock}
+      onToggle={onToggle}
+      onEdit={onEdit}
+      onDelete={onDelete}
+    />
+  );
+
+  if (view === 'flat') {
+    return <div className="space-y-3">{items.map((a) => card(a))}</div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      {groups.map((g) => (
+        <div key={g.key} className="space-y-3">
+          <h2 className="text-sm font-semibold flex items-center gap-2">
+            <span>{g.room ? `${g.room.icon ?? '🏠'} ${g.room.name}` : 'Ohne Raum'}</span>
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
+              {g.items.length}
+            </span>
+          </h2>
+          {g.items.map(({ automation, otherRoomNames }) =>
+            card(
+              automation,
+              otherRoomNames.length ? `auch in ${otherRoomNames.join(', ')}` : undefined,
+              `${g.key}-${automation.id}`,
+            ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function getTriggerIcon(type: string) {
   if (type === 'time' || type === 'weekday_time' || type === 'time_at' || type === 'sunrise' || type === 'sunset') return Clock;
   if (type === 'temperature_above' || type === 'temperature_below') return Thermometer;
@@ -695,6 +915,7 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
   const [automations, setAutomations] = useState(initialAutomations);
   const [logs, setLogs]               = useState<AutomationLog[]>(initialLogs);
   const [activeTab, setActiveTab]     = useState<'automations' | 'locks' | 'history'>('automations');
+  const [listView, setListView]       = useState<'flat' | 'byRoom'>('flat');
 
   const [dialog, setDialog] = useState<{
     open: boolean;
@@ -884,6 +1105,22 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
 
   const regularAutomations = automations.filter((a) => !isInterlockAutomation(a));
   const lockAutomations = automations.filter((a) => isInterlockAutomation(a));
+  const regularByRoom = useMemo(
+    () => groupAutomationsByRoom(
+      automations.filter((a) => !isInterlockAutomation(a)),
+      devices,
+      rooms,
+    ),
+    [automations, devices, rooms],
+  );
+  const locksByRoom = useMemo(
+    () => groupAutomationsByRoom(
+      automations.filter((a) => isInterlockAutomation(a)),
+      devices,
+      rooms,
+    ),
+    [automations, devices, rooms],
+  );
   const blockableDevices = devices.filter((d) =>
     [...SWITCHABLE_TYPES, 'thermostat'].includes(d.type)
   );
@@ -957,6 +1194,37 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
         </button>
       </div>
 
+      {activeTab !== 'history' && (
+        <div className="flex gap-1 rounded-lg border p-1 w-fit">
+          <button
+            type="button"
+            onClick={() => setListView('flat')}
+            className={cn(
+              'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+              listView === 'flat'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            <List className="h-3.5 w-3.5" />
+            Liste
+          </button>
+          <button
+            type="button"
+            onClick={() => setListView('byRoom')}
+            className={cn(
+              'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+              listView === 'byRoom'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            Nach Räumen
+          </button>
+        </div>
+      )}
+
       {/* ── Verlauf-Tab ────────────────────────────────────────────────── */}
       {activeTab === 'history' && (
         <div className="space-y-2">
@@ -990,105 +1258,40 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
       )}
 
       {/* ── Automationen-Tab ───────────────────────────────────────────── */}
-      {activeTab === 'automations' && (<>
-
-      {regularAutomations.length === 0 && (
-        <p className="text-muted-foreground text-sm">Noch keine Automationen vorhanden.</p>
+      {activeTab === 'automations' && (
+        <AutomationList
+          items={regularAutomations}
+          groups={regularByRoom}
+          view={listView}
+          empty={<p className="text-muted-foreground text-sm">Noch keine Automationen vorhanden.</p>}
+          devices={devices}
+          rooms={rooms}
+          scenes={scenes}
+          onToggle={handleToggle}
+          onEdit={(a) => setDialog({ open: true, editing: a, form: automationToForm(a), saving: false, error: '' })}
+          onDelete={(a) => setDeleteConfirm({ open: true, id: a.id, name: a.name })}
+        />
       )}
 
-      <div className="space-y-3">
-        {regularAutomations.map((automation) => {
-          const trigger = automation.trigger as Record<string, unknown>;
-          const action = automation.action as Record<string, unknown>;
-          const condText = describeConditions(automation.conditions, devices);
-          const wennText = condText ?? describeTrigger(trigger, devices);
-          const WennIcon = condText ? Filter : getTriggerIcon(trigger.type as string);
-          return (
-            <Card key={automation.id} className={!automation.enabled ? 'opacity-60' : ''}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <CardTitle className="text-base truncate">{automation.name}</CardTitle>
-                  {!automation.enabled && (
-                    <Badge variant="secondary" className="text-xs shrink-0">Deaktiviert</Badge>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 shrink-0 ml-2">
-                  <Switch checked={automation.enabled} onCheckedChange={() => handleToggle(automation)} />
-                  <Button variant="ghost" size="icon" onClick={() =>
-                    setDialog({ open: true, editing: automation, form: automationToForm(automation), saving: false, error: '' })
-                  }>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive"
-                    onClick={() => setDeleteConfirm({ open: true, id: automation.id, name: automation.name })}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-2 text-sm flex-wrap">
-                  <span className="flex items-center gap-1 text-muted-foreground">
-                    <WennIcon className="h-3.5 w-3.5 shrink-0" />
-                    {wennText}
-                  </span>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <span className="font-medium">{describeAction(action, devices, rooms, scenes)}</span>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-      </>)}
-
-      {activeTab === 'locks' && (<>
-      {lockAutomations.length === 0 && (
-        <p className="text-muted-foreground text-sm">
-          Noch keine Sperren. Kopple Geräte, z.B. PC an → Steckdose nicht aus.
-        </p>
+      {activeTab === 'locks' && (
+        <AutomationList
+          items={lockAutomations}
+          groups={locksByRoom}
+          view={listView}
+          isLock
+          empty={
+            <p className="text-muted-foreground text-sm">
+              Noch keine Sperren. Kopple Geräte, z.B. PC an → Steckdose nicht aus.
+            </p>
+          }
+          devices={devices}
+          rooms={rooms}
+          scenes={scenes}
+          onToggle={handleToggle}
+          onEdit={(a) => setDialog({ open: true, editing: a, form: automationToForm(a), saving: false, error: '' })}
+          onDelete={(a) => setDeleteConfirm({ open: true, id: a.id, name: a.name })}
+        />
       )}
-      <div className="space-y-3">
-        {lockAutomations.map((automation) => {
-          const action = automation.action as Record<string, unknown>;
-          const condText = describeConditions(automation.conditions, devices);
-          return (
-            <Card key={automation.id} className={!automation.enabled ? 'opacity-60' : ''}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Shield className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <CardTitle className="text-base truncate">{automation.name}</CardTitle>
-                  {!automation.enabled && (
-                    <Badge variant="secondary" className="text-xs shrink-0">Deaktiviert</Badge>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 shrink-0 ml-2">
-                  <Switch checked={automation.enabled} onCheckedChange={() => handleToggle(automation)} />
-                  <Button variant="ghost" size="icon" onClick={() =>
-                    setDialog({ open: true, editing: automation, form: automationToForm(automation), saving: false, error: '' })
-                  }>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive"
-                    onClick={() => setDeleteConfirm({ open: true, id: automation.id, name: automation.name })}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-2 text-sm flex-wrap">
-                  <span className="flex items-center gap-1 text-muted-foreground">
-                    <Filter className="h-3.5 w-3.5 shrink-0" />
-                    {condText ?? 'Bedingung'}
-                  </span>
-                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <span className="font-medium">{describeAction(action, devices, rooms, scenes)}</span>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-      </>)}
 
       {/* ── Automations-Dialog ─────────────────────────────────────────── */}
       <Dialog open={dialog.open} onOpenChange={(open) => {
