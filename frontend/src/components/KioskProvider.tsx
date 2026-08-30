@@ -1,9 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
-import { usePinLockContext } from '@/components/PinLockProvider';
 import KioskBar from '@/components/KioskBar';
-import KioskScreensaver from '@/components/KioskScreensaver';
 import { api } from '@/lib/api';
 
 const KIOSK_KEY = 'smarthome_kiosk';
@@ -83,13 +81,10 @@ export default function KioskProvider({ children }: { children: React.ReactNode 
     return () => window.removeEventListener('popstate', prevent);
   }, [kioskMode]);
 
-  const pinLock = usePinLockContext();
-
   return (
     <KioskCtx.Provider value={{ kioskMode, setKioskMode }}>
       {children}
       {mounted && kioskMode && <KioskBar />}
-      {mounted && kioskMode && !pinLock.locked && !pinLock.screenOff && <KioskScreensaver />}
     </KioskCtx.Provider>
   );
 }

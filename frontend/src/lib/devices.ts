@@ -133,6 +133,11 @@ export function isComputer(type: DeviceType): boolean {
   return type === 'computer';
 }
 
+/** Geräte die in der „X aktiv“-Anzeige mitzählen (Computer ohne Ausschalten). */
+export function countsAsActive(type: DeviceType): boolean {
+  return isToggleable(type) || isComputer(type);
+}
+
 /** MAC als AA:BB:CC:DD:EE:FF formatieren (Eingabe darf Bindestriche/Leerzeichen enthalten). */
 export function formatMacAddress(raw: string): string {
   const hex = raw.replace(/[^0-9a-fA-F]/g, '').slice(0, 12).toUpperCase();

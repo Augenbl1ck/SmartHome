@@ -21,15 +21,11 @@ export default function PinLockScreen({ onUnlock, onWake, isScreenOff }: Props) 
   if (isScreenOff) {
     return (
       <div
-        className="fixed inset-0 z-[100] bg-black flex items-center justify-center cursor-pointer"
+        className="fixed inset-0 z-[100] bg-black cursor-pointer"
         onClick={onWake}
         onTouchStart={onWake}
-      >
-        <div className="text-center select-none">
-          <p className="text-5xl mb-3">🏠</p>
-          <p className="text-white/50 text-sm">Tippen zum Entsperren</p>
-        </div>
-      </div>
+        aria-label="Bildschirm dunkel — tippen zum Fortfahren"
+      />
     );
   }
 

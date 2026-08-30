@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, Device, Room } from '@/lib/api';
 import { shellyBle, BleState } from '@/lib/bluetooth';
-import { deviceIcons, isSensor, isToggleable, isComputer, getDeviceColors, getDeviceEmoji } from '@/lib/devices';
+import { deviceIcons, isSensor, isToggleable, isComputer, countsAsActive, getDeviceColors, getDeviceEmoji } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
 import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Star, ChevronUp, ChevronDown, Square, Minus, Plus, PowerOff, Loader2, Power, Lock, Unlock, Wind, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -368,8 +368,9 @@ export default function RoomClient({ room, initialDevices }: Props) {
     }
   };
 
-  const activeCount    = devices.filter((d) => d.status === 'on' && isToggleable(d.type as DeviceType)).length;
-  const toggleableCount = devices.filter((d) => isToggleable(d.type as DeviceType)).length;
+  const activeCount     = devices.filter((d) => d.status === 'on' && countsAsActive(d.type as DeviceType)).length;
+  const listedCount     = devices.filter((d) => countsAsActive(d.type as DeviceType)).length;
+  const switchableOn    = devices.filter((d) => d.status === 'on' && isToggleable(d.type as DeviceType)).length;
 
   const turnRoomOff = async () => {
     if (turningOff) return;
@@ -411,7 +412,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
           <h1 className="text-2xl font-bold leading-tight truncate">{room.name}</h1>
           <p className="text-sm text-muted-foreground">
             {activeCount > 0
-              ? `${activeCount} von ${toggleableCount} aktiv`
+              ? `${activeCount} von ${listedCount} aktiv`
               : `${devices.length} Gerät${devices.length !== 1 ? 'e' : ''}`}
           </p>
         </div>
@@ -419,10 +420,10 @@ export default function RoomClient({ room, initialDevices }: Props) {
         {/* Alles aus */}
         <button
           onClick={turnRoomOff}
-          disabled={activeCount === 0 || turningOff}
+          disabled={switchableOn === 0 || turningOff}
           className={cn(
             'cursor-pointer h-14 w-14 rounded-full flex items-center justify-center shrink-0 transition-all active:scale-90',
-            activeCount > 0
+            switchableOn > 0
               ? 'bg-destructive/10 text-destructive hover:bg-destructive/20'
               : 'bg-muted text-muted-foreground opacity-40 cursor-not-allowed'
           )}

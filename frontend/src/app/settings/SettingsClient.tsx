@@ -1646,8 +1646,8 @@ function KioskSection() {
     <div className="rounded-2xl border bg-card px-4 py-3 space-y-3">
         <p className="text-xs text-muted-foreground">
           Vollbild-Modus für Wandbildschirme. Versteckt die Navigationsleiste und
-          zeigt stattdessen eine Room-Schnellleiste unten. Nach 5 Min. Inaktivität
-          erscheint ein Bildschirmschoner mit großer Uhr.
+          zeigt stattdessen eine Room-Schnellleiste unten. Dunkler Bildschirm und
+          Sperre laufen über die PIN-Einstellungen.
         </p>
         <div className="flex items-center justify-between">
           <div>

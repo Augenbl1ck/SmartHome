@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { api, Device, DeviceType, Room, Scene, type CalendarEventsResponse, type EnergyOverview, type TransitBoardResponse, type WeatherResponse } from '@/lib/api';
-import { isToggleable } from '@/lib/devices';
+import { countsAsActive } from '@/lib/devices';
 import { DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { getEcho } from '@/lib/echo';
 import { cn } from '@/lib/utils';
@@ -92,7 +92,7 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes, in
   }, [refresh]);
 
   const list          = devices;
-  const activeDevices = list.filter(d => d.status === 'on' && isToggleable(d.type as DeviceType)).length;
+  const activeDevices = list.filter(d => d.status === 'on' && countsAsActive(d.type as DeviceType)).length;
 
   const layout = useDashboardLayout();
 
@@ -230,7 +230,7 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes, in
           <div key="rooms" className="grid grid-cols-2 gap-4 sm:grid-cols-3">
             {orderedRooms.map(room => {
               const roomDevices = list.filter(d => d.room_id === room.id);
-              const active      = roomDevices.filter(d => d.status === 'on' && isToggleable(d.type as DeviceType)).length;
+              const active      = roomDevices.filter(d => d.status === 'on' && countsAsActive(d.type as DeviceType)).length;
               return (
                 <Link key={room.id} href={`/rooms/${room.id}`}>
                   <div className={cn(
