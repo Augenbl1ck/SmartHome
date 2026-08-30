@@ -498,6 +498,8 @@ function describeActionItem(
   switch (action.type) {
     case 'block_command':
       return `"${dev(action.device_id)}" nicht ${statusActionLabel(action.status)}`;
+    case 'set_device_status':
+      return `"${dev(action.device_id)}" ${statusActionLabel(action.status)}`;
     case 'toggle_device':
       return `"${dev(action.device_id)}" umschalten`;
     case 'set_room_devices':
@@ -1089,9 +1091,9 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
       </>)}
 
       {/* ── Automations-Dialog ─────────────────────────────────────────── */}
-      <Dialog open={dialog.open} onOpenChange={(open) =>
-        !open && setDialog({ open: false, form: emptyForm(), saving: false, error: '' })
-      }>
+      <Dialog open={dialog.open} onOpenChange={(open) => {
+        if (!open) setDialog((s) => ({ ...s, open: false }));
+      }}>
         <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>

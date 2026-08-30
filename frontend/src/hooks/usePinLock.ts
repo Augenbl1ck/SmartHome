@@ -174,6 +174,8 @@ export function usePinLock(): PinLockState {
 
   const lastActivity = useRef<number>(Date.now());
   const intervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Server-Settings kommen asynchron — nach erfolgreichem Unlock nicht wieder sperren.
+  const unlockedThisSession = useRef(false);
 
   // Server → localStorage (überlebt Reboot / anderen Browser-Origin)
   useEffect(() => {
@@ -209,7 +211,9 @@ export function usePinLock(): PinLockState {
         setLockTimeoutS(s.lock_timeout);
         save(KEYS.screenTimeout, s.screen_timeout);
         setScreenTimeoutS(s.screen_timeout);
-        if (s.pin_enabled && s.pin_hash) setLocked(true);
+        if (s.pin_enabled && s.pin_hash && !unlockedThisSession.current) {
+          setLocked(true);
+        }
       } catch {
         /* API down — weiter mit localStorage */
       }
@@ -267,6 +271,7 @@ export function usePinLock(): PinLockState {
     if (!stored) return true;
     const hash = await sha256(pin);
     if (hash === stored) {
+      unlockedThisSession.current = true;
       setLocked(false);
       setScreenOff(false);
       return true;

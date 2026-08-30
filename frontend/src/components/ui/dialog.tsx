@@ -74,8 +74,20 @@ function shouldBlockOutsideDismiss(event: unknown): boolean {
     detail?: { originalEvent?: Event }
   }
   const originalTarget = e.detail?.originalEvent?.target ?? e.target ?? null
-  if (originalTarget instanceof Element && originalTarget.closest("[data-vk-root]")) {
-    return true
+  if (originalTarget instanceof Element) {
+    if (originalTarget.closest("[data-vk-root]")) {
+      return true
+    }
+    // Select/Popover hängen im Portal außerhalb des Dialogs — Klick darauf
+    // darf den Dialog nicht schließen (sonst Formular weg, alles nochmal eingeben).
+    if (
+      originalTarget.closest("[data-slot='select-content']") ||
+      originalTarget.closest("[data-slot='select-item']") ||
+      originalTarget.closest("[data-radix-select-content]") ||
+      originalTarget.closest("[data-radix-popper-content-wrapper]")
+    ) {
+      return true
+    }
   }
   return false
 }

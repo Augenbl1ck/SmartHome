@@ -4,7 +4,8 @@
  * Client-seitiger Automation-Runner (Fallback).
  * Primär: Backend AutomationEngine.
  *
- * Conditions-only (trigger.type === 'conditions'): Rising Edge + Minuten-Poll.
+ * Conditions-only (trigger.type === 'conditions') und Sperren (interlock)
+ * laufen nur im Backend — sonst feuern beide Systeme dieselbe Automation.
  * Legacy-Trigger: time / weekday_time / device_status / Sensor-Thresholds.
  */
 
@@ -15,7 +16,6 @@ import { encodeCapStatus } from '@/lib/thermostat-capabilities';
 import { commandBlocked, isInterlockAutomation } from '@/lib/devices';
 
 const fired = new Map<number, string>();
-const conditionsMet = new Map<number, boolean>();
 
 function nowKey(): string {
   const now = new Date();
@@ -311,23 +311,6 @@ async function executeAction(action: Record<string, unknown>, devices: Device[])
   }
 }
 
-function shouldFireConditionsOnly(automation: Automation, devices: Device[]): boolean {
-  const items = automation.conditions?.items ?? [];
-  if (items.length === 0) return false;
-
-  const pass = conditionsPass(automation.conditions, devices);
-  const wasMet = conditionsMet.get(automation.id) ?? false;
-
-  if (!pass) {
-    conditionsMet.set(automation.id, false);
-    return false;
-  }
-  if (wasMet) return false;
-
-  conditionsMet.set(automation.id, true);
-  return true;
-}
-
 async function refreshSunCache() {
   try {
     const w = await api.getWeather();
@@ -361,14 +344,14 @@ async function runAutomations() {
       const action = automation.action as Record<string, unknown>;
 
       if (trigger.type === 'interlock' || isInterlockAutomation(automation)) continue;
+      // Conditions-only: Backend AutomationEngine (Rising Edge). Hier nicht nochmal.
+      if (trigger.type === 'conditions') continue;
 
       if (fired.get(automation.id) === key) continue;
 
       let shouldFire = false;
 
-      if (trigger.type === 'conditions') {
-        shouldFire = shouldFireConditionsOnly(automation, devices);
-      } else if (trigger.type === 'time' || trigger.type === 'weekday_time') {
+      if (trigger.type === 'time' || trigger.type === 'weekday_time') {
         shouldFire = checkTimeTrigger(trigger);
         if (shouldFire && !conditionsPass(automation.conditions, devices)) shouldFire = false;
       } else if (trigger.type === 'device_status') {
