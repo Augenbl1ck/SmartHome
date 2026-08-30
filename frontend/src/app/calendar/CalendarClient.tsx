@@ -1,15 +1,13 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api, type CalendarEvent, type CalendarEventsResponse } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import CalendarWeekBars from '@/components/CalendarWeekBars';
+import CalendarMonthGrid from '@/components/CalendarMonthGrid';
 import {
-  assignSlots,
-  buildMonthCells,
   eventColor,
   eventKey,
   eventsByDayMap,
@@ -17,9 +15,6 @@ import {
   isoDate,
   startOfLocalDay,
 } from '@/lib/calendar-layout';
-
-const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'] as const;
-const MONTH_SLOTS = 3;
 
 interface Props {
   initialYear: number;
@@ -69,15 +64,7 @@ export default function CalendarClient({ initialYear, initialMonth, initial }: P
     void loadMonth(d.getFullYear(), d.getMonth());
   };
 
-  const cells = useMemo(() => buildMonthCells(year, month), [year, month]);
-  const weeks = useMemo(() => {
-    const rows: Date[][] = [];
-    for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
-    return rows;
-  }, [cells]);
-
   const eventsByDay = useMemo(() => eventsByDayMap(events), [events]);
-  const slots = useMemo(() => assignSlots(events), [events]);
   const selectedEvents = eventsByDay.get(isoDate(selected)) ?? [];
   const monthTitle = new Date(year, month, 1).toLocaleDateString('de-DE', {
     month: 'long',
@@ -124,28 +111,14 @@ export default function CalendarClient({ initialYear, initialMonth, initial }: P
       )}
 
       <div className={cn('rounded-2xl border bg-card p-2 sm:p-3 overflow-hidden', loading && 'opacity-60')}>
-        <div className="grid grid-cols-7 mb-0.5">
-          {WEEKDAYS.map(d => (
-            <div key={d} className="text-center text-[11px] font-medium text-muted-foreground py-1">
-              {d}
-            </div>
-          ))}
-        </div>
-        <div className="border-b border-border/50">
-          {weeks.map((week) => (
-            <CalendarWeekBars
-              key={isoDate(week[0])}
-              weekStart={week[0]}
-              events={events}
-              slots={slots}
-              maxSlots={MONTH_SLOTS}
-              selected={selected}
-              today={today}
-              month={month}
-              onSelectDay={setSelected}
-            />
-          ))}
-        </div>
+        <CalendarMonthGrid
+          year={year}
+          month={month}
+          events={events}
+          today={today}
+          selected={selected}
+          onSelectDay={setSelected}
+        />
       </div>
 
       <div className="rounded-2xl border bg-card p-4 sm:p-5">
