@@ -1,6 +1,6 @@
 import { serverApi } from '@/lib/api-server';
 import DashboardLive from '@/components/DashboardLive';
-import type { CalendarEventsResponse, EnergyOverview, TransitBoardResponse, WeatherResponse } from '@/lib/api';
+import { emptyEnergyOverview, type CalendarEventsResponse, type TransitBoardResponse, type WeatherResponse } from '@/lib/api';
 
 export default async function DashboardPage() {
   const [rooms, devices, scenes, calendar, weather, transit, energy] = await Promise.all([
@@ -23,18 +23,7 @@ export default async function DashboardPage() {
       connections: [],
       error: 'Bahn nicht erreichbar',
     })),
-    serverApi.getEnergy().catch((): EnergyOverview => ({
-      configured: false,
-      price_per_kwh: 0.3,
-      live_power_w: 0,
-      today_kwh: 0,
-      week_kwh: 0,
-      today_cost: 0,
-      week_cost: 0,
-      devices: [],
-      by_device_today: [],
-      error: 'Energie nicht erreichbar',
-    })),
+    serverApi.getEnergy().catch(() => emptyEnergyOverview('Energie nicht erreichbar')),
   ]);
 
   return (

@@ -19,7 +19,7 @@ class EnergyController extends Controller
     public function history(Request $request): JsonResponse
     {
         $range = $request->query('range', 'day');
-        if (!in_array($range, ['day', 'week'], true)) {
+        if (!in_array($range, ['day', 'week', 'month', 'year'], true)) {
             $range = 'day';
         }
 

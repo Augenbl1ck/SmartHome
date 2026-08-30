@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Zap } from 'lucide-react';
-import { api, type EnergyOverview } from '@/lib/api';
+import { api, emptyEnergyOverview, type EnergyOverview } from '@/lib/api';
 
 interface Props {
   initial?: EnergyOverview | null;
@@ -28,18 +28,9 @@ export default function EnergyWidget({ initial = null }: Props) {
       const res = await api.getEnergy();
       setData(res);
     } catch (e) {
-      setData(prev => prev ?? {
-        configured: false,
-        price_per_kwh: 0.3,
-        live_power_w: 0,
-        today_kwh: 0,
-        week_kwh: 0,
-        today_cost: 0,
-        week_cost: 0,
-        devices: [],
-        by_device_today: [],
-        error: e instanceof Error ? e.message : 'Energie nicht ladbar',
-      });
+      setData(prev => prev ?? emptyEnergyOverview(
+        e instanceof Error ? e.message : 'Energie nicht ladbar',
+      ));
     } finally {
       setLoading(false);
     }
@@ -99,14 +90,19 @@ export default function EnergyWidget({ initial = null }: Props) {
         <div>
           <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Heute</p>
           <p className="text-xl font-bold tabular-nums leading-tight">
-            {formatKwh(data?.today_kwh ?? 0)}
-            <span className="text-sm font-medium text-muted-foreground ml-0.5">kWh</span>
+            {formatEuro(data?.today_cost ?? 0)}
+          </p>
+          <p className="text-xs text-muted-foreground tabular-nums mt-0.5">
+            {formatKwh(data?.today_kwh ?? 0)} kWh
           </p>
         </div>
         <div>
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Kosten</p>
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Monat</p>
           <p className="text-xl font-bold tabular-nums leading-tight">
-            {formatEuro(data?.today_cost ?? 0)}
+            {formatEuro(data?.month_cost ?? 0)}
+          </p>
+          <p className="text-xs text-muted-foreground tabular-nums mt-0.5">
+            {formatKwh(data?.month_kwh ?? 0)} kWh
           </p>
         </div>
       </div>

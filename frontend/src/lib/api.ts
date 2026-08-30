@@ -122,7 +122,7 @@ export const api = {
 
   // Energie
   getEnergy: () => request<EnergyOverview>('/energy'),
-  getEnergyHistory: (range: 'day' | 'week' = 'day') =>
+  getEnergyHistory: (range: EnergyPeriod = 'day') =>
     request<EnergyHistoryResponse>(`/energy/history?range=${range}`),
 
   // Spotify
@@ -255,18 +255,70 @@ export interface EnergyDeviceShare {
   share: number;
 }
 
+export type EnergyPeriod = 'day' | 'week' | 'month' | 'year';
+
+export interface EnergyByDevice {
+  day: EnergyDeviceShare[];
+  week: EnergyDeviceShare[];
+  month: EnergyDeviceShare[];
+  year: EnergyDeviceShare[];
+}
+
 export interface EnergyOverview {
   configured: boolean;
   price_per_kwh: number;
   live_power_w: number;
   today_kwh: number;
   week_kwh: number;
+  month_kwh: number;
+  year_kwh: number;
   today_cost: number;
   week_cost: number;
+  month_cost: number;
+  year_cost: number;
+  prev_today_kwh?: number;
+  prev_week_kwh?: number;
+  prev_month_kwh?: number;
+  prev_year_kwh?: number;
+  prev_today_cost?: number;
+  prev_week_cost?: number;
+  prev_month_cost?: number;
+  prev_year_cost?: number;
   devices: EnergyDeviceRow[];
+  by_device?: EnergyByDevice;
   by_device_today: EnergyDeviceShare[];
   sampled_at?: string | null;
+  data_since?: string | null;
   error?: string;
+}
+
+export function emptyEnergyOverview(error?: string): EnergyOverview {
+  return {
+    configured: false,
+    price_per_kwh: 0.3,
+    live_power_w: 0,
+    today_kwh: 0,
+    week_kwh: 0,
+    month_kwh: 0,
+    year_kwh: 0,
+    today_cost: 0,
+    week_cost: 0,
+    month_cost: 0,
+    year_cost: 0,
+    prev_today_kwh: 0,
+    prev_week_kwh: 0,
+    prev_month_kwh: 0,
+    prev_year_kwh: 0,
+    prev_today_cost: 0,
+    prev_week_cost: 0,
+    prev_month_cost: 0,
+    prev_year_cost: 0,
+    devices: [],
+    by_device: { day: [], week: [], month: [], year: [] },
+    by_device_today: [],
+    data_since: null,
+    error,
+  };
 }
 
 export interface EnergyHistoryBucket {
@@ -278,9 +330,10 @@ export interface EnergyHistoryBucket {
 }
 
 export interface EnergyHistoryResponse {
-  range: 'day' | 'week';
+  range: EnergyPeriod;
   buckets: EnergyHistoryBucket[];
   price_per_kwh: number;
+  data_since?: string | null;
 }
 
 export interface TransitStopRef {

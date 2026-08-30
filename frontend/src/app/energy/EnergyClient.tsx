@@ -1,10 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Zap } from 'lucide-react';
-import { api, type EnergyHistoryResponse, type EnergyOverview } from '@/lib/api';
+import {
+  api,
+  type EnergyHistoryResponse,
+  type EnergyOverview,
+  type EnergyPeriod,
+} from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -12,6 +17,20 @@ interface Props {
   initial: EnergyOverview;
   initialHistory: EnergyHistoryResponse;
 }
+
+const PERIODS: { id: EnergyPeriod; label: string }[] = [
+  { id: 'day', label: 'Heute' },
+  { id: 'week', label: 'Woche' },
+  { id: 'month', label: 'Monat' },
+  { id: 'year', label: 'Jahr' },
+];
+
+const PREV_LABEL: Record<EnergyPeriod, string> = {
+  day: 'vs. gestern',
+  week: 'vs. Vorwoche',
+  month: 'vs. Vormonat',
+  year: 'vs. Vorjahr',
+};
 
 function formatKwh(v: number): string {
   if (v < 0.01) return '0';
@@ -23,21 +42,106 @@ function formatEuro(v: number): string {
   return v.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
 }
 
-function BarChart({ buckets, valueKey }: { buckets: EnergyHistoryResponse['buckets']; valueKey: 'kwh' | 'avg_w' }) {
+function periodStats(data: EnergyOverview, period: EnergyPeriod) {
+  switch (period) {
+    case 'week':
+      return {
+        kwh: data.week_kwh ?? 0,
+        cost: data.week_cost ?? 0,
+        prevKwh: data.prev_week_kwh ?? 0,
+        prevCost: data.prev_week_cost ?? 0,
+      };
+    case 'month':
+      return {
+        kwh: data.month_kwh ?? 0,
+        cost: data.month_cost ?? 0,
+        prevKwh: data.prev_month_kwh ?? 0,
+        prevCost: data.prev_month_cost ?? 0,
+      };
+    case 'year':
+      return {
+        kwh: data.year_kwh ?? 0,
+        cost: data.year_cost ?? 0,
+        prevKwh: data.prev_year_kwh ?? 0,
+        prevCost: data.prev_year_cost ?? 0,
+      };
+    default:
+      return {
+        kwh: data.today_kwh ?? 0,
+        cost: data.today_cost ?? 0,
+        prevKwh: data.prev_today_kwh ?? 0,
+        prevCost: data.prev_today_cost ?? 0,
+      };
+  }
+}
+
+function formatDelta(kwh: number, prevKwh: number, cost: number, prevCost: number, period: EnergyPeriod): string | null {
+  if (prevKwh <= 0 && prevCost <= 0) return null;
+  const dKwh = kwh - prevKwh;
+  const dCost = cost - prevCost;
+  const pct = prevKwh > 0 ? (dKwh / prevKwh) * 100 : null;
+  const pctStr = pct === null
+    ? ''
+    : `${pct > 0.5 ? '+' : ''}${pct.toFixed(0)} %`;
+  const costStr = `${dCost > 0.004 ? '+' : ''}${formatEuro(dCost)}`;
+  const parts = [pctStr, costStr].filter(Boolean);
+  return `${PREV_LABEL[period]}: ${parts.join(' · ')}`;
+}
+
+function formatDataSince(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return iso;
+  return new Date(y, m - 1, d).toLocaleDateString('de-DE', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function showSinceCaption(dataSince: string | null | undefined, period: EnergyPeriod): boolean {
+  if (!dataSince) return false;
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  let start: Date;
+  if (period === 'year') {
+    start = new Date(now.getFullYear(), 0, 1);
+  } else if (period === 'month') {
+    start = new Date(now.getFullYear(), now.getMonth(), 1);
+  } else if (period === 'week') {
+    start = new Date(now);
+    start.setDate(start.getDate() - 6);
+  } else {
+    return false;
+  }
+  const [y, m, d] = dataSince.split('-').map(Number);
+  if (!y || !m || !d) return false;
+  return new Date(y, m - 1, d) > start;
+}
+
+function BarChart({
+  buckets,
+  valueKey,
+}: {
+  buckets: EnergyHistoryResponse['buckets'];
+  valueKey: 'kwh' | 'cost';
+}) {
   const values = buckets.map(b => b[valueKey]);
-  const max = Math.max(...values, 0.001);
+  const max = Math.max(...values, valueKey === 'cost' ? 0.01 : 0.001);
 
   return (
     <div className="flex items-end gap-1 h-36 w-full">
       {buckets.map((b, i) => {
         const v = b[valueKey];
         const h = Math.max(2, (v / max) * 100);
+        const tip = valueKey === 'cost'
+          ? `${b.label}: ${formatEuro(v)}`
+          : `${b.label}: ${formatKwh(v)} kWh`;
         return (
           <div key={`${b.start}-${i}`} className="flex-1 min-w-0 flex flex-col items-center gap-1 h-full justify-end">
             <div
               className="w-full rounded-t-md bg-amber-500/80 dark:bg-amber-400/70"
               style={{ height: `${h}%` }}
-              title={`${b.label}: ${valueKey === 'kwh' ? `${formatKwh(v)} kWh` : `${Math.round(v)} W`}`}
+              title={tip}
             />
             <span className="text-[9px] text-muted-foreground truncate w-full text-center leading-none">
               {b.label.replace(/\s.*/, '')}
@@ -53,19 +157,20 @@ export default function EnergyClient({ initial, initialHistory }: Props) {
   const router = useRouter();
   const [data, setData] = useState(initial);
   const [history, setHistory] = useState(initialHistory);
-  const [range, setRange] = useState<'day' | 'week'>(initialHistory.range ?? 'day');
+  const [period, setPeriod] = useState<EnergyPeriod>(initialHistory.range ?? 'day');
+  const [chartUnit, setChartUnit] = useState<'kwh' | 'cost'>('kwh');
   const [loadingHist, setLoadingHist] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
       const [ov, hist] = await Promise.all([
         api.getEnergy(),
-        api.getEnergyHistory(range),
+        api.getEnergyHistory(period),
       ]);
       setData(ov);
       setHistory(hist);
     } catch { /* */ }
-  }, [range]);
+  }, [period]);
 
   useEffect(() => {
     void refresh();
@@ -76,12 +181,23 @@ export default function EnergyClient({ initial, initialHistory }: Props) {
   useEffect(() => {
     let cancelled = false;
     setLoadingHist(true);
-    api.getEnergyHistory(range)
+    api.getEnergyHistory(period)
       .then(h => { if (!cancelled) setHistory(h); })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoadingHist(false); });
     return () => { cancelled = true; };
-  }, [range]);
+  }, [period]);
+
+  const stats = periodStats(data, period);
+  const delta = formatDelta(stats.kwh, stats.prevKwh, stats.cost, stats.prevCost, period);
+  const byDevice = data.by_device?.[period] ?? (period === 'day' ? (data.by_device_today ?? []) : []);
+  const dataSince = data.data_since ?? history.data_since ?? null;
+  const sinceCaption = useMemo(
+    () => (showSinceCaption(dataSince, period) && dataSince
+      ? `Daten seit ${formatDataSince(dataSince)}`
+      : null),
+    [dataSince, period],
+  );
 
   return (
     <div className="max-w-3xl mx-auto flex flex-col gap-4 animate-page-in">
@@ -103,6 +219,24 @@ export default function EnergyClient({ initial, initialHistory }: Props) {
         <Zap className="h-6 w-6 text-amber-500 shrink-0" />
       </div>
 
+      <div className="grid grid-cols-4 gap-1 rounded-2xl border bg-card p-1">
+        {PERIODS.map(p => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => setPeriod(p.id)}
+            className={cn(
+              'h-9 rounded-xl text-sm font-medium transition-colors',
+              period === p.id
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+            )}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
       {!data.configured && (
         <div className="rounded-2xl border bg-card p-5 text-muted-foreground">
           <p className="text-sm font-medium">Noch keine Energiedaten</p>
@@ -112,29 +246,42 @@ export default function EnergyClient({ initial, initialHistory }: Props) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { label: 'Live', value: `${Math.round(data.live_power_w)} W` },
-          { label: 'Heute', value: `${formatKwh(data.today_kwh)} kWh` },
-          { label: 'Kosten heute', value: formatEuro(data.today_cost) },
-          { label: 'Woche', value: `${formatKwh(data.week_kwh)} kWh` },
-        ].map(c => (
-          <div key={c.label} className="rounded-2xl border bg-card p-4">
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{c.label}</p>
-            <p className="text-lg font-bold tabular-nums mt-1">{c.value}</p>
-          </div>
-        ))}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-2xl border bg-card p-4">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Live</p>
+          <p className="text-lg font-bold tabular-nums mt-1">
+            {Math.round(data.live_power_w)} W
+          </p>
+        </div>
+        <div className="rounded-2xl border bg-card p-4">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Verbrauch</p>
+          <p className="text-lg font-bold tabular-nums mt-1">
+            {formatKwh(stats.kwh)} kWh
+          </p>
+        </div>
+        <div className="rounded-2xl border bg-card p-4">
+          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Kosten</p>
+          <p className="text-lg font-bold tabular-nums mt-1">
+            {formatEuro(stats.cost)}
+          </p>
+        </div>
       </div>
+      {delta || sinceCaption ? (
+        <div className="-mt-2 px-1 space-y-0.5">
+          {delta && <p className="text-xs text-muted-foreground">{delta}</p>}
+          {sinceCaption && <p className="text-xs text-muted-foreground">{sinceCaption}</p>}
+        </div>
+      ) : null}
 
       <div className="rounded-2xl border bg-card p-4 space-y-3">
         <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold flex-1">Verbrauch</p>
+          <p className="text-sm font-semibold flex-1">Verlauf</p>
           <div className="flex gap-1">
-            <Button size="sm" variant={range === 'day' ? 'default' : 'outline'} onClick={() => setRange('day')}>
-              Tag
+            <Button size="sm" variant={chartUnit === 'kwh' ? 'default' : 'outline'} onClick={() => setChartUnit('kwh')}>
+              kWh
             </Button>
-            <Button size="sm" variant={range === 'week' ? 'default' : 'outline'} onClick={() => setRange('week')}>
-              Woche
+            <Button size="sm" variant={chartUnit === 'cost' ? 'default' : 'outline'} onClick={() => setChartUnit('cost')}>
+              €
             </Button>
           </div>
         </div>
@@ -145,17 +292,17 @@ export default function EnergyClient({ initial, initialHistory }: Props) {
             Noch keine Samples — Sampling läuft alle 5 Minuten.
           </p>
         ) : (
-          <BarChart buckets={history.buckets} valueKey="kwh" />
+          <BarChart buckets={history.buckets} valueKey={chartUnit} />
         )}
       </div>
 
-      {data.by_device_today.length > 0 && (
+      {byDevice.length > 0 && (
         <div className="rounded-2xl border bg-card overflow-hidden">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-4 py-3">
-            Heute nach Gerät
+            Nach Gerät
           </p>
           <ul className="divide-y">
-            {data.by_device_today.map(d => (
+            {byDevice.map(d => (
               <li key={d.id} className="px-4 py-3 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">{d.name}</p>

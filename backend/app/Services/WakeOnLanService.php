@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Log;
  */
 class WakeOnLanService
 {
-    public function sendMagicPacket(string $mac, ?string $broadcast = null): bool
+    public function sendMagicPacket(string $mac, ?string $broadcast = null, ?string $ip = null): bool
     {
         $normalized = $this->normalizeMac($mac);
         if ($normalized === null) {
@@ -19,37 +19,22 @@ class WakeOnLanService
             return false;
         }
 
-        $macBytes = hex2bin(str_replace(':', '', $normalized));
-        if ($macBytes === false || strlen($macBytes) !== 6) {
-            return false;
+        $targets = $this->broadcastTargets($broadcast, $ip);
+
+        // Das Perl-Tool `wakeonlan` auf dem Pi ist der nachweislich funktionierende Weg.
+        // PHP-UDP kann „Erfolg“ melden, ohne dass das Paket im LAN als Broadcast ankommt
+        // (kein SO_BROADCAST am Stream, falsches Interface) — daher CLI zuerst.
+        $cliOk = $this->sendViaWakeonlanCli($normalized, $targets);
+        $phpOk = $this->sendViaPhpUdp($normalized, $targets);
+
+        if ($cliOk || $phpOk) {
+            Log::info("[WakeOnLan] Magic Packet an {$normalized} (" . implode(', ', $targets) . ') cli=' . ($cliOk ? '1' : '0') . ' php=' . ($phpOk ? '1' : '0'));
+            return true;
         }
 
-        $packet = str_repeat("\xFF", 6) . str_repeat($macBytes, 16);
-        $broadcast = $broadcast ?: '255.255.255.255';
-        $sent = false;
+        Log::warning("[WakeOnLan] Magic Packet fehlgeschlagen für {$normalized}");
 
-        foreach ([9, 7] as $port) {
-            if ($this->sendUdp($packet, $broadcast, $port)) {
-                $sent = true;
-            }
-        }
-
-        if (! $sent) {
-            $cmd = 'wakeonlan ' . escapeshellarg($normalized) . ' 2>/dev/null';
-            exec($cmd, $output, $code);
-            $sent = $code === 0;
-            if ($sent) {
-                Log::info("[WakeOnLan] Fallback wakeonlan für {$normalized}");
-            }
-        }
-
-        if ($sent) {
-            Log::info("[WakeOnLan] Magic Packet an {$normalized} ({$broadcast})");
-        } else {
-            Log::warning("[WakeOnLan] Magic Packet fehlgeschlagen für {$normalized}");
-        }
-
-        return $sent;
+        return false;
     }
 
     public function wakeDevice(Device $device): bool
@@ -63,7 +48,7 @@ class WakeOnLanService
         $broadcast = $device->attributes['broadcast'] ?? null;
         $broadcast = is_string($broadcast) && $broadcast !== '' ? $broadcast : null;
 
-        return $this->sendMagicPacket($mac, $broadcast);
+        return $this->sendMagicPacket($mac, $broadcast, $device->wolIp());
     }
 
     /**
@@ -208,27 +193,144 @@ class WakeOnLanService
         return implode(':', str_split($hex, 2));
     }
 
-    private function sendUdp(string $packet, string $host, int $port): bool
+    /**
+     * @return list<string>
+     */
+    private function broadcastTargets(?string $broadcast, ?string $ip): array
     {
-        if (function_exists('socket_create')) {
-            $sock = @socket_create(AF_INET, SOCK_DGRAM, SOL_UDP);
-            if ($sock !== false) {
-                @socket_set_option($sock, SOL_SOCKET, SO_BROADCAST, 1);
-                $ok = @socket_sendto($sock, $packet, strlen($packet), 0, $host, $port);
-                socket_close($sock);
-                if ($ok !== false && $ok > 0) {
-                    return true;
+        $targets = [];
+        if (is_string($broadcast) && filter_var($broadcast, FILTER_VALIDATE_IP)) {
+            $targets[] = $broadcast;
+        }
+        $directed = $this->directedBroadcast($ip);
+        if ($directed !== null) {
+            $targets[] = $directed;
+        }
+        $targets[] = '255.255.255.255';
+
+        return array_values(array_unique($targets));
+    }
+
+    private function directedBroadcast(?string $ip): ?string
+    {
+        if ($ip === null || filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
+            return null;
+        }
+        $parts = explode('.', $ip);
+        if (count($parts) !== 4) {
+            return null;
+        }
+        $parts[3] = '255';
+
+        return implode('.', $parts);
+    }
+
+    /**
+     * @param  list<string>  $targets
+     */
+    private function sendViaWakeonlanCli(string $mac, array $targets): bool
+    {
+        $bin = $this->wakeonlanBinary();
+        if ($bin === null) {
+            Log::info('[WakeOnLan] wakeonlan nicht gefunden — nur PHP-UDP');
+
+            return false;
+        }
+
+        $ok = false;
+        foreach ($targets as $target) {
+            $cmd = escapeshellcmd($bin) . ' -i ' . escapeshellarg($target) . ' ' . escapeshellarg($mac) . ' 2>&1';
+            $output = [];
+            $code = 1;
+            exec($cmd, $output, $code);
+            $out = trim(implode("\n", $output));
+            if ($code === 0) {
+                $ok = true;
+                Log::info("[WakeOnLan] CLI {$bin} -i {$target} {$mac}" . ($out !== '' ? ": {$out}" : ''));
+            } else {
+                Log::warning("[WakeOnLan] CLI fehlgeschlagen ({$target}, code {$code}): {$out}");
+            }
+        }
+
+        return $ok;
+    }
+
+    private function wakeonlanBinary(): ?string
+    {
+        foreach (['/usr/bin/wakeonlan', '/usr/local/bin/wakeonlan', '/bin/wakeonlan'] as $path) {
+            if (is_file($path)) {
+                return $path;
+            }
+        }
+
+        $lines = [];
+        exec('command -v wakeonlan 2>/dev/null', $lines, $code);
+        $found = trim($lines[0] ?? '');
+        if ($code === 0 && $found !== '') {
+            return $found;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<string>  $targets
+     */
+    private function sendViaPhpUdp(string $mac, array $targets): bool
+    {
+        $macBytes = hex2bin(str_replace(':', '', $mac));
+        if ($macBytes === false || strlen($macBytes) !== 6) {
+            return false;
+        }
+
+        $packet = str_repeat("\xFF", 6) . str_repeat($macBytes, 16);
+        $sent = false;
+        foreach ($targets as $host) {
+            foreach ([9, 7] as $port) {
+                for ($i = 0; $i < 2; $i++) {
+                    if ($this->sendUdp($packet, $host, $port)) {
+                        $sent = true;
+                    }
                 }
             }
         }
 
+        return $sent;
+    }
+
+    private function sendUdp(string $packet, string $host, int $port): bool
+    {
+        if (! function_exists('socket_create')) {
+            return $this->sendUdpStream($packet, $host, $port);
+        }
+
+        $sock = @socket_create(AF_INET, SOCK_DGRAM, SOL_UDP);
+        if ($sock === false) {
+            return $this->sendUdpStream($packet, $host, $port);
+        }
+
+        @socket_set_option($sock, SOL_SOCKET, SO_BROADCAST, 1);
+        @socket_set_option($sock, SOL_SOCKET, SO_REUSEADDR, 1);
+        $ok = @socket_sendto($sock, $packet, strlen($packet), 0, $host, $port);
+        socket_close($sock);
+
+        return $ok !== false && $ok > 0;
+    }
+
+    private function sendUdpStream(string $packet, string $host, int $port): bool
+    {
+        $ctx = stream_context_create([
+            'socket' => ['so_broadcast' => true],
+        ]);
         $errno = 0;
         $errstr = '';
         $fp = @stream_socket_client(
             "udp://{$host}:{$port}",
             $errno,
             $errstr,
-            2
+            2,
+            STREAM_CLIENT_CONNECT,
+            $ctx
         );
         if ($fp === false) {
             return false;

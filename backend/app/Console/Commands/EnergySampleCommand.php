@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Device;
 use App\Models\EnergySample;
+use App\Services\EnergyService;
 use Illuminate\Console\Command;
 
 class EnergySampleCommand extends Command
@@ -12,7 +13,7 @@ class EnergySampleCommand extends Command
 
     protected $description = 'Sample power_w / energy_wh from devices into energy_samples (every 5 min)';
 
-    public function handle(): int
+    public function handle(EnergyService $energy): int
     {
         $now = now();
         $count = 0;
@@ -40,7 +41,13 @@ class EnergySampleCommand extends Command
 
         EnergySample::where('recorded_at', '<', $now->copy()->subDays(90))->delete();
 
-        $this->info("Sampled {$count} device(s)");
+        if (!$energy->hasDailyRows()) {
+            $days = $energy->backfillDailyFromSamples();
+            $this->info("Sampled {$count} device(s); backfilled {$days} day(s)");
+        } else {
+            $energy->rollupRecentDays();
+            $this->info("Sampled {$count} device(s)");
+        }
 
         return self::SUCCESS;
     }

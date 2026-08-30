@@ -1,4 +1,4 @@
-import { Automation, AutomationLog, CalendarEventsResponse, Device, EnergyHistoryResponse, EnergyOverview, PanelSettings, Room, Scene, TransitBoardResponse, WeatherResponse } from './api';
+import { Automation, AutomationLog, CalendarEventsResponse, Device, EnergyHistoryResponse, EnergyOverview, EnergyPeriod, PanelSettings, Room, Scene, TransitBoardResponse, WeatherResponse } from './api';
 import { fetchWeatherData } from './weather-fetch';
 
 const API_BASE = process.env.API_URL ?? 'http://localhost:8000/api/v1';
@@ -56,6 +56,6 @@ export const serverApi = {
   },
   getTransitBoard: () => serverFetch<TransitBoardResponse>('/transit/board'),
   getEnergy: () => serverFetch<EnergyOverview>('/energy'),
-  getEnergyHistory: (range: 'day' | 'week' = 'day') =>
+  getEnergyHistory: (range: EnergyPeriod = 'day') =>
     serverFetch<EnergyHistoryResponse>(`/energy/history?range=${range}`),
 };
