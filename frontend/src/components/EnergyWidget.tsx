@@ -37,10 +37,10 @@ export default function EnergyWidget({ initial = null }: Props) {
   }, []);
 
   useEffect(() => {
-    void load();
+    if (!initial) void load();
     const t = setInterval(load, 60_000);
     return () => clearInterval(t);
-  }, [load]);
+  }, [load, initial]);
 
   if (loading && !data) {
     return (

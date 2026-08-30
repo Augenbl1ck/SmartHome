@@ -8,6 +8,7 @@ use App\Models\EnergySample;
 use App\Models\PanelSetting;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 class EnergyService
 {
@@ -19,6 +20,14 @@ class EnergyService
      * @return array<string, mixed>
      */
     public function overview(): array
+    {
+        return Cache::remember('energy_overview', 20, fn () => $this->computeOverview());
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function computeOverview(): array
     {
         $price = $this->pricePerKwh();
         $devices = $this->energyDevices();

@@ -3,6 +3,8 @@ import { serverApi } from '@/lib/api-server';
 import { fetchWeatherData } from '@/lib/weather-fetch';
 import type { WeatherResponse } from '@/lib/api';
 
+export const revalidate = 300;
+
 export async function GET() {
   try {
     const settings = await serverApi.getPanelSettings();

@@ -38,7 +38,10 @@ class CalendarService
 
         try {
             $ics = $this->fetchIcs($url);
-            $events = $this->parseEvents($ics, $from, $to);
+            $parsedKey = 'calendar_parsed_' . sha1($ics) . '_' . $from->toDateString() . '_' . $to->toDateString();
+            $events = Cache::remember($parsedKey, self::CACHE_TTL_SECONDS, function () use ($ics, $from, $to) {
+                return $this->parseEvents($ics, $from, $to);
+            });
 
             return ['events' => $events, 'configured' => true];
         } catch (\Throwable $e) {
@@ -64,7 +67,7 @@ class CalendarService
                 throw new RuntimeException('iCal-URL muss http(s) sein');
             }
 
-            $response = Http::timeout(20)
+            $response = Http::timeout(8)
                 ->withHeaders(['Accept' => 'text/calendar, text/plain, */*'])
                 ->get($url);
 

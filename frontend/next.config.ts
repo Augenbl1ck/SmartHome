@@ -3,9 +3,11 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactCompiler: false,
   experimental: {
-    // Router-Cache sofort invalidieren, damit Seiten immer frische Serverdaten zeigen
+    // Client-Router-Cache: 30s, damit Home/Settings nicht bei jedem Tab-Wechsel
+    // neu vom Server geholt werden. Gerätedaten kommen weiter per Echo.
     staleTimes: {
-      dynamic: 0,
+      dynamic: 30,
+      static: 180,
     },
   },
 };

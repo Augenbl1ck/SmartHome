@@ -20,17 +20,25 @@ interface Props {
   initialDevices: Device[];
   rooms: Room[];
   initialScenes: Scene[];
-  initialCalendar: CalendarEventsResponse;
-  initialWeather: WeatherResponse;
-  initialTransit: TransitBoardResponse;
-  initialEnergy: EnergyOverview;
+  initialCalendar?: CalendarEventsResponse | null;
+  initialWeather?: WeatherResponse | null;
+  initialTransit?: TransitBoardResponse | null;
+  initialEnergy?: EnergyOverview | null;
 }
 
 function getFormattedDate(): string {
   return new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
-export default function DashboardLive({ initialDevices, rooms, initialScenes, initialCalendar, initialWeather, initialTransit, initialEnergy }: Props) {
+export default function DashboardLive({
+  initialDevices,
+  rooms,
+  initialScenes,
+  initialCalendar = null,
+  initialWeather = null,
+  initialTransit = null,
+  initialEnergy = null,
+}: Props) {
   // Server-Daten sofort nutzen → keine Farbverzögerung beim ersten Render
   const [devices,  setDevices]  = useState<Device[]>(initialDevices);
   const [mounted,  setMounted]  = useState(false);
@@ -47,7 +55,6 @@ export default function DashboardLive({ initialDevices, rooms, initialScenes, in
 
   useEffect(() => {
     setMounted(true);
-    refresh();
 
     // Echtzeit-Uhr
     const updateTime = () =>

@@ -50,10 +50,20 @@ export default function CalendarWidget({ initial = null }: Props) {
   }, [year, month]);
 
   useEffect(() => {
-    void load();
+    if (!initial) void load();
     const t = setInterval(load, 15 * 60_000);
     return () => clearInterval(t);
-  }, [load]);
+  }, [load, initial]);
+
+  if (loading && events.length === 0) {
+    return (
+      <div className="rounded-2xl border bg-card p-5 animate-pulse space-y-3">
+        <div className="h-4 bg-muted rounded w-28" />
+        <div className="h-3 bg-muted rounded w-full" />
+        <div className="h-3 bg-muted rounded w-2/3" />
+      </div>
+    );
+  }
 
   if (!configured) {
     return (
@@ -63,16 +73,6 @@ export default function CalendarWidget({ initial = null }: Props) {
           <p className="text-sm font-medium">Kalender noch nicht eingerichtet</p>
           <p className="text-xs mt-0.5">Einstellungen → Widgets → iCal-URL</p>
         </div>
-      </div>
-    );
-  }
-
-  if (loading && events.length === 0) {
-    return (
-      <div className="rounded-2xl border bg-card p-5 animate-pulse space-y-3">
-        <div className="h-4 bg-muted rounded w-28" />
-        <div className="h-3 bg-muted rounded w-full" />
-        <div className="h-3 bg-muted rounded w-2/3" />
       </div>
     );
   }

@@ -3,10 +3,12 @@ import { fetchWeatherData } from './weather-fetch';
 
 const API_BASE = process.env.API_URL ?? 'http://localhost:8000/api/v1';
 
-async function serverFetch<T>(path: string): Promise<T> {
+async function serverFetch<T>(path: string, revalidate?: number): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { Accept: 'application/json' },
-    cache: 'no-store',
+    ...(revalidate != null
+      ? { next: { revalidate } }
+      : { cache: 'no-store' }),
   });
   if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
   return res.json() as Promise<T>;
@@ -21,20 +23,20 @@ function isoDate(d: Date): string {
 }
 
 export const serverApi = {
-  getRooms: () => serverFetch<Room[]>('/rooms'),
+  getRooms: () => serverFetch<Room[]>('/rooms', 10),
   getDevices: (roomId?: number) =>
-    serverFetch<Device[]>(`/devices${roomId ? `?room_id=${roomId}` : ''}`),
-  getRoom: (id: number) => serverFetch<Room>(`/rooms/${id}`),
-  getAutomations: () => serverFetch<Automation[]>('/automations'),
-  getAutomationLogs: () => serverFetch<AutomationLog[]>('/automation-logs'),
-  getScenes: () => serverFetch<Scene[]>('/scenes'),
-  getPanelSettings: () => serverFetch<PanelSettings>('/panel-settings'),
+    serverFetch<Device[]>(`/devices${roomId ? `?room_id=${roomId}` : ''}`, 5),
+  getRoom: (id: number) => serverFetch<Room>(`/rooms/${id}`, 5),
+  getAutomations: () => serverFetch<Automation[]>('/automations', 10),
+  getAutomationLogs: () => serverFetch<AutomationLog[]>('/automation-logs', 15),
+  getScenes: () => serverFetch<Scene[]>('/scenes', 15),
+  getPanelSettings: () => serverFetch<PanelSettings>('/panel-settings', 30),
   getCalendarEvents: (params?: { from?: string; to?: string }) => {
     const q = new URLSearchParams();
     if (params?.from) q.set('from', params.from);
     if (params?.to) q.set('to', params.to);
     const qs = q.toString();
-    return serverFetch<CalendarEventsResponse>(`/calendar/events${qs ? `?${qs}` : ''}`);
+    return serverFetch<CalendarEventsResponse>(`/calendar/events${qs ? `?${qs}` : ''}`, 60);
   },
   getDashboardCalendar: () => {
     const now = new Date();
@@ -51,8 +53,8 @@ export const serverApi = {
     const settings = await serverApi.getPanelSettings();
     return fetchWeatherData(settings);
   },
-  getTransitBoard: () => serverFetch<TransitBoardResponse>('/transit/board'),
-  getEnergy: () => serverFetch<EnergyOverview>('/energy'),
+  getTransitBoard: () => serverFetch<TransitBoardResponse>('/transit/board', 30),
+  getEnergy: () => serverFetch<EnergyOverview>('/energy', 20),
   getEnergyHistory: (range: EnergyPeriod = 'day') =>
-    serverFetch<EnergyHistoryResponse>(`/energy/history?range=${range}`),
+    serverFetch<EnergyHistoryResponse>(`/energy/history?range=${range}`, 20),
 };

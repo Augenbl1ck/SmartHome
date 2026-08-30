@@ -64,6 +64,18 @@ export default function WeatherWidget({ initial = null, compact = false }: Props
     );
   }
 
+  if (!weather) {
+    return (
+      <div className="rounded-2xl border bg-card p-5 flex items-center gap-3 animate-pulse">
+        <Cloud className="h-8 w-8 text-muted-foreground/30 shrink-0" />
+        <div className="space-y-1.5 flex-1">
+          <div className="h-4 bg-muted rounded w-24" />
+          <div className="h-3 bg-muted rounded w-16" />
+        </div>
+      </div>
+    );
+  }
+
   if (!configured) {
     return (
       <div className="rounded-2xl border bg-card p-4 flex items-center gap-3 text-muted-foreground">
