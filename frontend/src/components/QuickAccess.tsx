@@ -156,18 +156,14 @@ export default function QuickAccess({ initialDevices }: Props) {
             const connected = !ble || hasMac || shellyBle.isConnected(device.id);
             const computer = isComputer(device.type as DeviceType);
             const Icon = deviceIcons[device.type as DeviceType];
-            return (
-              <button
-                key={device.id}
-                onClick={() => toggle(device)}
-                disabled={isRunning || (computer && isOn)}
-                className={cn(
-                  'cursor-pointer rounded-2xl border p-4 flex items-center gap-3 text-left transition-all active:scale-95',
-                  isOn && connected ? 'bg-amber-500/15 border-amber-400/40 shadow-sm' : 'bg-card border-border',
-                  isRunning && 'opacity-50',
-                  computer && isOn && 'cursor-default active:scale-100',
-                )}
-              >
+            const className = cn(
+              'rounded-2xl border p-4 flex items-center gap-3 text-left transition-all',
+              isOn && connected ? 'bg-amber-500/15 border-amber-400/40 shadow-sm' : 'bg-card border-border',
+              isRunning && 'opacity-50',
+              computer && isOn ? 'cursor-default' : 'cursor-pointer active:scale-95',
+            );
+            const inner = (
+              <>
                 <div className={cn(
                   'h-11 w-11 rounded-full flex items-center justify-center shrink-0 transition-colors',
                   isOn && connected ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground'
@@ -178,9 +174,26 @@ export default function QuickAccess({ initialDevices }: Props) {
                   <p className="text-sm font-medium truncate">{device.name}</p>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     {ble && <Bluetooth className={cn('h-3 w-3 shrink-0', connected ? 'text-blue-500' : '')} />}
-                    {ble && !connected ? 'Nicht verbunden' : computer ? (isOn ? 'An' : 'Aus') : 'Verbunden'}
+                    {ble && !connected ? 'Nicht verbunden' : computer ? (isOn ? 'An' : 'Aus — antippen zum Starten') : 'Verbunden'}
                   </p>
                 </div>
+              </>
+            );
+            if (computer && isOn) {
+              return (
+                <div key={device.id} className={className}>
+                  {inner}
+                </div>
+              );
+            }
+            return (
+              <button
+                key={device.id}
+                onClick={() => toggle(device)}
+                disabled={isRunning}
+                className={className}
+              >
+                {inner}
               </button>
             );
           })}

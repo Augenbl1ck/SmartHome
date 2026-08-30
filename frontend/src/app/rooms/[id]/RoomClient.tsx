@@ -544,8 +544,8 @@ export default function RoomClient({ room, initialDevices }: Props) {
                   )}
                 </div>
 
-                {/* Power-Button für alle schaltbaren Nicht-Sensor-Geräte + Thermostat */}
-                {(toggleable || isTherm || isComputerDev) && !sensor && !isCover && (
+                {/* Power-Button: Computer nur zum Starten, wenn aus — kein Ausschalten */}
+                {(isComputerDev ? !isOn : (toggleable || isTherm)) && !sensor && !isCover && (
                   <button
                     onClick={e => {
                       e.stopPropagation();
@@ -562,8 +562,8 @@ export default function RoomClient({ room, initialDevices }: Props) {
                         handleToggle(device);
                       }
                     }}
-                    disabled={isDisabled || (isComputerDev && isOn)}
-                    aria-label={isComputerDev ? (isOn ? 'Bereits an' : 'Starten') : isActive ? 'Ausschalten' : 'Einschalten'}
+                    disabled={isDisabled}
+                    aria-label={isComputerDev ? 'Starten' : isActive ? 'Ausschalten' : 'Einschalten'}
                     className={cn(
                       'h-12 w-12 rounded-full flex items-center justify-center shrink-0 transition-all duration-300',
                       'focus:outline-none active:scale-90',
