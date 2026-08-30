@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Cloud, CloudRain, CloudSnow, Sun, Wind, Droplets, Thermometer } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api, type WeatherCurrent, type WeatherResponse } from '@/lib/api';
+import { useStaleWhileRevalidate } from '@/hooks/useStaleWhileRevalidate';
 
 function WeatherIcon({ icon, className }: { icon: string; className?: string }) {
   const cls = cn('shrink-0', className);
@@ -32,23 +32,15 @@ function windLabel(unit: string): string {
 }
 
 export default function WeatherWidget({ initial = null, compact = false }: Props) {
-  const [weather, setWeather] = useState<WeatherResponse | null>(initial);
-
-  useEffect(() => {
-    if (initial) setWeather(initial);
-  }, [initial]);
-
-  useEffect(() => {
-    const refresh = () => {
-      void api.getWeather().then(setWeather).catch(() => {});
-    };
-    if (!initial) refresh();
-    const t = setInterval(refresh, 10 * 60_000);
-    return () => clearInterval(t);
-  }, [initial]);
+  const { data: weather, error: loadError } = useStaleWhileRevalidate(
+    'dash-weather',
+    api.getWeather,
+    10 * 60_000,
+    initial,
+  );
 
   const configured = weather?.configured ?? false;
-  const error = weather?.error ?? null;
+  const error = weather?.error ?? loadError;
   const data: WeatherCurrent | null = weather?.current ?? null;
   const unit = unitSymbol(weather?.unit ?? 'metric');
   const wUnit = windLabel(weather?.unit ?? 'metric');
@@ -65,6 +57,13 @@ export default function WeatherWidget({ initial = null, compact = false }: Props
   }
 
   if (!weather) {
+    if (error) {
+      return (
+        <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5">
+          <p className="text-sm text-destructive">{error}</p>
+        </div>
+      );
+    }
     return (
       <div className="rounded-2xl border bg-card p-5 flex items-center gap-3 animate-pulse">
         <Cloud className="h-8 w-8 text-muted-foreground/30 shrink-0" />

@@ -30,7 +30,7 @@ export const serverApi = {
   getAutomations: () => serverFetch<Automation[]>('/automations', 10),
   getAutomationLogs: () => serverFetch<AutomationLog[]>('/automation-logs', 15),
   getScenes: () => serverFetch<Scene[]>('/scenes', 15),
-  getPanelSettings: () => serverFetch<PanelSettings>('/panel-settings', 30),
+  getPanelSettings: () => serverFetch<PanelSettings>('/panel-settings'),
   getCalendarEvents: (params?: { from?: string; to?: string }) => {
     const q = new URLSearchParams();
     if (params?.from) q.set('from', params.from);

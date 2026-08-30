@@ -3,7 +3,7 @@ import { serverApi } from '@/lib/api-server';
 import { fetchWeatherData } from '@/lib/weather-fetch';
 import type { WeatherResponse } from '@/lib/api';
 
-export const revalidate = 300;
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {

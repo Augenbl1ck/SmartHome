@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Zap } from 'lucide-react';
-import { api, emptyEnergyOverview, type EnergyOverview } from '@/lib/api';
+import { api, type EnergyOverview } from '@/lib/api';
+import { useStaleWhileRevalidate } from '@/hooks/useStaleWhileRevalidate';
 
 interface Props {
   initial?: EnergyOverview | null;
@@ -20,27 +20,12 @@ function formatEuro(v: number): string {
 }
 
 export default function EnergyWidget({ initial = null }: Props) {
-  const [data, setData] = useState<EnergyOverview | null>(initial);
-  const [loading, setLoading] = useState(!initial);
-
-  const load = useCallback(async () => {
-    try {
-      const res = await api.getEnergy();
-      setData(res);
-    } catch (e) {
-      setData(prev => prev ?? emptyEnergyOverview(
-        e instanceof Error ? e.message : 'Energie nicht ladbar',
-      ));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!initial) void load();
-    const t = setInterval(load, 60_000);
-    return () => clearInterval(t);
-  }, [load, initial]);
+  const { data, loading } = useStaleWhileRevalidate(
+    'dash-energy',
+    api.getEnergy,
+    60_000,
+    initial,
+  );
 
   if (loading && !data) {
     return (

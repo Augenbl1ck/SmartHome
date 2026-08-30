@@ -1,6 +1,5 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { TrainFront } from 'lucide-react';
 import {
@@ -10,6 +9,7 @@ import {
   type TransitJourney,
 } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { useStaleWhileRevalidate } from '@/hooks/useStaleWhileRevalidate';
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
@@ -85,30 +85,12 @@ interface Props {
 }
 
 export default function TransitWidget({ initial = null }: Props) {
-  const [board, setBoard] = useState<TransitBoardResponse | null>(initial);
-  const [loading, setLoading] = useState(!initial);
-
-  const load = useCallback(async () => {
-    try {
-      const res = await api.getTransitBoard();
-      setBoard(res);
-    } catch (e) {
-      setBoard(prev => prev ?? {
-        configured: false,
-        stations: [],
-        connections: [],
-        error: e instanceof Error ? e.message : 'Bahn nicht ladbar',
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!initial) void load();
-    const t = setInterval(load, 60_000);
-    return () => clearInterval(t);
-  }, [load, initial]);
+  const { data: board, loading, error: loadError } = useStaleWhileRevalidate(
+    'dash-transit',
+    api.getTransitBoard,
+    60_000,
+    initial,
+  );
 
   if (loading && !board) {
     return (
@@ -122,7 +104,15 @@ export default function TransitWidget({ initial = null }: Props) {
   const configured = board?.configured ?? false;
   const connections = board?.connections ?? [];
   const stations = board?.stations ?? [];
-  const error = board?.error ?? null;
+  const error = board?.error ?? loadError;
+
+  if (!board && loadError) {
+    return (
+      <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5">
+        <p className="text-sm text-destructive">{loadError}</p>
+      </div>
+    );
+  }
 
   if (!configured) {
     return (

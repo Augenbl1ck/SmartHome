@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import Link from 'next/link';
 import { CalendarDays } from 'lucide-react';
-import { api, type CalendarEvent, type CalendarEventsResponse } from '@/lib/api';
+import { api, type CalendarEventsResponse } from '@/lib/api';
 import CalendarMonthGrid from '@/components/CalendarMonthGrid';
 import { isoDate, startOfLocalDay } from '@/lib/calendar-layout';
+import { useStaleWhileRevalidate } from '@/hooks/useStaleWhileRevalidate';
 
 interface Props {
   initial?: CalendarEventsResponse | null;
@@ -29,33 +30,23 @@ export default function CalendarWidget({ initial = null }: Props) {
     year: 'numeric',
   });
 
-  const [events, setEvents] = useState<CalendarEvent[]>(initial?.events ?? []);
-  const [configured, setConfigured] = useState(initial?.configured ?? false);
-  const [error, setError] = useState<string | null>(initial?.error ?? null);
-  const [loading, setLoading] = useState(!initial);
+  const fetchMonth = useCallback(
+    () => api.getCalendarEvents(monthRange(year, month)),
+    [year, month],
+  );
 
-  const load = useCallback(async () => {
-    try {
-      const res = await api.getCalendarEvents(monthRange(year, month));
-      setConfigured(res.configured);
-      setError(res.error ?? null);
-      setEvents(res.events ?? []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Kalender nicht ladbar');
-      setConfigured(false);
-      setEvents([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [year, month]);
+  const { data, loading, error: loadError } = useStaleWhileRevalidate(
+    `dash-calendar-${year}-${month}`,
+    fetchMonth,
+    15 * 60_000,
+    initial,
+  );
 
-  useEffect(() => {
-    if (!initial) void load();
-    const t = setInterval(load, 15 * 60_000);
-    return () => clearInterval(t);
-  }, [load, initial]);
+  const events = data?.events ?? [];
+  const configured = data?.configured ?? false;
+  const error = data?.error ?? loadError;
 
-  if (loading && events.length === 0) {
+  if (loading && !data) {
     return (
       <div className="rounded-2xl border bg-card p-5 animate-pulse space-y-3">
         <div className="h-4 bg-muted rounded w-28" />
@@ -77,7 +68,7 @@ export default function CalendarWidget({ initial = null }: Props) {
     );
   }
 
-  if (error) {
+  if (error && events.length === 0) {
     return (
       <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5">
         <p className="text-sm text-destructive">{error}</p>
