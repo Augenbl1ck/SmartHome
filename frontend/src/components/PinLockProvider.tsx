@@ -44,7 +44,7 @@ export default function PinLockProvider({ children }: { children: React.ReactNod
         <PinLockScreen
           onUnlock={state.unlock}
           onWake={state.wakeScreen}
-          isScreenOff={state.screenOff && !state.locked}
+          isScreenOff={state.screenOff}
         />
       )}
     </PinLockContext.Provider>

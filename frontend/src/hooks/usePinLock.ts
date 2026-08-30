@@ -232,11 +232,13 @@ export function usePinLock(): PinLockState {
     };
   }, []);
 
-  // Intervall prüft jede Sekunde ob Timeouts erreicht sind
+  // Intervall prüft jede Sekunde ob Timeouts erreicht sind.
+  // Läuft auch im gesperrten Zustand weiter, damit die PIN-Tastatur
+  // nach Bildschirm-Timeout wieder dunkel wird.
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
 
-    if (!enabled || locked) return;
+    if (!enabled) return;
 
     intervalRef.current = setInterval(() => {
       const idle = (Date.now() - lastActivity.current) / 1000;
@@ -245,9 +247,10 @@ export function usePinLock(): PinLockState {
 
       if (lt > 0 && idle >= lt) {
         setLocked(true);
-      } else if (st > 0 && idle >= st) {
+      }
+      if (st > 0 && idle >= st) {
         setScreenOff(true);
-      } else {
+      } else if (!locked) {
         setScreenOff(false);
       }
     }, 1000);
