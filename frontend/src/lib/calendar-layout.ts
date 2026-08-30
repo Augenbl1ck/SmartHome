@@ -217,6 +217,26 @@ export function formatEventTime(ev: CalendarEvent): string {
   return `${start}–${end}`;
 }
 
+function formatDayShort(d: Date): string {
+  return d.toLocaleDateString('de-DE', { day: 'numeric', month: 'numeric' });
+}
+
+/** Uhrzeit, bei Mehrtages-Terminen inkl. Von–Bis-Datum. */
+export function formatEventWhen(ev: CalendarEvent): string {
+  const range = eventDayRange(ev);
+  const multi = !isSameDay(range.start, range.end);
+  if (!multi) return formatEventTime(ev);
+
+  const from = formatDayShort(range.start);
+  const to = formatDayShort(range.end);
+  if (ev.all_day) return `${from} – ${to}`;
+
+  const startT = new Date(ev.start).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  if (!ev.end) return `${from} ${startT} – ${to}`;
+  const endT = new Date(ev.end).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  return `${from} ${startT} – ${to} ${endT}`;
+}
+
 export function occurrenceTimeLabel(ev: CalendarEvent, day: Date): string {
   const range = eventDayRange(ev);
   const multi = !isSameDay(range.start, range.end);

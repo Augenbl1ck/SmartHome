@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api, type CalendarEvent, type CalendarEventsResponse } from '@/lib/api';
@@ -11,7 +11,7 @@ import {
   eventColor,
   eventKey,
   eventsByDayMap,
-  formatEventTime,
+  formatEventWhen,
   isoDate,
   startOfLocalDay,
 } from '@/lib/calendar-layout';
@@ -135,8 +135,8 @@ export default function CalendarClient({ initialYear, initialMonth, initial }: P
                 className="flex items-start gap-3 rounded-xl px-2.5 py-2 bg-muted/40"
               >
                 <span className={cn('mt-1 h-8 w-1 shrink-0 rounded-full', eventColor(ev).stripe)} />
-                <span className="text-xs tabular-nums text-muted-foreground w-[4.5rem] shrink-0 pt-0.5">
-                  {formatEventTime(ev)}
+                <span className="text-xs tabular-nums text-muted-foreground min-w-[5.5rem] max-w-[8.5rem] shrink-0 pt-0.5 leading-snug">
+                  {formatEventWhen(ev)}
                 </span>
                 <span className="text-sm font-medium leading-snug min-w-0 break-words">
                   {ev.title}
