@@ -497,6 +497,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
             : isTherm ? (isActive ? 'Aktiv' : 'Aus')
             : (isDimmer || isRgb || isLed || isCover) ? null
             : isComputerDev && wakeHint === device.id ? 'Startsignal gesendet'
+            : isComputerDev && !((typeof device.attributes?.ip === 'string' && device.attributes.ip) || device.mqtt_topic) ? 'Keine IP'
             : isOn ? 'An' : 'Aus';
 
           return (

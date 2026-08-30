@@ -45,11 +45,14 @@ class Device extends Model
     public function wolIp(): ?string
     {
         $ip = $this->attributes['ip'] ?? null;
-        if (is_string($ip) && filter_var($ip, FILTER_VALIDATE_IP)) {
-            return $ip;
+        if (is_string($ip)) {
+            $ip = trim($ip);
+            if (filter_var($ip, FILTER_VALIDATE_IP)) {
+                return $ip;
+            }
         }
-        $topic = $this->mqtt_topic;
-        if (is_string($topic) && filter_var($topic, FILTER_VALIDATE_IP)) {
+        $topic = is_string($this->mqtt_topic) ? trim($this->mqtt_topic) : '';
+        if ($topic !== '' && filter_var($topic, FILTER_VALIDATE_IP)) {
             return $topic;
         }
 

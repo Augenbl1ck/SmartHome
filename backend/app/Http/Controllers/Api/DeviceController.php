@@ -5,12 +5,16 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Device;
 use App\Services\DeviceService;
+use App\Services\WakeOnLanService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class DeviceController extends Controller
 {
-    public function __construct(private DeviceService $deviceService) {}
+    public function __construct(
+        private DeviceService $deviceService,
+        private WakeOnLanService $wakeOnLan,
+    ) {}
     public function index(Request $request): JsonResponse
     {
         $query = Device::with('room');
@@ -19,7 +23,12 @@ class DeviceController extends Controller
             $query->where('room_id', $request->room_id);
         }
 
-        return response()->json($query->get());
+        $devices = $query->get();
+        foreach ($devices as $device) {
+            $this->refreshComputerIfNeeded($device);
+        }
+
+        return response()->json($devices);
     }
 
     public function store(Request $request): JsonResponse
@@ -33,12 +42,19 @@ class DeviceController extends Controller
             'active'     => 'sometimes|boolean',
         ]);
 
-        return response()->json(Device::create($data), 201);
+        $device = Device::create($data);
+        if ($device->isWakeOnLan()) {
+            $this->wakeOnLan->refreshDevice($device);
+        }
+
+        return response()->json($device->fresh()?->load('room') ?? $device, 201);
     }
 
     public function show(Device $device): JsonResponse
     {
-        return response()->json($device->load('room'));
+        $this->refreshComputerIfNeeded($device);
+
+        return response()->json($device->fresh()?->load('room') ?? $device->load('room'));
     }
 
     public function update(Request $request, Device $device): JsonResponse
@@ -64,7 +80,11 @@ class DeviceController extends Controller
             ]);
         }
 
-        return response()->json($device->load('room'));
+        if ($device->isWakeOnLan()) {
+            $this->wakeOnLan->refreshDevice($device);
+        }
+
+        return response()->json($device->fresh()?->load('room') ?? $device);
     }
 
     public function destroy(Device $device): JsonResponse
@@ -170,5 +190,25 @@ class DeviceController extends Controller
         ]);
 
         return response()->json($device->fresh());
+    }
+
+    private function refreshComputerIfNeeded(Device $device): void
+    {
+        if (! $device->isWakeOnLan() || $device->wolIp() === null) {
+            return;
+        }
+
+        $last = $device->attributes['last_ping_at'] ?? null;
+        if (is_string($last)) {
+            try {
+                if (\Illuminate\Support\Carbon::parse($last)->greaterThan(now()->subSeconds(15))) {
+                    return;
+                }
+            } catch (\Throwable) {
+                // ungültiges Datum → neu pingen
+            }
+        }
+
+        $this->wakeOnLan->refreshDevice($device);
     }
 }

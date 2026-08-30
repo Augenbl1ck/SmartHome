@@ -2,9 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Events\DeviceStatusUpdated;
 use App\Models\Device;
-use App\Services\AutomationEngine;
 use App\Services\WakeOnLanService;
 use Illuminate\Console\Command;
 
@@ -24,29 +22,15 @@ class PingComputersCommand extends Command
         $changed = 0;
 
         foreach ($devices as $device) {
-            $ip = $device->wolIp();
-            if ($ip === null) {
+            if ($device->wolIp() === null) {
+                $this->warn("{$device->name}: keine IP hinterlegt");
                 continue;
             }
 
-            $online = $wol->ping($ip);
-            $newStatus = $online ? 'on' : 'off';
             $previous = (string) $device->status;
-
-            if ($newStatus !== $previous) {
-                $device->update([
-                    'status'    => $newStatus,
-                    'last_seen' => now(),
-                ]);
-                $fresh = $device->fresh();
-                if ($fresh) {
-                    DeviceStatusUpdated::dispatch($fresh);
-                    app(AutomationEngine::class)->onDeviceUpdated($fresh, $previous);
-                }
+            if ($wol->refreshDevice($device)) {
                 $changed++;
-                $this->line("{$device->name}: {$previous} → {$newStatus}");
-            } elseif ($online) {
-                $device->update(['last_seen' => now()]);
+                $this->line("{$device->name}: {$previous} → {$device->fresh()?->status}");
             }
         }
 
