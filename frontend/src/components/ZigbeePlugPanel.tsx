@@ -85,8 +85,6 @@ export default function ZigbeePlugPanel({ device, onUpdated }: Props) {
   const [identifying, setIdentifying] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [timeEdit, setTimeEdit] = useState<'from' | 'to' | null>(null);
-  const [timeDigits, setTimeDigits] = useState('');
 
   const attrs = device.attributes ?? {};
   const powerW = num(attrs.power_w);
@@ -134,9 +132,6 @@ export default function ZigbeePlugPanel({ device, onUpdated }: Props) {
       setDraft(configFromAttrs(device.attributes));
       setCommitted(configFromAttrs(device.attributes));
       void requestGet();
-    } else {
-      setTimeEdit(null);
-      setTimeDigits('');
     }
   };
 
@@ -276,46 +271,14 @@ export default function ZigbeePlugPanel({ device, onUpdated }: Props) {
                   </p>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground w-16 shrink-0">Von / Bis</span>
-                    <TimeField
-                      value={draft.nightModeFrom}
-                      active={timeEdit === 'from'}
-                      disabled={saving}
-                      onClick={() => {
-                        setTimeEdit('from');
-                        setTimeDigits(draft.nightModeFrom.replace(/\D/g, '').slice(0, 4));
-                      }}
-                    />
+                    <input type="time" value={draft.nightModeFrom}
+                      onChange={e => setDraft(p => ({ ...p, nightModeFrom: e.target.value.slice(0, 5) }))}
+                      className="text-xs rounded border bg-background px-1.5 py-0.5 w-20" />
                     <span className="text-xs text-muted-foreground">–</span>
-                    <TimeField
-                      value={draft.nightModeTo}
-                      active={timeEdit === 'to'}
-                      disabled={saving}
-                      onClick={() => {
-                        setTimeEdit('to');
-                        setTimeDigits(draft.nightModeTo.replace(/\D/g, '').slice(0, 4));
-                      }}
-                    />
+                    <input type="time" value={draft.nightModeTo}
+                      onChange={e => setDraft(p => ({ ...p, nightModeTo: e.target.value.slice(0, 5) }))}
+                      className="text-xs rounded border bg-background px-1.5 py-0.5 w-20" />
                   </div>
-                  {timeEdit && (
-                    <TimeNumPad
-                      digits={timeDigits}
-                      label={timeEdit === 'from' ? 'Von' : 'Bis'}
-                      onDigit={(d) => {
-                        const next = (timeDigits + d).slice(0, 4);
-                        setTimeDigits(next);
-                        if (next.length === 4) {
-                          const hm = digitsToHm(next);
-                          setDraft(p => timeEdit === 'from'
-                            ? { ...p, nightModeFrom: hm }
-                            : { ...p, nightModeTo: hm });
-                          setTimeEdit(null);
-                          setTimeDigits('');
-                        }
-                      }}
-                      onBackspace={() => setTimeDigits(d => d.slice(0, -1))}
-                      onClose={() => { setTimeEdit(null); setTimeDigits(''); }}
-                    />
-                  )}
                 </div>
               )}
             </div>
@@ -475,87 +438,6 @@ function Stat({ label, value, highlight }: {
     <div className="flex items-center gap-1 text-xs">
       <span className="text-muted-foreground">{label}:</span>
       <span className={cn('font-medium tabular-nums', highlight && 'text-amber-500')}>{value}</span>
-    </div>
-  );
-}
-
-function digitsToHm(digits: string): string {
-  const d = digits.replace(/\D/g, '').padEnd(4, '0').slice(0, 4);
-  let h = parseInt(d.slice(0, 2), 10);
-  let m = parseInt(d.slice(2, 4), 10);
-  if (!Number.isFinite(h)) h = 0;
-  if (!Number.isFinite(m)) m = 0;
-  h = Math.min(23, Math.max(0, h));
-  m = Math.min(59, Math.max(0, m));
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
-
-function formatDigitsPreview(digits: string): string {
-  const d = digits.replace(/\D/g, '').slice(0, 4);
-  const a = (d[0] ?? '–') + (d[1] ?? '–');
-  const b = (d[2] ?? '–') + (d[3] ?? '–');
-  return `${a}:${b}`;
-}
-
-function TimeField({ value, active, disabled, onClick }: {
-  value: string; active: boolean; disabled: boolean; onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        'w-14 rounded border bg-background px-1.5 py-0.5 text-xs text-center tabular-nums cursor-pointer',
-        active ? 'border-primary text-foreground' : 'border-border',
-        disabled && 'opacity-50 cursor-not-allowed',
-      )}
-    >
-      {value}
-    </button>
-  );
-}
-
-const TIME_PAD = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'] as const;
-
-function TimeNumPad({ digits, label, onDigit, onBackspace, onClose }: {
-  digits: string;
-  label: string;
-  onDigit: (d: string) => void;
-  onBackspace: () => void;
-  onClose: () => void;
-}) {
-  return (
-    <div className="rounded-lg border bg-card p-2 space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-muted-foreground">{label}</span>
-        <span className="text-sm font-medium tabular-nums">{formatDigitsPreview(digits)}</span>
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-xs text-muted-foreground hover:text-foreground"
-        >
-          Schließen
-        </button>
-      </div>
-      <div className="grid grid-cols-3 gap-1">
-        {TIME_PAD.map((btn, i) => {
-          if (btn === '') return <div key={i} />;
-          return (
-            <button
-              key={i}
-              type="button"
-              onClick={() => (btn === '⌫' ? onBackspace() : onDigit(btn))}
-              className={cn(
-                'h-10 rounded-lg text-sm font-semibold border border-border bg-background cursor-pointer',
-                'hover:bg-accent text-foreground',
-              )}
-            >
-              {btn}
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }
