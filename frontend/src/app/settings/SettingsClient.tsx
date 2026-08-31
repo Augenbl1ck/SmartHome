@@ -1409,7 +1409,13 @@ function ZigbeeSection({ rooms, onDeviceImported }: { rooms: Room[]; onDeviceImp
     if (!room_id) { setImportDialog(s => ({ ...s, err: 'Raum wählen' })); return; }
     setImportDialog(s => ({ ...s, saving: true, err: '' }));
     try {
-      const created = await api.zigbeeImport(device.ieee_address, device.friendly_name, { name: name.trim(), type, room_id: Number(room_id) });
+      const created = await api.zigbeeImport(device.ieee_address, device.friendly_name, {
+        name: name.trim(),
+        type,
+        room_id: Number(room_id),
+        vendor: device.definition?.vendor,
+        model: device.definition?.model,
+      });
       onDeviceImported(created);
       setZbDevices(prev => prev.map(d => d.ieee_address === device.ieee_address ? { ...d, smarthome_device: created } : d));
       setImportDialog({ open: false, name: '', type: 'plug', room_id: '', saving: false, err: '' });

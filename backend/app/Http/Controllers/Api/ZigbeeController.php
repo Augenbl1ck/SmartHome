@@ -150,10 +150,35 @@ class ZigbeeController
             'name'    => 'required|string|max:100',
             'type'    => 'required|string',
             'room_id' => 'required|integer|exists:rooms,id',
+            'vendor'  => 'nullable|string|max:100',
+            'model'   => 'nullable|string|max:100',
         ]);
 
         $friendlyName = $request->input('friendly_name', $ieee);
         $topic = 'zigbee2mqtt/' . $friendlyName;
+
+        $vendor = is_string($data['vendor'] ?? null) ? trim($data['vendor']) : '';
+        $model = is_string($data['model'] ?? null) ? trim($data['model']) : '';
+        if ($vendor === '' || $model === '') {
+            $bridge = $this->findBridgeDevice($ieee);
+            if (is_array($bridge)) {
+                $def = is_array($bridge['definition'] ?? null) ? $bridge['definition'] : [];
+                if ($vendor === '' && isset($def['vendor'])) {
+                    $vendor = trim((string) $def['vendor']);
+                }
+                if ($model === '' && isset($def['model'])) {
+                    $model = trim((string) $def['model']);
+                }
+            }
+        }
+
+        $attrs = ['protocol' => 'zigbee2mqtt', 'ieee_address' => $ieee];
+        if ($vendor !== '') {
+            $attrs['vendor'] = $vendor;
+        }
+        if ($model !== '') {
+            $attrs['model'] = $model;
+        }
 
         $device = Device::create([
             'name'       => $data['name'],
@@ -162,9 +187,44 @@ class ZigbeeController
             'mqtt_topic' => $topic,
             'status'     => 'off',
             'active'     => true,
-            'attributes' => ['protocol' => 'zigbee2mqtt', 'ieee_address' => $ieee],
+            'attributes' => $attrs,
         ]);
 
         return response()->json($device, 201);
+    }
+
+    /** @return array<string, mixed>|null */
+    private function findBridgeDevice(string $ieee): ?array
+    {
+        try {
+            $found = null;
+            $mqtt = new MqttClient($this->mqttHost(), $this->mqttPort(), 'laravel-z2m-find-' . uniqid());
+            $mqtt->connect(MqttHelper::settings(3), true);
+            $mqtt->subscribe('zigbee2mqtt/bridge/devices', function (string $t, string $p) use ($ieee, &$found, $mqtt) {
+                $list = json_decode($p, true);
+                if (!is_array($list)) {
+                    $mqtt->interrupt();
+                    return;
+                }
+                foreach ($list as $item) {
+                    if (!is_array($item)) {
+                        continue;
+                    }
+                    if (strcasecmp((string) ($item['ieee_address'] ?? ''), $ieee) === 0) {
+                        $found = $item;
+                        break;
+                    }
+                }
+                $mqtt->interrupt();
+            }, 0);
+            $mqtt->loop(true, true, 3);
+            $mqtt->disconnect();
+
+            return is_array($found) ? $found : null;
+        } catch (\Exception $e) {
+            Log::warning('[Zigbee] Lookup beim Import: ' . $e->getMessage());
+
+            return null;
+        }
     }
 }

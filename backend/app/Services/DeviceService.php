@@ -223,22 +223,23 @@ class DeviceService
     /**
      * @param  array<string, mixed>  $payload
      */
-    public function publishMqttJson(Device $device, array $payload): void
+    public function publishMqttJson(Device $device, array $payload, string $suffix = 'set'): void
     {
         if (!$device->mqtt_topic) {
             Log::warning("[DeviceService] Kein MQTT-Topic für {$device->name}");
             return;
         }
 
+        $suffix = $suffix === 'get' ? 'get' : 'set';
         $base = rtrim((string) $device->mqtt_topic, '/');
-        $topic = $base . '/set';
+        $topic = $base . '/' . $suffix;
         $json = json_encode($payload);
 
         try {
             $mqtt = new MqttClient(
                 config('mqtt.host', '127.0.0.1'),
                 (int) config('mqtt.port', 1883),
-                'laravel-device-service-thermo'
+                'laravel-device-service'
             );
             $mqtt->connect(MqttHelper::settings(3), true);
             $mqtt->publish($topic, $json, 0);

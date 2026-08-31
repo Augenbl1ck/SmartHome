@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import DeviceHistory from '@/components/DeviceHistory';
 import SensorChart from '@/components/SensorChart';
 import ShellyPlugPanel from '@/components/ShellyPlugPanel';
+import ZigbeePlugPanel from '@/components/ZigbeePlugPanel';
 import ThermostatAdvancedPanel from '@/components/ThermostatAdvancedPanel';
 import { loadFavoritesLocal, saveFavorites, syncFavoritesFromServer } from '@/lib/favorites';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
@@ -507,6 +508,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
           const isMqttShelly = ['shelly_gen3', 'shelly_gen1', 'shelly_gen3_http'].includes(
             (device.attributes?.protocol as string) ?? ''
           );
+          const isZigbeePlug = device.attributes?.protocol === 'zigbee2mqtt' && device.type === 'plug';
           const powerW = typeof device.attributes?.power_w === 'number' ? device.attributes.power_w as number : null;
 
           // Ganzes Tile = Tap für einfache An/Aus-Geräte; Computer nur zum Starten wenn aus
@@ -703,6 +705,12 @@ export default function RoomClient({ room, initialDevices }: Props) {
 
                 {useBridge && toggleable && !sensor && <ShellyPlugPanel deviceId={device.id} mode="ble" />}
                 {isMqttShelly && toggleable && !sensor && <ShellyPlugPanel deviceId={device.id} mode="http" />}
+                {isZigbeePlug && (
+                  <ZigbeePlugPanel
+                    device={device}
+                    onUpdated={(updated) => setDevices(prev => prev.map(d => d.id === updated.id ? { ...d, ...updated } : d))}
+                  />
+                )}
 
                 {/* DeviceHistory und last_seen kommen in die Bottom-Section */}
 

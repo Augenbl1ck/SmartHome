@@ -192,6 +192,63 @@ class DeviceController extends Controller
         return response()->json($device->fresh());
     }
 
+    /**
+     * POST /api/v1/devices/{device}/zigbee-set
+     *
+     * Schreibt Zigbee2MQTT-Exposes nach zigbee2mqtt/<name>/set (oder /get).
+     */
+    public function zigbeeSet(Request $request, Device $device): JsonResponse
+    {
+        $protocol = $device->extra()['protocol'] ?? null;
+        if ($protocol !== 'zigbee2mqtt') {
+            return response()->json(['message' => 'Gerät ist kein Zigbee2MQTT-Gerät'], 422);
+        }
+
+        $isGet = $request->boolean('_get');
+        $raw = $request->except(['_get']);
+        if (!is_array($raw) || $raw === [] || array_is_list($raw)) {
+            return response()->json(['message' => 'Leerer oder ungültiger Payload'], 422);
+        }
+
+        $allowed = [
+            'power_outage_memory',
+            'indicator_mode',
+            'child_lock',
+            'countdown',
+            'switch_type_button',
+            'identify',
+        ];
+        $payload = [];
+        foreach ($raw as $key => $value) {
+            if (!is_string($key) || !in_array($key, $allowed, true)) {
+                continue;
+            }
+            $payload[$key] = $value;
+        }
+
+        if ($payload === []) {
+            return response()->json(['message' => 'Keine gültigen Zigbee-Felder'], 422);
+        }
+
+        $this->deviceService->publishMqttJson($device, $payload, $isGet ? 'get' : 'set');
+
+        if (!$isGet) {
+            $attrs = $device->extra();
+            foreach ($payload as $key => $value) {
+                if ($key === 'identify') {
+                    continue;
+                }
+                $attrs[$key] = $value;
+            }
+            $device->update([
+                'attributes' => $attrs,
+                'last_seen' => now(),
+            ]);
+        }
+
+        return response()->json($device->fresh());
+    }
+
     private function refreshComputerIfNeeded(Device $device): void
     {
         if (! $device->isWakeOnLan() || $device->wolIp() === null) {

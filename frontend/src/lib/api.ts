@@ -97,8 +97,13 @@ export const api = {
     request<{ ok: boolean }>(`/zigbee/devices/${encodeURIComponent(ieee)}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   zigbeeRemove: (ieee: string) =>
     request<{ ok: boolean }>(`/zigbee/devices/${encodeURIComponent(ieee)}`, { method: 'DELETE' }),
-  zigbeeImport: (ieee: string, friendly_name: string, data: { name: string; type: string; room_id: number }) =>
+  zigbeeImport: (ieee: string, friendly_name: string, data: { name: string; type: string; room_id: number; vendor?: string; model?: string }) =>
     request<Device>(`/zigbee/devices/${encodeURIComponent(ieee)}/import`, { method: 'POST', body: JSON.stringify({ ...data, friendly_name }) }),
+  zigbeeSet: (id: number, payload: Record<string, unknown>, opts?: { get?: boolean }) =>
+    request<Device>(`/devices/${id}/zigbee-set`, {
+      method: 'POST',
+      body: JSON.stringify(opts?.get ? { ...payload, _get: true } : payload),
+    }),
 
   // Push Notifications
   pushSubscribe: (sub: { endpoint: string; public_key: string; auth_token: string; device_name?: string }) =>
@@ -127,12 +132,8 @@ export const api = {
     return request<CalendarEventsResponse>(`/calendar/events${qs ? `?${qs}` : ''}`);
   },
 
-  // Wetter (Next.js Route → OpenWeather mit NEXT_PUBLIC_WEATHER_API_KEY)
-  getWeather: async () => {
-    const res = await fetch('/api/weather', { cache: 'no-store', headers: { Accept: 'application/json' } });
-    if (!res.ok) throw new Error(`API error ${res.status}: /api/weather`);
-    return res.json() as Promise<WeatherResponse>;
-  },
+  // Wetter (Laravel / Open-Meteo)
+  getWeather: () => request<WeatherResponse>('/weather'),
 
   // Bahn / ÖPNV
   getTransitStops: (q: string) =>

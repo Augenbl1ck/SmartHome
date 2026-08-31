@@ -41,6 +41,7 @@ Route::prefix('v1')->group(function () {
     Route::post('devices/{device}/ble-mac', [BleController::class, 'saveMac']);
     Route::post('devices/{device}/ble-rpc', [BleController::class, 'rpc']);
     Route::post('devices/{device}/shelly-rpc', [ShellyRpcController::class, 'rpc']);
+    Route::post('devices/{device}/zigbee-set', [DeviceController::class, 'zigbeeSet']);
 
     // Geräteerkennung
     Route::get('discover/zigbee', [DiscoverController::class, 'zigbee']);
@@ -69,7 +70,7 @@ Route::prefix('v1')->group(function () {
     // Kalender (FamilyWall / iCal)
     Route::get('calendar/events', [CalendarController::class, 'events']);
 
-    // Wetter (OpenWeatherMap / Open-Meteo via Frontend; Legacy-Endpoint)
+    // Wetter (Open-Meteo)
     Route::get('weather', [WeatherController::class, 'show']);
 
     // Bahn / ÖPNV

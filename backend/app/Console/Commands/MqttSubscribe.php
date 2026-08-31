@@ -305,6 +305,26 @@ class MqttSubscribe extends Command
         if (isset($data['energy'])) {
             $attrs['energy_wh'] = round((float) $data['energy'], 1);
         }
+        if (isset($data['voltage']) && is_numeric($data['voltage'])) {
+            $attrs['voltage'] = round((float) $data['voltage'], 1);
+        }
+        if (isset($data['current']) && is_numeric($data['current'])) {
+            $attrs['current'] = round((float) $data['current'], 3);
+        }
+
+        // Stecker-Einstellungen (Nous A1Z u. a.)
+        if (isset($data['indicator_mode']) && is_string($data['indicator_mode'])) {
+            $attrs['indicator_mode'] = $data['indicator_mode'];
+        }
+        if (isset($data['power_outage_memory']) && is_string($data['power_outage_memory'])) {
+            $attrs['power_outage_memory'] = $data['power_outage_memory'];
+        }
+        if (isset($data['countdown']) && is_numeric($data['countdown'])) {
+            $attrs['countdown'] = (int) $data['countdown'];
+        }
+        if (isset($data['switch_type_button']) && is_string($data['switch_type_button'])) {
+            $attrs['switch_type_button'] = $data['switch_type_button'];
+        }
 
         // Batterie
         if (isset($data['battery'])) {
