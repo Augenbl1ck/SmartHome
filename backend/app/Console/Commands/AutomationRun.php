@@ -14,5 +14,6 @@ class AutomationRun extends Command
     {
         $engine->runTimeTriggers();
         $engine->checkOnDurationTriggers();
+        app(\App\Services\DeviceService::class)->applyAllZigbeeLedNightModes();
     }
 }

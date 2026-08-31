@@ -210,7 +210,7 @@ class DeviceController extends Controller
             return response()->json(['message' => 'Leerer oder ungültiger Payload'], 422);
         }
 
-        $allowed = [
+        $mqttAllowed = [
             'power_outage_memory',
             'indicator_mode',
             'child_lock',
@@ -218,33 +218,78 @@ class DeviceController extends Controller
             'switch_type_button',
             'identify',
         ];
+        $localAllowed = ['led_night_enable', 'led_night_from', 'led_night_to', 'led_day_mode'];
+
         $payload = [];
+        $local = [];
         foreach ($raw as $key => $value) {
-            if (!is_string($key) || !in_array($key, $allowed, true)) {
+            if (!is_string($key)) {
                 continue;
             }
-            $payload[$key] = $value;
+            if (in_array($key, $mqttAllowed, true)) {
+                $payload[$key] = $value;
+            } elseif (in_array($key, $localAllowed, true)) {
+                $local[$key] = $value;
+            }
         }
 
-        if ($payload === []) {
+        if ($payload === [] && $local === []) {
             return response()->json(['message' => 'Keine gültigen Zigbee-Felder'], 422);
         }
 
-        $this->deviceService->publishMqttJson($device, $payload, $isGet ? 'get' : 'set');
-
-        if (!$isGet) {
-            $attrs = $device->extra();
-            foreach ($payload as $key => $value) {
-                if ($key === 'identify') {
-                    continue;
-                }
-                $attrs[$key] = $value;
+        if ($isGet) {
+            if ($payload === []) {
+                return response()->json(['message' => 'Keine gültigen Zigbee-Felder'], 422);
             }
-            $device->update([
-                'attributes' => $attrs,
-                'last_seen' => now(),
-            ]);
+            $this->deviceService->publishMqttJson($device, $payload, 'get');
+
+            return response()->json($device->fresh());
         }
+
+        $attrs = $device->extra();
+        $dayModes = ['off', 'off/on', 'on/off', 'on'];
+
+        if (isset($local['led_day_mode']) && in_array((string) $local['led_day_mode'], $dayModes, true)) {
+            $attrs['led_day_mode'] = (string) $local['led_day_mode'];
+        } elseif (isset($payload['indicator_mode']) && in_array((string) $payload['indicator_mode'], $dayModes, true)) {
+            $attrs['led_day_mode'] = (string) $payload['indicator_mode'];
+        }
+
+        if (array_key_exists('led_night_enable', $local)) {
+            $attrs['led_night_enable'] = filter_var($local['led_night_enable'], FILTER_VALIDATE_BOOLEAN);
+        }
+        foreach (['led_night_from', 'led_night_to'] as $timeKey) {
+            if (!isset($local[$timeKey]) || !is_string($local[$timeKey])) {
+                continue;
+            }
+            if (preg_match('/^(\d{1,2}):(\d{2})/', $local[$timeKey], $m) === 1) {
+                $h = (int) $m[1];
+                $min = (int) $m[2];
+                if ($h <= 23 && $min <= 59) {
+                    $attrs[$timeKey] = sprintf('%02d:%02d', $h, $min);
+                }
+            }
+        }
+
+        foreach ($payload as $key => $value) {
+            if ($key === 'identify' || $key === 'indicator_mode') {
+                continue;
+            }
+            $attrs[$key] = $value;
+        }
+
+        $device->update([
+            'attributes' => $attrs,
+            'last_seen' => now(),
+        ]);
+
+        $mqttPublish = $payload;
+        unset($mqttPublish['indicator_mode']);
+        if ($mqttPublish !== []) {
+            $this->deviceService->publishMqttJson($device, $mqttPublish);
+        }
+
+        $this->deviceService->applyLedNightMode($device->fresh() ?? $device);
 
         return response()->json($device->fresh());
     }

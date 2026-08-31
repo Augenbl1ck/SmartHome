@@ -23,6 +23,9 @@ interface Config {
   countdownEnabled: boolean;
   countdownMinutes: number;
   switchType: SwitchType | '';
+  nightModeEnable: boolean;
+  nightModeFrom: string;
+  nightModeTo: string;
 }
 
 const INDICATOR_OPTIONS: { value: IndicatorMode; label: string; desc: string }[] = [
@@ -55,13 +58,17 @@ function isSwitchType(v: unknown): v is SwitchType {
 
 function configFromAttrs(attrs: Record<string, unknown> | undefined): Config {
   const countdown = typeof attrs?.countdown === 'number' ? attrs.countdown : 0;
+  const dayMode = isIndicator(attrs?.led_day_mode) ? attrs.led_day_mode : null;
   return {
-    indicatorMode: isIndicator(attrs?.indicator_mode) ? attrs.indicator_mode : '',
+    indicatorMode: dayMode ?? (isIndicator(attrs?.indicator_mode) ? attrs.indicator_mode : ''),
     powerOutageMemory: isOutage(attrs?.power_outage_memory) ? attrs.power_outage_memory : '',
     childLock: String(attrs?.child_lock ?? '').toUpperCase() === 'LOCK',
     countdownEnabled: countdown > 0,
     countdownMinutes: countdown > 0 ? Math.max(1, Math.round(countdown / 60)) : 60,
     switchType: isSwitchType(attrs?.switch_type_button) ? attrs.switch_type_button : '',
+    nightModeEnable: attrs?.led_night_enable === true || attrs?.led_night_enable === 1,
+    nightModeFrom: typeof attrs?.led_night_from === 'string' ? attrs.led_night_from.slice(0, 5) : '22:00',
+    nightModeTo: typeof attrs?.led_night_to === 'string' ? attrs.led_night_to.slice(0, 5) : '06:00',
   };
 }
 
@@ -137,8 +144,14 @@ export default function ZigbeePlugPanel({ device, onUpdated }: Props) {
         countdown: draft.countdownEnabled
           ? Math.min(43200, Math.max(1, Math.round(draft.countdownMinutes * 60)))
           : 0,
+        led_night_enable: draft.nightModeEnable,
+        led_night_from: draft.nightModeFrom.slice(0, 5),
+        led_night_to: draft.nightModeTo.slice(0, 5),
       };
-      if (draft.indicatorMode) payload.indicator_mode = draft.indicatorMode;
+      if (draft.indicatorMode) {
+        payload.indicator_mode = draft.indicatorMode;
+        payload.led_day_mode = draft.indicatorMode;
+      }
       if (draft.powerOutageMemory) payload.power_outage_memory = draft.powerOutageMemory;
       if (draft.switchType) payload.switch_type_button = draft.switchType;
 
@@ -241,6 +254,33 @@ export default function ZigbeePlugPanel({ device, onUpdated }: Props) {
                   <span className="text-[10px] leading-tight">{desc}</span>
                 </button>
               ))}
+            </div>
+            <div className="mt-3">
+              <div className="flex items-center gap-2 mb-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Nacht-Modus</p>
+                <Toggle
+                  checked={draft.nightModeEnable}
+                  disabled={saving}
+                  onChange={() => setDraft(p => ({ ...p, nightModeEnable: !p.nightModeEnable }))}
+                />
+              </div>
+              {draft.nightModeEnable && (
+                <div className="space-y-2 pl-1">
+                  <p className="text-[10px] text-muted-foreground">
+                    LED wird nachts ausgeschaltet (kein Dimmen am Gerät).
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground w-16">Von / Bis</span>
+                    <input type="time" value={draft.nightModeFrom}
+                      onChange={e => setDraft(p => ({ ...p, nightModeFrom: e.target.value.slice(0, 5) }))}
+                      className="text-xs rounded border bg-background px-1.5 py-0.5 w-20" />
+                    <span className="text-xs text-muted-foreground">–</span>
+                    <input type="time" value={draft.nightModeTo}
+                      onChange={e => setDraft(p => ({ ...p, nightModeTo: e.target.value.slice(0, 5) }))}
+                      className="text-xs rounded border bg-background px-1.5 py-0.5 w-20" />
+                  </div>
+                </div>
+              )}
             </div>
           </Section>
 

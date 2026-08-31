@@ -323,4 +323,92 @@ class DeviceService
 
         return [$base, $status];
     }
+
+    /**
+     * Nous/Zigbee-LED: nachts aus, tagsüber gespeicherter Modus.
+     * Das Gerät hat keinen Helligkeits-Nachtmodus — Steuerung über den Minuten-Scheduler.
+     */
+    public function applyLedNightMode(Device $device): void
+    {
+        $attrs = $device->extra();
+        if (($attrs['protocol'] ?? null) !== 'zigbee2mqtt') {
+            return;
+        }
+
+        $dayMode = $attrs['led_day_mode'] ?? $attrs['indicator_mode'] ?? null;
+        if (!is_string($dayMode) || $dayMode === '') {
+            return;
+        }
+
+        $nightOn = filter_var($attrs['led_night_enable'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $from = $this->normalizeHm((string) ($attrs['led_night_from'] ?? '22:00')) ?? '22:00';
+        $to = $this->normalizeHm((string) ($attrs['led_night_to'] ?? '06:00')) ?? '06:00';
+
+        $desired = ($nightOn && $this->isInTimeWindow($from, $to)) ? 'off' : $dayMode;
+        $current = (string) ($attrs['indicator_mode'] ?? '');
+        if ($current === $desired) {
+            return;
+        }
+
+        $this->publishMqttJson($device, ['indicator_mode' => $desired]);
+        $attrs['indicator_mode'] = $desired;
+        $device->update([
+            'attributes' => $attrs,
+            'last_seen' => now(),
+        ]);
+    }
+
+    public function applyAllZigbeeLedNightModes(): void
+    {
+        Device::query()->where('type', 'plug')->get()->each(function (Device $device) {
+            $attrs = $device->extra();
+            if (($attrs['protocol'] ?? null) !== 'zigbee2mqtt') {
+                return;
+            }
+            if (!filter_var($attrs['led_night_enable'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                return;
+            }
+            $this->applyLedNightMode($device);
+        });
+    }
+
+    private function isInTimeWindow(string $from, string $to): bool
+    {
+        $fromM = $this->hmToMinutes($from);
+        $toM = $this->hmToMinutes($to);
+        if ($fromM === null || $toM === null || $fromM === $toM) {
+            return false;
+        }
+        $cur = ((int) now()->format('G')) * 60 + (int) now()->format('i');
+        if ($fromM < $toM) {
+            return $cur >= $fromM && $cur < $toM;
+        }
+
+        return $cur >= $fromM || $cur < $toM;
+    }
+
+    private function hmToMinutes(string $hm): ?int
+    {
+        $norm = $this->normalizeHm($hm);
+        if ($norm === null) {
+            return null;
+        }
+        [$h, $m] = array_map('intval', explode(':', $norm));
+
+        return $h * 60 + $m;
+    }
+
+    private function normalizeHm(string $value): ?string
+    {
+        if (preg_match('/^(\d{1,2}):(\d{2})/', $value, $m) !== 1) {
+            return null;
+        }
+        $h = (int) $m[1];
+        $min = (int) $m[2];
+        if ($h > 23 || $min > 59) {
+            return null;
+        }
+
+        return sprintf('%02d:%02d', $h, $min);
+    }
 }
