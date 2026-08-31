@@ -533,7 +533,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
               onClick={isTileTap && !isDisabled ? () => handleToggle(device) : undefined}
               className={cn(
                 'relative rounded-2xl border p-5 transition-all duration-300 ease-in-out min-h-32.5 flex flex-col',
-                isTileTap && !isDisabled && 'cursor-pointer select-none active:scale-[0.97]',
+                isTileTap && !isDisabled && 'cursor-pointer select-none active:scale-[0.97] [&:active:has(button:active,input:active)]:scale-100',
                 isActive && !sensor
                   ? getActiveTileClasses(device)
                   : 'bg-card border-border',

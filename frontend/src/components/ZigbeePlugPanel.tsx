@@ -273,11 +273,11 @@ export default function ZigbeePlugPanel({ device, onUpdated }: Props) {
                     <span className="text-xs text-muted-foreground w-16 shrink-0">Von / Bis</span>
                     <input type="time" value={draft.nightModeFrom}
                       onChange={e => setDraft(p => ({ ...p, nightModeFrom: e.target.value.slice(0, 5) }))}
-                      className="text-xs rounded border bg-background px-1.5 py-0.5 w-20" />
+                      className="w-20 rounded border bg-background px-1.5 py-0.5 text-xs text-center appearance-none outline-none focus:outline-none focus:ring-0 [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-inner-spin-button]:hidden" />
                     <span className="text-xs text-muted-foreground">–</span>
                     <input type="time" value={draft.nightModeTo}
                       onChange={e => setDraft(p => ({ ...p, nightModeTo: e.target.value.slice(0, 5) }))}
-                      className="text-xs rounded border bg-background px-1.5 py-0.5 w-20" />
+                      className="w-20 rounded border bg-background px-1.5 py-0.5 text-xs text-center appearance-none outline-none focus:outline-none focus:ring-0 [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-inner-spin-button]:hidden" />
                   </div>
                 </div>
               )}
