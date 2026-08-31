@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useTransition, useCallback, useMemo } from 'react';
+import { useState, useEffect, useTransition, useCallback, useMemo, useRef } from 'react';
 import { api, Device, DeviceType, Room, ZigbeeDevice, type LanHost, type TransitConfig, type TransitConnection, type TransitStop, type TransitStopRef } from '@/lib/api';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { deviceLabels, CUSTOM_COLORS, formatMacAddress } from '@/lib/devices';
@@ -310,6 +310,36 @@ interface DiscoveredDevice {
   mqtt_topic: string;
   protocol: DeviceProtocol;
   source: 'zigbee2mqtt' | 'shelly';
+}
+
+const ZIGBEE_PAIR_SECONDS = 90;
+
+function inferZigbeeDeviceType(description: string): DeviceType {
+  const d = description.toLowerCase();
+  if (d.includes('plug') || d.includes('socket') || d.includes('outlet')) return 'plug';
+  if (d.includes('thermostat') || d.includes('trv') || d.includes('radiator')) return 'thermostat';
+  if (d.includes('temperature') || d.includes('humidity') || d.includes('sensor')) return 'sensor_temperature';
+  if (d.includes('contact') || d.includes('door') || d.includes('window')) return 'sensor_door';
+  if (d.includes('motion') || d.includes('presence') || d.includes('occupancy')) return 'sensor_motion';
+  if (d.includes('light') || d.includes('bulb') || d.includes('lamp')) return 'light';
+  if (d.includes('switch') || d.includes('relay')) return 'switch';
+  return 'plug';
+}
+
+function zigbeeToDiscovered(z: ZigbeeDevice): DiscoveredDevice {
+  const description = z.definition?.description ?? null;
+  return {
+    friendly_name: z.friendly_name,
+    ieee_address: z.ieee_address,
+    vendor: z.definition?.vendor ?? null,
+    model: z.definition?.model ?? null,
+    description,
+    supported: z.supported,
+    device_type: inferZigbeeDeviceType(description ?? ''),
+    mqtt_topic: `zigbee2mqtt/${z.friendly_name}`,
+    protocol: 'zigbee2mqtt',
+    source: 'zigbee2mqtt',
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -1876,42 +1906,97 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
   // ── Gerät-Dialog ────────────────────────────────────────────────
   const [deviceDialog, setDeviceDialog] = useState<{
     open: boolean; editing?: Device; form: DeviceForm; saving: boolean; error: string;
-    discovered: DiscoveredDevice[] | null; discovering: boolean; discoverError: string;
-  }>({ open: false, form: emptyDevice(), saving: false, error: '', discovered: null, discovering: false, discoverError: '' });
+    discovered: DiscoveredDevice[] | null; discovering: boolean; discoverError: string; pairLeft: number;
+  }>({ open: false, form: emptyDevice(), saving: false, error: '', discovered: null, discovering: false, discoverError: '', pairLeft: 0 });
+
+  const zigbeeSearchTopicsRef = useRef<Set<string>>(new Set());
+  const deviceDialogPairing = deviceDialog.open && deviceDialog.pairLeft > 0;
 
   const [lanScan, setLanScan] = useState<{ hosts: LanHost[] | null; scanning: boolean; error: string }>({
     hosts: null, scanning: false, error: '',
   });
 
   const openDevice = (d?: Device) => {
+    if (deviceDialog.pairLeft > 0) api.zigbeePermitJoin(false).catch(() => {});
     setLanScan({ hosts: null, scanning: false, error: '' });
     setDeviceDialog({
       open: true, editing: d, form: d ? deviceToForm(d) : emptyDevice(),
-      saving: false, error: '', discovered: null, discovering: false, discoverError: '',
+      saving: false, error: '', discovered: null, discovering: false, discoverError: '', pairLeft: 0,
     });
   };
   const patchDevice = (patch: Partial<DeviceForm>) =>
     setDeviceDialog(s => ({ ...s, form: { ...s.form, ...patch } }));
 
+  const mapFreshZigbee = (list: ZigbeeDevice[]) => {
+    const existing = zigbeeSearchTopicsRef.current;
+    return list
+      .filter(z => !z.smarthome_device)
+      .filter(z => !existing.has(`zigbee2mqtt/${z.friendly_name}`))
+      .map(zigbeeToDiscovered);
+  };
+
   const discoverZigbee = async () => {
-    setDeviceDialog(s => ({ ...s, discovering: true, discoverError: '', discovered: null }));
+    zigbeeSearchTopicsRef.current = new Set(devices.map(d => d.mqtt_topic).filter(Boolean) as string[]);
+    setDeviceDialog(s => ({ ...s, discovering: true, discoverError: '', pairLeft: ZIGBEE_PAIR_SECONDS }));
     try {
-      const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000/api/v1';
-      const res = await fetch(`${BASE}/discover/all`, { cache: 'no-store' });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error ?? 'Fehler beim Suchen');
-      }
-      const list: DiscoveredDevice[] = await res.json();
-      // Bereits hinzugefügte Geräte herausfiltern
-      const existingTopics = new Set(devices.map(d => d.mqtt_topic));
-      const fresh = list.filter(d => !existingTopics.has(d.mqtt_topic));
+      await api.zigbeePermitJoin(true, ZIGBEE_PAIR_SECONDS);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Pairing konnte nicht gestartet werden';
+      setDeviceDialog(s => ({ ...s, pairLeft: 0, discoverError: msg }));
+    }
+    try {
+      const list = await api.getZigbeeDevices();
+      const fresh = mapFreshZigbee(list);
       setDeviceDialog(s => ({ ...s, discovering: false, discovered: fresh }));
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Verbindung fehlgeschlagen';
-      setDeviceDialog(s => ({ ...s, discovering: false, discoverError: msg }));
+      const msg = e instanceof Error ? e.message : 'Zigbee-Geräteliste nicht erreichbar';
+      setDeviceDialog(s => ({ ...s, discovering: false, discoverError: s.discoverError || msg }));
     }
   };
+
+  const stopZigbeeSearch = () => {
+    api.zigbeePermitJoin(false).catch(() => {});
+    setDeviceDialog(s => ({ ...s, pairLeft: 0, discovering: false }));
+  };
+
+  const closeDeviceDialog = () => {
+    if (deviceDialog.pairLeft > 0) api.zigbeePermitJoin(false).catch(() => {});
+    setLanScan({ hosts: null, scanning: false, error: '' });
+    setDeviceDialog({
+      open: false, form: emptyDevice(), saving: false, error: '',
+      discovered: null, discovering: false, discoverError: '', pairLeft: 0,
+    });
+  };
+
+  useEffect(() => {
+    if (!deviceDialog.open || deviceDialog.pairLeft <= 0) return;
+    const t = setTimeout(() => {
+      setDeviceDialog(s => {
+        const next = s.pairLeft - 1;
+        if (next <= 0) {
+          api.zigbeePermitJoin(false).catch(() => {});
+          return { ...s, pairLeft: 0, discovering: false };
+        }
+        return { ...s, pairLeft: next };
+      });
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [deviceDialog.open, deviceDialog.pairLeft]);
+
+  useEffect(() => {
+    if (!deviceDialogPairing) return;
+    const refresh = async () => {
+      try {
+        const list = await api.getZigbeeDevices();
+        const fresh = mapFreshZigbee(list);
+        setDeviceDialog(s => (s.open && s.pairLeft > 0 ? { ...s, discovered: fresh, discovering: false } : s));
+      } catch {
+        /* Liste bleibt, Pairing läuft weiter */
+      }
+    };
+    const id = setInterval(refresh, 5000);
+    return () => clearInterval(id);
+  }, [deviceDialogPairing]);
 
   const selectVendor = (vendorId: string) => {
     const preset = VENDOR_PRESETS.find(v => v.id === vendorId);
@@ -2015,8 +2100,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
         const created = await api.createDevice(payload);
         setDevices(prev => [...prev, created]);
       }
-      setLanScan({ hosts: null, scanning: false, error: '' });
-      setDeviceDialog({ open: false, form: emptyDevice(), saving: false, error: '', discovered: null, discovering: false, discoverError: '' });
+      closeDeviceDialog();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setDeviceDialog(s => ({ ...s, saving: false, error: msg || 'Speichern fehlgeschlagen.' }));
@@ -2347,10 +2431,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
       {/* ── Gerät-Dialog ──────────────────────────────────────────── */}
       <Dialog open={deviceDialog.open}
         onOpenChange={open => {
-          if (!open) {
-            setLanScan({ hosts: null, scanning: false, error: '' });
-            setDeviceDialog({ open: false, form: emptyDevice(), saving: false, error: '', discovered: null, discovering: false, discoverError: '' });
-          }
+          if (!open) closeDeviceDialog();
         }}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -2366,20 +2447,36 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
                     <Radio className="h-4 w-4 text-primary" />
                     Zigbee-Geräte suchen
                   </div>
-                  <Button size="sm" variant="outline" onClick={discoverZigbee}
-                    disabled={deviceDialog.discovering}>
-                    {deviceDialog.discovering
-                      ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Suche…</>
-                      : <><Search className="h-3 w-3 mr-1" /> Suchen</>}
-                  </Button>
+                  {deviceDialog.pairLeft > 0 ? (
+                    <Button size="sm" variant="destructive" onClick={stopZigbeeSearch}>
+                      Stoppen · {deviceDialog.pairLeft}s
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="outline" onClick={discoverZigbee}
+                      disabled={deviceDialog.discovering}>
+                      {deviceDialog.discovering
+                        ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Suche…</>
+                        : <><Search className="h-3 w-3 mr-1" /> Suchen</>}
+                    </Button>
+                  )}
                 </div>
+
+                {deviceDialog.pairLeft > 0 && (
+                  <p className="text-xs text-primary">
+                    Pairing aktiv — Gerät am Stick in den Anlernmodus versetzen.
+                  </p>
+                )}
 
                 {deviceDialog.discoverError && (
                   <p className="text-xs text-destructive">{deviceDialog.discoverError}</p>
                 )}
 
                 {deviceDialog.discovered !== null && deviceDialog.discovered.length === 0 && (
-                  <p className="text-xs text-muted-foreground">Keine neuen Geräte gefunden.</p>
+                  <p className="text-xs text-muted-foreground">
+                    {deviceDialog.pairLeft > 0
+                      ? 'Noch kein neues Gerät gesehen. Liste aktualisiert sich automatisch.'
+                      : 'Keine neuen Geräte gefunden.'}
+                  </p>
                 )}
 
                 {deviceDialog.discovered && deviceDialog.discovered.length > 0 && (
@@ -2416,8 +2513,8 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
                 )}
 
                 <p className="text-[11px] text-muted-foreground">
-                  Gerät antippen um das Formular automatisch auszufüllen.
-                  Oder unten manuell eingeben.
+                  Suchen schaltet den Stick {ZIGBEE_PAIR_SECONDS}s in den Pairing-Modus.
+                  Gerät antippen, um das Formular auszufüllen — oder unten manuell eingeben.
                 </p>
               </div>
             )}
@@ -2686,11 +2783,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
             {deviceDialog.error && <p className="text-sm text-destructive">{deviceDialog.error}</p>}
           </div>
           <DialogFooter>
-            <Button variant="ghost"
-              onClick={() => {
-                setLanScan({ hosts: null, scanning: false, error: '' });
-                setDeviceDialog({ open: false, form: emptyDevice(), saving: false, error: '', discovered: null, discovering: false, discoverError: '' });
-              }}>
+            <Button variant="ghost" onClick={closeDeviceDialog}>
               Abbrechen
             </Button>
             <Button onClick={saveDevice} disabled={deviceDialog.saving}>

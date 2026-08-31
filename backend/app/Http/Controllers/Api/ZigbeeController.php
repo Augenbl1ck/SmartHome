@@ -59,7 +59,7 @@ class ZigbeeController
                 $received = true;
                 $mqtt->interrupt();
             }, 0);
-            $mqtt->loop(true, true, 3);
+            $mqtt->loop(true, true, 2);
             $mqtt->disconnect();
         } catch (\Exception $e) {
             return response()->json(['error' => 'Zigbee2MQTT nicht erreichbar'], 503);
@@ -96,17 +96,14 @@ class ZigbeeController
             'time'  => $data['timeout'] ?? ($data['enable'] ? 120 : 0),
         ]);
 
-        $res = $this->requestAndWait(
-            'zigbee2mqtt/bridge/request/permit_join',
-            'zigbee2mqtt/bridge/response/permit_join',
-            $payload
-        );
-
-        if ($res === null) {
-            return response()->json(['error' => 'Keine Antwort von Zigbee2MQTT'], 503);
+        try {
+            $this->publish('zigbee2mqtt/bridge/request/permit_join', $payload);
+        } catch (\Exception $e) {
+            Log::warning('[Zigbee] permit_join: ' . $e->getMessage());
+            return response()->json(['error' => 'Zigbee2MQTT nicht erreichbar'], 503);
         }
 
-        return response()->json(['ok' => true, 'data' => $res]);
+        return response()->json(['ok' => true]);
     }
 
     /** PATCH /api/v1/zigbee/devices/{ieee}  body: {name: string} */
