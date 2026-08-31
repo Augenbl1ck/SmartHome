@@ -3,9 +3,13 @@ import { fetchWeatherData } from './weather-fetch';
 
 const API_BASE = process.env.API_URL ?? 'http://localhost:8000/api/v1';
 
+/** Laravel `artisan serve` ist single-thread — nicht ewig auf Header warten. */
+const FETCH_MS = 10_000;
+
 async function serverFetch<T>(path: string, revalidate?: number): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(FETCH_MS),
     ...(revalidate != null
       ? { next: { revalidate } }
       : { cache: 'no-store' }),

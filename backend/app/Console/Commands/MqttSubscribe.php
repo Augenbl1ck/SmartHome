@@ -37,6 +37,19 @@ class MqttSubscribe extends Command
     protected $signature   = 'mqtt:subscribe';
     protected $description = 'MQTT-Subscriber: empfängt Gerätestatus und schreibt ihn in die DB';
 
+    /** @var array<string, string> topic → Fingerprint */
+    private array $lastZigbeeFp = [];
+
+    /** @var array<int, float> deviceId → microtime der letzten Broadcast */
+    private array $lastBroadcastAt = [];
+
+    /** @var array<int, float> deviceId → letzte Leistung, bei der Automationen liefen */
+    private array $lastAutomationPower = [];
+
+    private const BROADCAST_MIN_INTERVAL = 3.0;
+
+    private const POWER_AUTOMATION_DELTA = 15.0;
+
     public function handle(): void
     {
         $host = config('mqtt.host', '127.0.0.1');
@@ -127,10 +140,12 @@ class MqttSubscribe extends Command
 
         $status = $on ? 'on' : 'off';
         $previousStatus = $device->status;
+        $statusChanged = $status !== $previousStatus;
+        $powerW = $power !== null ? round((float) $power, 1) : null;
 
-        $attrs = $device->attributes ?? [];
-        if ($power !== null) {
-            $attrs['power_w'] = round($power, 1);
+        $attrs = $device->extra();
+        if ($powerW !== null) {
+            $attrs['power_w'] = $powerW;
         }
         if ($energy !== null) {
             $attrs['energy_wh'] = round($energy, 1);
@@ -143,19 +158,20 @@ class MqttSubscribe extends Command
         ]);
 
         $fresh = $device->fresh();
-        DeviceStatusUpdated::dispatch($fresh);
-        app(AutomationEngine::class)->onDeviceUpdated($fresh, $previousStatus);
+        $this->broadcastDevice($fresh, $statusChanged);
+        if ($this->shouldRunAutomations($fresh, $previousStatus, $powerW)) {
+            app(AutomationEngine::class)->onDeviceUpdated($fresh, $previousStatus);
+        }
 
-        if ($status !== $previousStatus) {
+        if ($statusChanged) {
             DeviceLog::create([
                 'device_id'   => $device->id,
                 'status'      => $status,
-                'value'       => $power !== null ? (string) round($power, 1) : null,
+                'value'       => $powerW !== null ? (string) $powerW : null,
                 'recorded_at' => now(),
             ]);
+            $this->line("[Shelly] {$device->name}: {$status}" . ($powerW !== null ? " ({$powerW} W)" : ''));
         }
-
-        $this->line("[Shelly] {$device->name}: {$status}" . ($power !== null ? " ({$power} W)" : ''));
     }
 
     // -------------------------------------------------------------------------
@@ -182,18 +198,25 @@ class MqttSubscribe extends Command
 
     private function handleZigbee(string $topic, string $payload): void
     {
-        $device = $this->findDevice($topic);
-        if (!$device) {
-            return;
-        }
-
         $data = json_decode($payload, true);
         if (!is_array($data)) {
             return;
         }
 
+        $fp = $this->zigbeeFingerprint($data);
+        if (($this->lastZigbeeFp[$topic] ?? null) === $fp) {
+            return;
+        }
+        $this->lastZigbeeFp[$topic] = $fp;
+
+        $device = $this->findDevice($topic);
+        if (!$device) {
+            return;
+        }
+
+        $oldAttrs = $device->extra();
         $updates = ['last_seen' => now()];
-        $attrs   = $device->attributes ?? [];
+        $attrs   = $oldAttrs;
         $logStatus = null;
         $logValue  = null;
         $isThermostat = $device->type === 'thermostat';
@@ -333,22 +356,26 @@ class MqttSubscribe extends Command
 
         $updates['attributes'] = $attrs;
         $previousStatus = $device->status;
+        $statusChanged = isset($updates['status']) && $updates['status'] !== $previousStatus;
+        $powerW = isset($attrs['power_w']) && is_numeric($attrs['power_w']) ? (float) $attrs['power_w'] : null;
         $device->update($updates);
 
         $fresh = $device->fresh();
-        DeviceStatusUpdated::dispatch($fresh);
-        app(AutomationEngine::class)->onDeviceUpdated($fresh, $previousStatus);
+        $sensorChanged = $this->sensorAttrsChanged($oldAttrs, $attrs);
+        $this->broadcastDevice($fresh, $statusChanged || $sensorChanged);
+        if ($statusChanged || $sensorChanged || $this->shouldRunAutomations($fresh, $previousStatus, $powerW)) {
+            app(AutomationEngine::class)->onDeviceUpdated($fresh, $previousStatus);
+        }
 
-        if ($logStatus) {
+        if ($logStatus && ($statusChanged || $sensorChanged)) {
             DeviceLog::create([
                 'device_id'   => $device->id,
                 'status'      => $logStatus,
                 'value'       => $logValue,
                 'recorded_at' => now(),
             ]);
+            $this->line("[Zigbee] {$device->name}: " . json_encode(array_intersect_key($data, array_flip(['state', 'temperature', 'humidity', 'contact', 'battery']))));
         }
-
-        $this->line("[Zigbee] {$device->name}: " . json_encode(array_intersect_key($data, array_flip(['state', 'temperature', 'humidity', 'contact', 'battery']))));
     }
 
     // -------------------------------------------------------------------------
@@ -369,13 +396,15 @@ class MqttSubscribe extends Command
         if (in_array($status, ['on', 'off', 'true', 'false', '1', '0'])) {
             $normalized = in_array($status, ['on', 'true', '1']) ? 'on' : 'off';
             $previousStatus = $device->status;
+            if ($normalized === $previousStatus) {
+                $device->update(['last_seen' => now()]);
+                return;
+            }
             $device->update(['status' => $normalized, 'last_seen' => now()]);
             $fresh = $device->fresh();
-            DeviceStatusUpdated::dispatch($fresh);
+            $this->broadcastDevice($fresh, true);
             app(AutomationEngine::class)->onDeviceUpdated($fresh, $previousStatus);
-            if ($normalized !== $previousStatus) {
-                DeviceLog::create(['device_id' => $device->id, 'status' => $normalized, 'recorded_at' => now()]);
-            }
+            DeviceLog::create(['device_id' => $device->id, 'status' => $normalized, 'recorded_at' => now()]);
             $this->line("[Simple] {$device->name}: {$normalized}");
             return;
         }
@@ -383,13 +412,87 @@ class MqttSubscribe extends Command
         // Numerischer Wert (Temperatur, Sensor etc.)
         if (is_numeric($value)) {
             $previousStatus = $device->status;
+            if ((string) $value === (string) $previousStatus) {
+                $device->update(['last_seen' => now()]);
+                return;
+            }
             $device->update(['status' => $value, 'last_seen' => now()]);
             $fresh = $device->fresh();
-            DeviceStatusUpdated::dispatch($fresh);
+            $this->broadcastDevice($fresh, true);
             app(AutomationEngine::class)->onDeviceUpdated($fresh, $previousStatus);
             DeviceLog::create(['device_id' => $device->id, 'status' => 'value', 'value' => $value, 'recorded_at' => now()]);
             $this->line("[Simple] {$device->name}: {$value}");
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function zigbeeFingerprint(array $data): string
+    {
+        return json_encode([
+            'state' => $data['state'] ?? null,
+            'temperature' => isset($data['temperature']) ? round((float) $data['temperature'], 1) : null,
+            'humidity' => isset($data['humidity']) ? round((float) $data['humidity'], 1) : null,
+            'contact' => $data['contact'] ?? null,
+            'system_mode' => $data['system_mode'] ?? null,
+            'power' => isset($data['power']) ? (int) round((float) $data['power']) : null,
+            'child_lock' => $data['child_lock'] ?? null,
+            'indicator_mode' => $data['indicator_mode'] ?? null,
+            'local_temperature' => isset($data['local_temperature']) ? round((float) $data['local_temperature'], 1) : null,
+            'running_state' => $data['running_state'] ?? null,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $old
+     * @param  array<string, mixed>  $new
+     */
+    private function sensorAttrsChanged(array $old, array $new): bool
+    {
+        foreach (['temperature', 'humidity', 'local_temperature', 'running_state', 'setpoint', 'open_window', 'child_lock'] as $key) {
+            if (($old[$key] ?? null) !== ($new[$key] ?? null)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function shouldRunAutomations(Device $device, string $previousStatus, ?float $powerW): bool
+    {
+        if ($device->status !== $previousStatus) {
+            if ($powerW !== null) {
+                $this->lastAutomationPower[$device->id] = $powerW;
+            }
+
+            return true;
+        }
+        if ($powerW === null) {
+            return false;
+        }
+        $prev = $this->lastAutomationPower[$device->id] ?? null;
+        if ($prev === null || abs($powerW - $prev) >= self::POWER_AUTOMATION_DELTA) {
+            $this->lastAutomationPower[$device->id] = $powerW;
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private function broadcastDevice(?Device $device, bool $force): void
+    {
+        if (!$device) {
+            return;
+        }
+        $now = microtime(true);
+        $last = $this->lastBroadcastAt[$device->id] ?? 0.0;
+        if (!$force && ($now - $last) < self::BROADCAST_MIN_INTERVAL) {
+            return;
+        }
+        $this->lastBroadcastAt[$device->id] = $now;
+        DeviceStatusUpdated::dispatch($device);
     }
 
     // -------------------------------------------------------------------------

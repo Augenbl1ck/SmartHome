@@ -2,6 +2,8 @@ import { serverApi } from '@/lib/api-server';
 import { emptyEnergyOverview, type EnergyHistoryResponse } from '@/lib/api';
 import EnergyClient from './EnergyClient';
 
+export const dynamic = 'force-dynamic';
+
 export default async function EnergyPage() {
   const [initial, initialHistory] = await Promise.all([
     serverApi.getEnergy().catch(() => emptyEnergyOverview('Energie nicht erreichbar')),

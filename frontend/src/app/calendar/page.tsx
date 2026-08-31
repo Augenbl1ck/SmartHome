@@ -2,6 +2,8 @@ import { serverApi } from '@/lib/api-server';
 import type { CalendarEventsResponse } from '@/lib/api';
 import CalendarClient from './CalendarClient';
 
+export const dynamic = 'force-dynamic';
+
 export default async function CalendarPage() {
   const now = new Date();
   const year = now.getFullYear();
