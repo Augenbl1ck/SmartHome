@@ -1399,6 +1399,7 @@ function ZigbeeSection({ rooms, onDeviceImported, onLinkedDeviceRemoved }: {
   const [removeConfirm, setRemoveConfirm] = useState<ZigbeeDevice | null>(null);
   const [removeForce, setRemoveForce] = useState(false);
   const [removeErr, setRemoveErr] = useState('');
+  const [removeSaving, setRemoveSaving] = useState(false);
   const [interviewingIeee, setInterviewingIeee] = useState<string | null>(null);
   const [interviewHint, setInterviewHint] = useState('');
 
