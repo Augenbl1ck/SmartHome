@@ -60,6 +60,7 @@ Route::prefix('v1')->group(function () {
     Route::post('zigbee/permit-join', [ZigbeeController::class, 'permitJoin']);
     Route::patch('zigbee/devices/{ieee}', [ZigbeeController::class, 'rename']);
     Route::delete('zigbee/devices/{ieee}', [ZigbeeController::class, 'remove']);
+    Route::post('zigbee/devices/{ieee}/interview', [ZigbeeController::class, 'interview']);
     Route::post('zigbee/devices/{ieee}/import', [ZigbeeController::class, 'import']);
 
     // System Status

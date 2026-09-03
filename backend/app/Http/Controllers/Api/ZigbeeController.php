@@ -148,6 +148,22 @@ class ZigbeeController
         return response()->json(['ok' => true]);
     }
 
+    /** POST /api/v1/zigbee/devices/{ieee}/interview */
+    public function interview(string $ieee): JsonResponse
+    {
+        try {
+            $this->publish(
+                'zigbee2mqtt/bridge/request/device/interview',
+                json_encode(['id' => $ieee])
+            );
+        } catch (\Exception $e) {
+            Log::warning('[Zigbee] interview: ' . $e->getMessage());
+            return response()->json(['error' => 'Zigbee2MQTT nicht erreichbar'], 503);
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
     /** POST /api/v1/zigbee/devices/{ieee}/import  body: {name, type, room_id} */
     public function import(Request $request, string $ieee): JsonResponse
     {

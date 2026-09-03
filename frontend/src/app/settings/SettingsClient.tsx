@@ -1399,7 +1399,8 @@ function ZigbeeSection({ rooms, onDeviceImported, onLinkedDeviceRemoved }: {
   const [removeConfirm, setRemoveConfirm] = useState<ZigbeeDevice | null>(null);
   const [removeForce, setRemoveForce] = useState(false);
   const [removeErr, setRemoveErr] = useState('');
-  const [removeSaving, setRemoveSaving] = useState(false);
+  const [interviewingIeee, setInterviewingIeee] = useState<string | null>(null);
+  const [interviewHint, setInterviewHint] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -1479,6 +1480,20 @@ function ZigbeeSection({ rooms, onDeviceImported, onLinkedDeviceRemoved }: {
     }
   };
 
+  const startInterview = async (dev: ZigbeeDevice) => {
+    setInterviewingIeee(dev.ieee_address);
+    setError('');
+    try {
+      await api.zigbeeInterview(dev.ieee_address);
+      setInterviewHint('Interview gestartet. Thermostat aufwecken (Knopf am Gerät), dann in ein paar Sekunden die Liste aktualisieren.');
+      setTimeout(() => { void load(); }, 8000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Interview fehlgeschlagen');
+    } finally {
+      setInterviewingIeee(null);
+    }
+  };
+
   const doRemove = async (force = removeForce) => {
     if (!removeConfirm) return;
     setRemoveSaving(true);
@@ -1531,6 +1546,7 @@ function ZigbeeSection({ rooms, onDeviceImported, onLinkedDeviceRemoved }: {
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
+      {interviewHint && <p className="text-sm text-primary">{interviewHint}</p>}
 
       {loading && zbDevices.length === 0 && (
         <p className="text-sm text-muted-foreground text-center py-4"><Loader2 className="h-4 w-4 animate-spin inline mr-1" />Lade…</p>
@@ -1557,13 +1573,27 @@ function ZigbeeSection({ rooms, onDeviceImported, onLinkedDeviceRemoved }: {
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {dev.definition?.vendor} {dev.definition?.model}
-                  {dev.definition?.description ? ` — ${dev.definition.description}` : ''}
+                  {(() => {
+                    const vendor = dev.definition?.vendor;
+                    const model = dev.definition?.model ?? dev.model_id;
+                    const desc = dev.definition?.description;
+                    const autoGen = !desc || /automatically generated/i.test(desc);
+                    if (autoGen && !vendor && !dev.definition?.model) {
+                      return (
+                        <>
+                          {dev.model_id ? `${dev.manufacturer ?? ''} ${dev.model_id}`.trim() : 'Modell noch unbekannt'}
+                          {' — '}Interview nicht fertig (Batterie-Gerät oft schlafend)
+                        </>
+                      );
+                    }
+                    return [vendor, model].filter(Boolean).join(' ')
+                      + (desc && !autoGen ? ` — ${desc}` : '');
+                  })()}
                 </p>
                 <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{dev.ieee_address}</p>
                 {(dev.last_seen || dev.interview_completed === false) && (
                   <p className="text-[10px] text-muted-foreground mt-0.5">
-                    {dev.interview_completed === false ? 'Interview unvollständig' : ''}
+                    {dev.interview_completed === false ? 'Interview unvollständig — Gerät aufwecken, dann Interview starten' : ''}
                     {dev.interview_completed === false && dev.last_seen ? ' · ' : ''}
                     {typeof dev.last_seen === 'number' && dev.last_seen > 0
                       ? `Zuletzt gesehen: ${new Date(dev.last_seen > 1e12 ? dev.last_seen : dev.last_seen * 1000).toLocaleString('de-DE')}`
@@ -1572,11 +1602,20 @@ function ZigbeeSection({ rooms, onDeviceImported, onLinkedDeviceRemoved }: {
                 )}
               </div>
               <div className="flex gap-1 shrink-0">
+                {dev.interview_completed === false && (
+                  <Button size="sm" variant="outline" className="h-7 text-xs"
+                    disabled={interviewingIeee === dev.ieee_address}
+                    onClick={() => void startInterview(dev)}>
+                    {interviewingIeee === dev.ieee_address
+                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                      : 'Interview'}
+                  </Button>
+                )}
                 {!dev.smarthome_device && (
                   <Button size="sm" variant="outline" className="h-7 text-xs"
                     onClick={() => setImportDialog({
                       open: true, device: dev, name: dev.friendly_name,
-                      type: inferZigbeeDeviceType(dev.definition?.description ?? '', dev.definition?.model),
+                      type: inferZigbeeDeviceType(dev.definition?.description ?? '', dev.definition?.model ?? dev.model_id),
                       room_id: '', saving: false, err: '',
                     })}>
                     Importieren
