@@ -96,6 +96,8 @@ export const api = {
   getZigbeeDevices: () => request<ZigbeeDevice[]>('/zigbee/devices'),
   zigbeePermitJoin: (enable: boolean, timeout = 120) =>
     request<{ ok: boolean }>('/zigbee/permit-join', { method: 'POST', body: JSON.stringify({ enable, timeout }) }),
+  zigbeeRename: (ieee: string, name: string) =>
+    request<{ ok: boolean }>(`/zigbee/devices/${encodeURIComponent(ieee)}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   zigbeeInterview: (ieee: string) =>
     request<{ ok: boolean }>(`/zigbee/devices/${encodeURIComponent(ieee)}/interview`, { method: 'POST' }),
   zigbeeRemove: (ieee: string, opts?: { force?: boolean; block?: boolean; clear_cache?: boolean }) => {
