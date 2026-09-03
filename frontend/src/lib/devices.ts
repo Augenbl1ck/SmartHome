@@ -183,3 +183,14 @@ export function nextCommandBlocked(device: Device): string | undefined {
 export function isInterlockAutomation(a: { trigger?: Record<string, unknown> }): boolean {
   return (a.trigger?.type ?? '') === 'interlock';
 }
+
+/** Numerisches Geräte-Attribut (Zahl oder numerischer String). */
+export function numericAttr(attrs: Record<string, unknown> | undefined | null, ...keys: string[]): number | null {
+  if (!attrs) return null;
+  for (const k of keys) {
+    const v = attrs[k];
+    const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Events\DeviceStatusUpdated;
 use App\Models\Device;
 use App\Services\DeviceService;
 use Illuminate\Http\JsonResponse;
@@ -37,9 +38,13 @@ class MqttController extends Controller
     public function toggleDevice(Request $request, Device $device): JsonResponse
     {
         if ($device->isWakeOnLan()) {
-            if ($device->status !== 'on') {
-                $this->deviceService->setStatus($device, 'on');
-                $device->update(['last_seen' => now()]);
+            try {
+                if ($device->status !== 'on') {
+                    $this->deviceService->setStatus($device, 'on');
+                    $device->update(['last_seen' => now()]);
+                }
+            } catch (\RuntimeException $e) {
+                return response()->json(['error' => $e->getMessage()], 503);
             }
 
             return response()->json($device->fresh());
@@ -47,12 +52,16 @@ class MqttController extends Controller
 
         $newStatus = $device->status === 'on' ? 'off' : 'on';
 
-        // DeviceService kennt alle Protokolle: MQTT, HTTP, BLE Bridge, WOL
-        $this->deviceService->setStatus($device, $newStatus);
+        try {
+            $this->deviceService->setStatus($device, $newStatus);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 503);
+        }
 
         $device->update(['status' => $newStatus, 'last_seen' => now()]);
+        DeviceStatusUpdated::dispatch($device->fresh() ?? $device);
 
-        return response()->json($device);
+        return response()->json($device->fresh() ?? $device);
     }
 }
 

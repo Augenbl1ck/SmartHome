@@ -228,18 +228,24 @@ class MqttSubscribe extends Command
             $logStatus = $status;
         }
 
-        // Temperatursensor
-        if (isset($data['temperature'])) {
+        // Temperatursensor — nicht bei Thermostaten (die nutzen local_temperature / system_mode)
+        if (!$isThermostat && isset($data['temperature'])) {
             $temp = round((float) $data['temperature'], 1);
             $updates['status'] = (string) $temp;
             $attrs['temperature'] = $temp;
             $logValue = (string) $temp;
-            $logStatus = 'temperature';
+            $logStatus = (string) $temp;
+        } elseif ($isThermostat && isset($data['temperature']) && !isset($data['local_temperature'])) {
+            $attrs['local_temperature'] = round((float) $data['temperature'], 1);
+            $attrs['temperature'] = $attrs['local_temperature'];
         }
 
         // Luftfeuchtigkeit
         if (isset($data['humidity'])) {
             $attrs['humidity'] = round((float) $data['humidity'], 1);
+        }
+        if (isset($data['pi_heating_demand']) && is_numeric($data['pi_heating_demand'])) {
+            $attrs['pi_heating_demand'] = (int) $data['pi_heating_demand'];
         }
 
         // Thermostat / TRV
@@ -367,7 +373,9 @@ class MqttSubscribe extends Command
             app(AutomationEngine::class)->onDeviceUpdated($fresh, $previousStatus);
         }
 
-        if ($logStatus && ($statusChanged || $sensorChanged)) {
+        $tempChanged = array_key_exists('temperature', $attrs)
+            && ($oldAttrs['temperature'] ?? null) !== ($attrs['temperature'] ?? null);
+        if ($logStatus && ($statusChanged || $tempChanged)) {
             DeviceLog::create([
                 'device_id'   => $device->id,
                 'status'      => $logStatus,
@@ -375,6 +383,14 @@ class MqttSubscribe extends Command
                 'recorded_at' => now(),
             ]);
             $this->line("[Zigbee] {$device->name}: " . json_encode(array_intersect_key($data, array_flip(['state', 'temperature', 'humidity', 'contact', 'battery']))));
+        }
+        if (isset($attrs['humidity']) && (($oldAttrs['humidity'] ?? null) !== ($attrs['humidity'] ?? null))) {
+            DeviceLog::create([
+                'device_id'   => $device->id,
+                'status'      => 'humidity',
+                'value'       => (string) $attrs['humidity'],
+                'recorded_at' => now(),
+            ]);
         }
     }
 
@@ -436,11 +452,22 @@ class MqttSubscribe extends Command
             'humidity' => isset($data['humidity']) ? round((float) $data['humidity'], 1) : null,
             'contact' => $data['contact'] ?? null,
             'system_mode' => $data['system_mode'] ?? null,
+            'occupied_heating_setpoint' => isset($data['occupied_heating_setpoint']) ? round((float) $data['occupied_heating_setpoint'], 1) : null,
+            'current_heating_setpoint' => isset($data['current_heating_setpoint']) ? round((float) $data['current_heating_setpoint'], 1) : null,
             'power' => isset($data['power']) ? (int) round((float) $data['power']) : null,
             'child_lock' => $data['child_lock'] ?? null,
             'indicator_mode' => $data['indicator_mode'] ?? null,
             'local_temperature' => isset($data['local_temperature']) ? round((float) $data['local_temperature'], 1) : null,
             'running_state' => $data['running_state'] ?? null,
+            'temporary_mode_select' => $data['temporary_mode_select'] ?? null,
+            'temporary_mode_duration' => $data['temporary_mode_duration'] ?? null,
+            'pi_heating_demand' => $data['pi_heating_demand'] ?? null,
+            'open_window' => $data['open_window'] ?? null,
+            'battery' => $data['battery'] ?? null,
+            'energy' => isset($data['energy']) ? round((float) $data['energy'], 1) : null,
+            'valve_opening_degree' => $data['valve_opening_degree'] ?? null,
+            'frost_protection_temperature' => $data['frost_protection_temperature'] ?? null,
+            'timer_mode_target_temp' => $data['timer_mode_target_temp'] ?? null,
         ]);
     }
 
@@ -450,7 +477,7 @@ class MqttSubscribe extends Command
      */
     private function sensorAttrsChanged(array $old, array $new): bool
     {
-        foreach (['temperature', 'humidity', 'local_temperature', 'running_state', 'setpoint', 'open_window', 'child_lock'] as $key) {
+        foreach (['temperature', 'humidity', 'local_temperature', 'running_state', 'setpoint', 'open_window', 'child_lock', 'pi_heating_demand', 'battery'] as $key) {
             if (($old[$key] ?? null) !== ($new[$key] ?? null)) {
                 return true;
             }

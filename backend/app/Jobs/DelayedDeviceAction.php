@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Events\DeviceStatusUpdated;
 use App\Exceptions\DeviceCommandBlockedException;
 use App\Models\Device;
 use App\Services\DeviceService;
@@ -28,8 +29,12 @@ class DelayedDeviceAction implements ShouldQueue
 
         try {
             $deviceService->setStatus($device, $this->status);
+            $device->update(['status' => $this->status, 'last_seen' => now()]);
+            DeviceStatusUpdated::dispatch($device->fresh() ?? $device);
         } catch (DeviceCommandBlockedException $e) {
             Log::info("[DelayedDeviceAction] Übersprungen {$device->name} → {$this->status}: {$e->getMessage()}");
+        } catch (\Throwable $e) {
+            Log::error("[DelayedDeviceAction] {$device->name} → {$this->status}: {$e->getMessage()}");
         }
     }
 }

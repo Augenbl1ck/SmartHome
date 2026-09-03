@@ -124,13 +124,21 @@ class ZigbeeController
         return response()->json(['ok' => true]);
     }
 
-    /** DELETE /api/v1/zigbee/devices/{ieee} */
-    public function remove(string $ieee): JsonResponse
+    /** DELETE /api/v1/zigbee/devices/{ieee}?force=&block=&clear_cache= */
+    public function remove(Request $request, string $ieee): JsonResponse
     {
+        $payload = [
+            'id'          => $ieee,
+            'force'       => filter_var($request->query('force', false), FILTER_VALIDATE_BOOLEAN),
+            'block'       => filter_var($request->query('block', false), FILTER_VALIDATE_BOOLEAN),
+            'clear_cache' => filter_var($request->query('clear_cache', false), FILTER_VALIDATE_BOOLEAN),
+        ];
+
         $res = $this->requestAndWait(
             'zigbee2mqtt/bridge/request/device/remove',
             'zigbee2mqtt/bridge/response/device/remove',
-            json_encode(['id' => $ieee, 'force' => false])
+            json_encode($payload),
+            15
         );
 
         if ($res === null || ($res['status'] ?? '') === 'error') {

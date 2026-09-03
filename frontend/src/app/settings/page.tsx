@@ -4,10 +4,7 @@ import SettingsClient from './SettingsClient';
 export const dynamic = 'force-dynamic';
 
 export default async function SettingsPage() {
-  const [rooms, devices] = await Promise.all([
-    serverApi.getRooms().catch(() => []),
-    serverApi.getDevices().catch(() => []),
-  ]);
+  const boot = await serverApi.getBootstrap().catch(() => ({ rooms: [], devices: [], scenes: [] }));
 
-  return <SettingsClient initialRooms={rooms} initialDevices={devices} />;
+  return <SettingsClient initialRooms={boot.rooms} initialDevices={boot.devices} />;
 }

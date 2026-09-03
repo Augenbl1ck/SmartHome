@@ -24,8 +24,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     let message = `API error ${res.status}: ${text}`;
     let blocked = false;
     try {
-      const j = JSON.parse(text) as { message?: string; blocked?: boolean };
-      if (typeof j.message === 'string' && j.message) message = j.message;
+      const j = JSON.parse(text) as { message?: string; error?: string; blocked?: boolean };
+      if (typeof j.error === 'string' && j.error) message = j.error;
+      else if (typeof j.message === 'string' && j.message) message = j.message;
       if (j.blocked === true) blocked = true;
     } catch { /* not JSON */ }
     throw new ApiError(message, res.status, blocked);
@@ -36,6 +37,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  getBootstrap: () => request<BootstrapPayload>('/bootstrap'),
+
   // Rooms
   getRooms: () => request<Room[]>('/rooms'),
   getRoom: (id: number) => request<Room>(`/rooms/${id}`),
@@ -95,8 +98,17 @@ export const api = {
     request<{ ok: boolean }>('/zigbee/permit-join', { method: 'POST', body: JSON.stringify({ enable, timeout }) }),
   zigbeeRename: (ieee: string, name: string) =>
     request<{ ok: boolean }>(`/zigbee/devices/${encodeURIComponent(ieee)}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
-  zigbeeRemove: (ieee: string) =>
-    request<{ ok: boolean }>(`/zigbee/devices/${encodeURIComponent(ieee)}`, { method: 'DELETE' }),
+  zigbeeRemove: (ieee: string, opts?: { force?: boolean; block?: boolean; clear_cache?: boolean }) => {
+    const q = new URLSearchParams();
+    if (opts?.force) q.set('force', '1');
+    if (opts?.block) q.set('block', '1');
+    if (opts?.clear_cache) q.set('clear_cache', '1');
+    const qs = q.toString();
+    return request<{ ok: boolean }>(
+      `/zigbee/devices/${encodeURIComponent(ieee)}${qs ? `?${qs}` : ''}`,
+      { method: 'DELETE' },
+    );
+  },
   zigbeeImport: (ieee: string, friendly_name: string, data: { name: string; type: string; room_id: number; vendor?: string; model?: string }) =>
     request<Device>(`/zigbee/devices/${encodeURIComponent(ieee)}/import`, { method: 'POST', body: JSON.stringify({ ...data, friendly_name }) }),
   zigbeeSet: (id: number, payload: Record<string, unknown>, opts?: { get?: boolean }) =>
@@ -540,6 +552,12 @@ export interface Scene {
   /** Typed actions or legacy { device_id, status } */
   actions: Record<string, unknown>[];
   active: boolean;
+}
+
+export interface BootstrapPayload {
+  rooms: Room[];
+  devices: Device[];
+  scenes: Scene[];
 }
 
 export interface DeviceLog {

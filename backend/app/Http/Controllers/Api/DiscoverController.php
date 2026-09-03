@@ -45,7 +45,7 @@ class DiscoverController
                         'model'         => $definition['model'] ?? null,
                         'description'   => $definition['description'] ?? null,
                         'supported'     => $item['supported'] ?? false,
-                        'device_type'   => $this->inferDeviceType($description),
+                        'device_type'   => $this->inferDeviceType($description, (string) ($definition['model'] ?? '')),
                         'mqtt_topic'    => 'zigbee2mqtt/' . $name,
                         'protocol'      => 'zigbee2mqtt',
                         'source'        => 'zigbee2mqtt',
@@ -139,7 +139,7 @@ class DiscoverController
                         'model'         => $definition['model'] ?? null,
                         'description'   => $definition['description'] ?? null,
                         'supported'     => $item['supported'] ?? false,
-                        'device_type'   => $this->inferDeviceType($description),
+                        'device_type'   => $this->inferDeviceType($description, (string) ($definition['model'] ?? '')),
                         'mqtt_topic'    => 'zigbee2mqtt/' . $name,
                         'protocol'      => 'zigbee2mqtt',
                         'source'        => 'zigbee2mqtt',
@@ -161,22 +161,30 @@ class DiscoverController
         return response()->json($result);
     }
 
-    private function inferDeviceType(string $description): string
+    private function inferDeviceType(string $description, string $model = ''): string
     {
+        $description = strtolower($description);
+        $model = strtolower($model);
+        if (str_contains($model, 'trvzb') || str_contains($model, 'trv')) {
+            return 'thermostat';
+        }
+        if (str_contains($model, 'snzb-02') || (str_contains($description, 'temperature') && str_contains($description, 'humidity'))) {
+            return 'sensor_temperature';
+        }
         if (str_contains($description, 'plug') || str_contains($description, 'socket') || str_contains($description, 'outlet')) {
             return 'plug';
         }
-        if (str_contains($description, 'thermostat') || str_contains($description, 'trv') || str_contains($description, 'radiator')) {
+        if (str_contains($description, 'thermostat') || str_contains($description, 'radiator')) {
             return 'thermostat';
         }
-        if (str_contains($description, 'temperature') || str_contains($description, 'humidity') || str_contains($description, 'sensor')) {
-            return 'sensor_temperature';
-        }
         if (str_contains($description, 'contact') || str_contains($description, 'door') || str_contains($description, 'window')) {
-            return 'sensor_contact';
+            return 'sensor_door';
         }
         if (str_contains($description, 'motion') || str_contains($description, 'presence') || str_contains($description, 'occupancy')) {
             return 'sensor_motion';
+        }
+        if (str_contains($description, 'temperature') || str_contains($description, 'humidity') || str_contains($description, 'sensor')) {
+            return 'sensor_temperature';
         }
         if (str_contains($description, 'light') || str_contains($description, 'bulb') || str_contains($description, 'lamp')) {
             return 'light';

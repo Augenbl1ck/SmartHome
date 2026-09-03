@@ -36,7 +36,11 @@ function statusLabel(device: Device): string {
     const set = attrs.setpoint;
     const parts: string[] = [];
     if (typeof local === 'number' || (typeof local === 'string' && local !== '')) {
-      parts.push(`${Number(local).toFixed(1)}°C`);
+      const n = Number(local);
+      if (Number.isFinite(n)) parts.push(`${n.toFixed(1)}°C`);
+    } else if (typeof attrs.temperature === 'number' || (typeof attrs.temperature === 'string' && attrs.temperature !== '')) {
+      const n = Number(attrs.temperature);
+      if (Number.isFinite(n)) parts.push(`${n.toFixed(1)}°C`);
     }
     if (typeof set === 'number' || (typeof set === 'string' && set !== '')) {
       parts.push(`Soll ${Number(set).toFixed(1)}°C`);
@@ -46,17 +50,15 @@ function statusLabel(device: Device): string {
   }
 
   if (isSensor(type)) {
-    if (type === 'sensor_temperature' || attrs.temperature != null || attrs.local_temperature != null) {
-      const t = attrs.local_temperature ?? attrs.temperature ?? device.status;
-      if (t !== '' && t != null && !Number.isNaN(Number(t))) return `${Number(t).toFixed(1)}°C`;
-    }
-    if (type === 'sensor_humidity' || attrs.humidity != null) {
-      const h = attrs.humidity ?? device.status;
-      if (h !== '' && h != null && !Number.isNaN(Number(h))) return `${Number(h).toFixed(0)}%`;
-    }
     if (type === 'sensor_door') return device.status === 'open' ? 'Offen' : device.status === 'closed' ? 'Geschlossen' : device.status;
     if (type === 'sensor_motion') return device.status === 'on' ? 'Bewegung' : 'Ruhe';
     if (type === 'energy_meter' && attrs.power_w != null) return `${Number(attrs.power_w).toFixed(0)} W`;
+    const temp = attrs.local_temperature ?? attrs.temperature ?? (type === 'sensor_temperature' ? device.status : null);
+    const hum = attrs.humidity ?? (type === 'sensor_humidity' ? device.status : null);
+    const parts: string[] = [];
+    if (temp !== '' && temp != null && !Number.isNaN(Number(temp))) parts.push(`${Number(temp).toFixed(1)}°C`);
+    if (hum !== '' && hum != null && !Number.isNaN(Number(hum))) parts.push(`${Number(hum).toFixed(0)}%`);
+    if (parts.length) return parts.join(' · ');
     return device.status || '—';
   }
 

@@ -81,22 +81,29 @@ class DeviceService
 
     private function sendHttp(Device $device, string $status): void
     {
-        // mqtt_topic wird hier als IP-Adresse / Hostname verwendet
-        $host = rtrim($device->mqtt_topic ?? '', '/');
+        $attrs = $device->attributes ?? [];
+        $host = trim((string) ($attrs['shelly_ip'] ?? ''));
+        if ($host === '') {
+            $host = rtrim($device->mqtt_topic ?? '', '/');
+        }
+        $host = preg_replace('#^https?://#i', '', $host) ?? $host;
+        $host = explode('/', $host)[0];
 
         $url = "http://{$host}/rpc/Switch.Set";
 
         try {
-            $response = Http::timeout(5)->post($url, [
+            $response = Http::timeout(2)->connectTimeout(2)->post($url, [
                 'id' => 0,
                 'on' => $status === 'on',
             ]);
 
             if (!$response->successful()) {
-                Log::warning("[DeviceService] HTTP Fehler bei {$device->name}: " . $response->status());
+                throw new \RuntimeException("HTTP {$response->status()} bei {$device->name}");
             }
+        } catch (\RuntimeException $e) {
+            throw $e;
         } catch (\Exception $e) {
-            Log::error("[DeviceService] HTTP nicht erreichbar {$device->name}: " . $e->getMessage());
+            throw new \RuntimeException("HTTP nicht erreichbar {$device->name}: " . $e->getMessage(), 0, $e);
         }
     }
 
@@ -116,10 +123,12 @@ class DeviceService
             ]);
 
             if (!$response->successful()) {
-                Log::warning("[DeviceService] BLE Bridge Fehler bei {$device->name}: " . $response->body());
+                throw new \RuntimeException('BLE Bridge Fehler bei ' . $device->name);
             }
+        } catch (\RuntimeException $e) {
+            throw $e;
         } catch (\Exception $e) {
-            Log::error("[DeviceService] BLE Bridge nicht erreichbar: " . $e->getMessage());
+            throw new \RuntimeException('BLE Bridge nicht erreichbar: ' . $e->getMessage(), 0, $e);
         }
     }
 
@@ -130,8 +139,7 @@ class DeviceService
     private function sendMqtt(Device $device, string $status): void
     {
         if (!$device->mqtt_topic) {
-            Log::warning("[DeviceService] Kein MQTT-Topic für {$device->name}");
-            return;
+            throw new \RuntimeException("Kein MQTT-Topic für {$device->name}");
         }
 
         $protocol = $device->attributes['protocol'] ?? 'simple';
@@ -141,13 +149,13 @@ class DeviceService
             $mqtt = new MqttClient(
                 config('mqtt.host', '127.0.0.1'),
                 (int) config('mqtt.port', 1883),
-                'laravel-device-service'
+                'laravel-ds-' . uniqid()
             );
             $mqtt->connect(MqttHelper::settings(3), true);
             $mqtt->publish($topic, $payload, 0);
             $mqtt->disconnect();
         } catch (\Exception $e) {
-            Log::warning("[DeviceService] MQTT nicht verfügbar: " . $e->getMessage());
+            throw new \RuntimeException("[DeviceService] MQTT nicht verfügbar: " . $e->getMessage(), 0, $e);
         }
     }
 
@@ -226,8 +234,7 @@ class DeviceService
     public function publishMqttJson(Device $device, array $payload, string $suffix = 'set'): void
     {
         if (!$device->mqtt_topic) {
-            Log::warning("[DeviceService] Kein MQTT-Topic für {$device->name}");
-            return;
+            throw new \RuntimeException("Kein MQTT-Topic für {$device->name}");
         }
 
         $suffix = $suffix === 'get' ? 'get' : 'set';
@@ -239,13 +246,13 @@ class DeviceService
             $mqtt = new MqttClient(
                 config('mqtt.host', '127.0.0.1'),
                 (int) config('mqtt.port', 1883),
-                'laravel-device-service'
+                'laravel-ds-json-' . uniqid()
             );
             $mqtt->connect(MqttHelper::settings(3), true);
             $mqtt->publish($topic, $json, 0);
             $mqtt->disconnect();
         } catch (\Exception $e) {
-            Log::warning("[DeviceService] MQTT nicht verfügbar: " . $e->getMessage());
+            throw new \RuntimeException("[DeviceService] MQTT nicht verfügbar: " . $e->getMessage(), 0, $e);
         }
     }
 

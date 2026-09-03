@@ -6,6 +6,7 @@ import PinLockProvider from "@/components/PinLockProvider";
 import AutomationNotifications from "@/components/AutomationNotifications";
 import KioskProvider from "@/components/KioskProvider";
 import VirtualKeyboardProvider from "@/components/VirtualKeyboardProvider";
+import SmartHomeProvider from "@/components/SmartHomeProvider";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -75,6 +76,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <PinLockProvider>
           <VirtualKeyboardProvider>
             <KioskProvider>
+              <SmartHomeProvider>
               <NavBar />
               <main className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6 max-w-6xl mx-auto w-full pb-24 md:pb-8">
                 {children}
@@ -83,6 +85,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <AutomationNotifications />
               <ServiceWorkerRegistrar />
               <Toaster position="bottom-right" richColors closeButton />
+              </SmartHomeProvider>
             </KioskProvider>
           </VirtualKeyboardProvider>
         </PinLockProvider>

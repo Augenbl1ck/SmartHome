@@ -8,7 +8,11 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-interface Props { deviceId: number; mode?: 'ble' | 'http' }
+interface Props {
+  deviceId: number;
+  mode?: 'ble' | 'http';
+  mqttPowerW?: number | null;
+}
 
 interface PowerStatus {
   apower: number;
@@ -75,7 +79,7 @@ const DEFAULT_CONFIG: Config = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function ShellyPlugPanel({ deviceId, mode = 'ble' }: Props) {
+export default function ShellyPlugPanel({ deviceId, mode = 'ble', mqttPowerW = null }: Props) {
   const [expanded,      setExpanded]      = useState(false);
   const [loadingPower,  setLoadingPower]  = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(false);
@@ -194,8 +198,10 @@ export default function ShellyPlugPanel({ deviceId, mode = 'ble' }: Props) {
     }
   };
 
-  // Verbrauch immer laden und periodisch aktualisieren
+  // HTTP: Status kommt per MQTT — kein GetStatus-Polling (blockiert artisan serve).
+  // BLE: gelegentlich GetStatus, weil MQTT oft fehlt.
   useEffect(() => {
+    if (mode === 'http') return;
     let cancelled = false;
     const tick = async (showSpinner: boolean) => {
       if (cancelled) return;
@@ -216,7 +222,7 @@ export default function ShellyPlugPanel({ deviceId, mode = 'ble' }: Props) {
       cancelled = true;
       clearInterval(id);
     };
-  }, [rpc]);
+  }, [rpc, mode]);
 
   const fetchConfig = async () => {
     if (configLoaded) return;
@@ -364,6 +370,10 @@ export default function ShellyPlugPanel({ deviceId, mode = 'ble' }: Props) {
             {power.temperature && (
               <Stat label="Chip-Temp" value={`${power.temperature.tC.toFixed(1)} °C`} />
             )}
+          </div>
+        ) : mqttPowerW != null && Number.isFinite(mqttPowerW) ? (
+          <div className="grid grid-cols-2 gap-1">
+            <Stat label="Leistung" value={`${mqttPowerW.toFixed(1)} W`} highlight={mqttPowerW > 0} />
           </div>
         ) : null}
       </div>

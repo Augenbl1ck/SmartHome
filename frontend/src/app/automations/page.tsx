@@ -4,20 +4,18 @@ import AutomationsClient from './AutomationsClient';
 export const dynamic = 'force-dynamic';
 
 export default async function AutomationsPage() {
-  const [automations, devices, rooms, logs, scenes] = await Promise.all([
+  const [boot, automations, logs] = await Promise.all([
+    serverApi.getBootstrap().catch(() => ({ rooms: [], devices: [], scenes: [] })),
     serverApi.getAutomations().catch(() => []),
-    serverApi.getDevices().catch(() => []),
-    serverApi.getRooms().catch(() => []),
     serverApi.getAutomationLogs().catch(() => []),
-    serverApi.getScenes().catch(() => []),
   ]);
 
   return (
     <AutomationsClient
       initialAutomations={automations}
-      devices={devices}
-      rooms={rooms}
-      scenes={scenes}
+      devices={boot.devices}
+      rooms={boot.rooms}
+      scenes={boot.scenes}
       initialLogs={logs}
     />
   );

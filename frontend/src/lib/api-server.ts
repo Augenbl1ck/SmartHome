@@ -1,4 +1,4 @@
-import { Automation, AutomationLog, CalendarEventsResponse, Device, EnergyHistoryResponse, EnergyOverview, EnergyPeriod, PanelSettings, Room, Scene, TransitBoardResponse, WeatherResponse } from './api';
+import { Automation, AutomationLog, BootstrapPayload, CalendarEventsResponse, Device, EnergyHistoryResponse, EnergyOverview, EnergyPeriod, PanelSettings, Room, Scene, TransitBoardResponse, WeatherResponse } from './api';
 import { fetchWeatherData } from './weather-fetch';
 
 const API_BASE = process.env.API_URL ?? 'http://localhost:8000/api/v1';
@@ -27,13 +27,14 @@ function isoDate(d: Date): string {
 }
 
 export const serverApi = {
-  getRooms: () => serverFetch<Room[]>('/rooms', 10),
+  getBootstrap: () => serverFetch<BootstrapPayload>('/bootstrap'),
+  getRooms: () => serverFetch<Room[]>('/rooms'),
   getDevices: (roomId?: number) =>
-    serverFetch<Device[]>(`/devices${roomId ? `?room_id=${roomId}` : ''}`, 5),
-  getRoom: (id: number) => serverFetch<Room>(`/rooms/${id}`, 5),
+    serverFetch<Device[]>(`/devices${roomId ? `?room_id=${roomId}` : ''}`),
+  getRoom: (id: number) => serverFetch<Room>(`/rooms/${id}`),
   getAutomations: () => serverFetch<Automation[]>('/automations', 10),
   getAutomationLogs: () => serverFetch<AutomationLog[]>('/automation-logs', 15),
-  getScenes: () => serverFetch<Scene[]>('/scenes', 15),
+  getScenes: () => serverFetch<Scene[]>('/scenes'),
   getPanelSettings: () => serverFetch<PanelSettings>('/panel-settings'),
   getCalendarEvents: (params?: { from?: string; to?: string }) => {
     const q = new URLSearchParams();

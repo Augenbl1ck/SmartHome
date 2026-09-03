@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, Device, Room } from '@/lib/api';
 import { shellyBle, BleState } from '@/lib/bluetooth';
-import { deviceIcons, isSensor, isToggleable, isComputer, countsAsActive, getDeviceColors, getDeviceEmoji, commandBlocked, nextCommandBlocked } from '@/lib/devices';
+import { deviceIcons, isSensor, isToggleable, isComputer, countsAsActive, getDeviceColors, getDeviceEmoji, commandBlocked, nextCommandBlocked, numericAttr } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
 import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Star, ChevronUp, ChevronDown, Square, Minus, Plus, PowerOff, Loader2, Power, Lock, Unlock, Wind, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -16,6 +16,7 @@ import ThermostatAdvancedPanel from '@/components/ThermostatAdvancedPanel';
 import { loadFavoritesLocal, saveFavorites, syncFavoritesFromServer } from '@/lib/favorites';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { getEcho } from '@/lib/echo';
+import { useSmartHomeStore } from '@/store/smarthome';
 import BleScanDialog from '@/components/BleScanDialog';
 import {
   encodeCapStatus,
@@ -128,35 +129,45 @@ export default function RoomClient({ room, initialDevices }: Props) {
     return m;
   });
 
-  // Geräte nur bei Focus neu laden (SSR-Daten sind bereits aktuell)
+  const replaceRoomDevices = useSmartHomeStore(s => s.replaceRoomDevices);
+  const upsertDevice = useSmartHomeStore(s => s.upsertDevice);
+
+  const applyDeviceList = (fresh: Device[]) => {
+    setDevices(fresh);
+    replaceRoomDevices(room.id, fresh);
+    setSetpoints(prev => {
+      const m = new Map(prev);
+      for (const d of fresh) {
+        if (d.type === 'thermostat') {
+          const sp = Number(d.attributes?.setpoint ?? d.status);
+          if (!isNaN(sp)) m.set(d.id, sp);
+        }
+      }
+      return m;
+    });
+    setDimmerLevels(prev => {
+      const m = new Map(prev);
+      for (const d of fresh) {
+        if (['dimmer', 'rgb', 'led'].includes(d.type)) {
+          const lv = Number(d.attributes?.brightness ?? (d.status !== 'on' && d.status !== 'off' ? d.status : 50));
+          if (!isNaN(lv)) m.set(d.id, Math.min(100, Math.max(0, lv)));
+        }
+      }
+      return m;
+    });
+  };
+
+  const refreshDevices = () => {
+    api.getDevices(room.id).then(applyDeviceList).catch(() => {});
+  };
+
+  // Beim Betreten des Raums + Tab-Focus neu laden (nicht nur Focus)
   useEffect(() => {
-    const refresh = () => {
-      api.getDevices(room.id).then(fresh => {
-        setDevices(fresh);
-        setSetpoints(prev => {
-          const m = new Map(prev);
-          for (const d of fresh) {
-            if (d.type === 'thermostat') {
-              const sp = Number(d.attributes?.setpoint ?? d.status);
-              if (!isNaN(sp)) m.set(d.id, sp);
-            }
-          }
-          return m;
-        });
-        setDimmerLevels(prev => {
-          const m = new Map(prev);
-          for (const d of fresh) {
-            if (['dimmer', 'rgb', 'led'].includes(d.type)) {
-              const lv = Number(d.attributes?.brightness ?? (d.status !== 'on' && d.status !== 'off' ? d.status : 50));
-              if (!isNaN(lv)) m.set(d.id, Math.min(100, Math.max(0, lv)));
-            }
-          }
-          return m;
-        });
-      }).catch(() => {});
-    };
-    window.addEventListener('focus', refresh);
-    return () => window.removeEventListener('focus', refresh);
+    const fromStore = useSmartHomeStore.getState().devices.filter(d => d.room_id === room.id);
+    if (fromStore.length) applyDeviceList(fromStore);
+    refreshDevices();
+    window.addEventListener('focus', refreshDevices);
+    return () => window.removeEventListener('focus', refreshDevices);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room.id]);
 
@@ -177,19 +188,33 @@ export default function RoomClient({ room, initialDevices }: Props) {
 
   // Echtzeit-Updates via Laravel Reverb WebSocket (MQTT → Backend → Browser)
   useEffect(() => {
-    const deviceIds = new Set(initialDevices.map(d => d.id));
     let echo: ReturnType<typeof getEcho> | null = null;
     try {
       echo = getEcho();
       echo.channel('devices').listen('.device.updated', (data: {
-        id: number; status: string; attributes: Record<string, unknown>; last_seen: string;
+        id: number; room_id?: number; status: string; attributes: Record<string, unknown>; last_seen: string;
       }) => {
-        if (!deviceIds.has(data.id)) return; // nur Geräte dieses Raums
-        setDevices(prev => prev.map(d => d.id === data.id
-          ? { ...d, status: data.status, attributes: data.attributes, last_seen: data.last_seen }
-          : d
-        ));
-        // Thermostat-Sollwert synchronisieren
+        if (data.room_id != null && data.room_id !== room.id) return;
+        setDevices(prev => {
+          const exists = prev.some(d => d.id === data.id);
+          if (!exists) {
+            refreshDevices();
+            return prev;
+          }
+          return prev.map(d => d.id === data.id
+            ? { ...d, status: data.status, attributes: data.attributes, last_seen: data.last_seen }
+            : d
+          );
+        });
+        const existing = useSmartHomeStore.getState().devices.find(d => d.id === data.id);
+        if (existing) {
+          upsertDevice({
+            ...existing,
+            status: data.status,
+            attributes: data.attributes,
+            last_seen: data.last_seen,
+          });
+        }
         if (data.attributes?.setpoint !== undefined) {
           setSetpoints(m => new Map(m).set(data.id, Number(data.attributes.setpoint)));
         }
@@ -308,7 +333,9 @@ export default function RoomClient({ room, initialDevices }: Props) {
       await api.setDeviceStatus(device.id, String(clamped));
       emitDeviceUpdate(device.id, newStatus);
     } catch {
-      setDimmerLevels(m => new Map(m).set(device.id, level));
+      const prev = Number(device.attributes?.brightness ?? (device.status !== 'on' && device.status !== 'off' ? device.status : 50));
+      setDimmerLevels(m => new Map(m).set(device.id, Number.isFinite(prev) ? prev : 50));
+      setDevices(old => old.map(d => d.id === device.id ? device : d));
     }
   };
 
@@ -632,27 +659,62 @@ export default function RoomClient({ room, initialDevices }: Props) {
                     sensor_smoke:     ['🔥 Alarm',       '✓ OK'],
                   };
                   const isBinary = device.type in LABELS;
-                  const active   = device.status === 'on' || device.status === 'true';
+                  const active   = device.type === 'sensor_door'
+                    ? device.status === 'open'
+                    : device.status === 'on' || device.status === 'true' || device.status === 'open';
                   const [activeLabel, inactiveLabel] = LABELS[device.type] ?? ['Aktiv', 'Ruhig'];
+                  const isClimate = device.type === 'sensor_temperature' || device.type === 'sensor_humidity';
+                  const temp = isClimate
+                    ? (numericAttr(device.attributes, 'temperature', 'local_temperature')
+                      ?? (Number.isFinite(Number(device.status)) ? Number(device.status) : null))
+                    : null;
+                  const humidity = isClimate ? numericAttr(device.attributes, 'humidity') : null;
+                  const battery = numericAttr(device.attributes, 'battery');
                   return (
                     <>
                       {isBinary ? (
                         <p className={cn('mt-3 text-xl font-bold', active ? 'text-amber-500' : 'text-muted-foreground')}>
                           {active ? activeLabel : inactiveLabel}
                         </p>
+                      ) : isClimate ? (
+                        <div className="mt-3 space-y-1">
+                          {temp != null && (
+                            <p className="text-2xl font-bold tabular-nums">
+                              {temp.toFixed(1)}
+                              <span className="text-sm font-medium text-muted-foreground ml-0.5">°C</span>
+                            </p>
+                          )}
+                          {humidity != null && (
+                            <p className={cn('tabular-nums', temp != null ? 'text-base font-semibold text-muted-foreground' : 'text-2xl font-bold')}>
+                              {humidity.toFixed(0)}
+                              <span className="text-sm font-medium text-muted-foreground ml-0.5">%</span>
+                              {temp != null ? <span className="text-xs font-normal ml-1">Luftfeuchte</span> : null}
+                            </p>
+                          )}
+                          {temp == null && humidity == null && (
+                            <p className="text-2xl font-bold tabular-nums">
+                              {device.status !== 'unknown' ? device.status : '–'}
+                            </p>
+                          )}
+                          {battery != null && (
+                            <p className="text-xs text-muted-foreground">Batterie {battery}%</p>
+                          )}
+                        </div>
                       ) : (
                         <p className="mt-3 text-2xl font-bold tabular-nums">
                           {device.status !== 'unknown' ? device.status : '–'}
                           <span className="text-sm font-medium text-muted-foreground ml-0.5">
-                            {device.type === 'sensor_temperature' && '°C'}
-                            {device.type === 'sensor_humidity' && '%'}
                             {device.type === 'energy_meter' && 'W'}
                             {device.type === 'sensor_lux' && 'lx'}
                           </span>
                         </p>
                       )}
-                      {(device.type === 'sensor_temperature' || device.type === 'sensor_humidity') && (
-                        <SensorChart deviceId={device.id} deviceType={device.type as DeviceType} currentValue={device.status} />
+                      {(isClimate) && !isBinary && (
+                        <SensorChart
+                          deviceId={device.id}
+                          deviceType={(device.type === 'sensor_humidity' && temp == null ? 'sensor_humidity' : 'sensor_temperature') as DeviceType}
+                          currentValue={String(device.type === 'sensor_humidity' && temp == null ? (humidity ?? device.status) : (temp ?? device.status))}
+                        />
                       )}
                     </>
                   );
@@ -704,7 +766,13 @@ export default function RoomClient({ room, initialDevices }: Props) {
                 )}
 
                 {useBridge && toggleable && !sensor && <ShellyPlugPanel deviceId={device.id} mode="ble" />}
-                {isMqttShelly && toggleable && !sensor && <ShellyPlugPanel deviceId={device.id} mode="http" />}
+                {isMqttShelly && toggleable && !sensor && (
+                  <ShellyPlugPanel
+                    deviceId={device.id}
+                    mode="http"
+                    mqttPowerW={typeof device.attributes?.power_w === 'number' ? device.attributes.power_w as number : Number(device.attributes?.power_w) || null}
+                  />
+                )}
                 {isZigbeePlug && (
                   <ZigbeePlugPanel
                     device={device}
@@ -746,11 +814,14 @@ export default function RoomClient({ room, initialDevices }: Props) {
                 {/* Thermostat: Aktuell sichtbar, Rest unter „Gerät konfigurieren“ */}
                 {isTherm && (
                   <div className="mt-4 space-y-2">
-                    {typeof device.attributes?.local_temperature === 'number' && (
+                    {(() => {
+                      const current = numericAttr(device.attributes, 'local_temperature', 'temperature');
+                      if (current == null) return null;
+                      return (
                       <p className="text-sm text-muted-foreground">
                         Aktuell:{' '}
                         <span className="font-semibold text-foreground">
-                          {(device.attributes.local_temperature as number).toFixed(1)}°C
+                          {current.toFixed(1)}°C
                         </span>
                         {getRunningStateLabel(device.attributes) && (
                           <span className="ml-2 text-xs">
@@ -758,7 +829,8 @@ export default function RoomClient({ room, initialDevices }: Props) {
                           </span>
                         )}
                       </p>
-                    )}
+                      );
+                    })()}
 
                     <button
                       type="button"

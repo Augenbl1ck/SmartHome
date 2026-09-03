@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/select';
 import { shellyBle } from '@/lib/bluetooth';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
+import { useSmartHomeStore } from '@/store/smarthome';
 
 const SCENE_ICONS = ['🎬', '💡', '🌙', '☀️', '🎵', '🍿', '🏠', '😴', '🚗', '🌿', '🎮', '📖'];
 const SNAPSHOTS_KEY = 'smarthome_scene_snapshots';
@@ -327,14 +328,10 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
         setSnapshots(newSnapshots);
       }
 
-      for (const a of scene.actions) {
-        if (!isOnOffAction(a)) continue;
-        const id = actionDeviceId(a);
-        if (id == null) continue;
-        const d = devices.find((x) => x.id === id);
-        if (!d) continue;
-        const target = resolvedOnOffTarget(a, d);
-        if (target) emitDeviceUpdate(id, target);
+      const fresh = await api.getDevices().catch(() => null);
+      if (fresh) {
+        setDevices(fresh);
+        useSmartHomeStore.getState().hydrate({ devices: fresh });
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

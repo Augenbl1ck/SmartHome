@@ -29,14 +29,27 @@ class DeviceLogController extends Controller
     {
         $hours = min((int) $request->query('hours', 24), 168); // max 7 Tage
         $since = now()->subHours($hours);
+        $wantHumidity = $device->type === 'sensor_humidity';
 
         $logs = DeviceLog::where('device_id', $device->id)
             ->where('recorded_at', '>=', $since)
-            ->whereRaw("CAST(status AS REAL) = CAST(status AS REAL)") // nur numerische Werte
             ->orderBy('recorded_at')
-            ->get(['status', 'recorded_at']);
+            ->get(['status', 'value', 'recorded_at']);
 
-        if ($logs->isEmpty()) {
+        $valuesByHour = [];
+        $allValues = [];
+
+        foreach ($logs as $log) {
+            $n = $this->numericReading($log->status, $log->value, $wantHumidity);
+            if ($n === null) {
+                continue;
+            }
+            $hour = \Carbon\Carbon::parse($log->recorded_at)->format('Y-m-d H:00:00');
+            $valuesByHour[$hour][] = $n;
+            $allValues[] = $n;
+        }
+
+        if ($allValues === []) {
             return response()->json([
                 'readings' => [],
                 'min'      => null,
@@ -45,15 +58,8 @@ class DeviceLogController extends Controller
             ]);
         }
 
-        // Stündliche Buckets
-        $buckets = [];
-        foreach ($logs as $log) {
-            $hour = \Carbon\Carbon::parse($log->recorded_at)->format('Y-m-d H:00:00');
-            $buckets[$hour][] = (float) $log->status;
-        }
-
         $readings = [];
-        foreach ($buckets as $hour => $values) {
+        foreach ($valuesByHour as $hour => $values) {
             $readings[] = [
                 'time'  => $hour,
                 'value' => round(array_sum($values) / count($values), 1),
@@ -62,13 +68,33 @@ class DeviceLogController extends Controller
             ];
         }
 
-        $allValues = $logs->map(fn ($l) => (float) $l->status);
-
         return response()->json([
             'readings' => $readings,
-            'min'      => round($allValues->min(), 1),
-            'max'      => round($allValues->max(), 1),
-            'avg'      => round($allValues->avg(), 1),
+            'min'      => round(min($allValues), 1),
+            'max'      => round(max($allValues), 1),
+            'avg'      => round(array_sum($allValues) / count($allValues), 1),
         ]);
+    }
+
+    private function numericReading(?string $status, ?string $value, bool $humidity): ?float
+    {
+        if ($humidity) {
+            if ($status === 'humidity' && is_numeric($value)) {
+                return (float) $value;
+            }
+            if (is_numeric($status) && $status !== 'humidity') {
+                return (float) $status;
+            }
+            return null;
+        }
+
+        if (is_numeric($status)) {
+            return (float) $status;
+        }
+        if (in_array($status, ['temperature', 'value'], true) && is_numeric($value)) {
+            return (float) $value;
+        }
+
+        return null;
     }
 }

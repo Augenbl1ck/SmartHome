@@ -6,6 +6,7 @@ import { api, Device, DeviceType, Room, Scene, type CalendarEventsResponse, type
 import { countsAsActive } from '@/lib/devices';
 import { DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { getEcho } from '@/lib/echo';
+import { useSmartHomeStore } from '@/store/smarthome';
 import { cn } from '@/lib/utils';
 import DeviceFieldPanel from '@/components/DeviceFieldPanel';
 import { useDashboardLayout, parseFieldSectionId, type SectionId } from '@/hooks/useDashboardLayout';
@@ -39,6 +40,9 @@ export default function DashboardLive({
   initialTransit = null,
   initialEnergy = null,
 }: Props) {
+  const hydrate = useSmartHomeStore(s => s.hydrate);
+  const patchDevice = useSmartHomeStore(s => s.patchDevice);
+
   // Server-Daten sofort nutzen → keine Farbverzögerung beim ersten Render
   const [devices,  setDevices]  = useState<Device[]>(initialDevices);
   const [mounted,  setMounted]  = useState(false);
@@ -50,8 +54,13 @@ export default function DashboardLive({
     try {
       const fresh = await api.getDevices();
       setDevices(fresh);
+      useSmartHomeStore.getState().hydrate({ devices: fresh });
     } catch { /* silent */ }
   }, []);
+
+  useEffect(() => {
+    hydrate({ rooms, devices: initialDevices, scenes: initialScenes });
+  }, [hydrate, rooms, initialDevices, initialScenes]);
 
   useEffect(() => {
     setMounted(true);
@@ -84,6 +93,7 @@ export default function DashboardLive({
           ? { ...d, status: data.status, attributes: data.attributes, last_seen: data.last_seen }
           : d
         ));
+        patchDevice(data.id, { status: data.status, attributes: data.attributes, last_seen: data.last_seen });
       });
     } catch (err) {
       console.warn('[WebSocket] Reverb nicht erreichbar, nur Polling aktiv', err);
@@ -127,6 +137,7 @@ export default function DashboardLive({
     setRunning(r => new Set(r).add(scene.id));
     try {
       await api.activateScene(scene.id);
+      await refresh();
       setDone(d => new Set(d).add(scene.id));
       setTimeout(() => setDone(d => { const n = new Set(d); n.delete(scene.id); return n; }), 2000);
     } finally {
@@ -239,7 +250,7 @@ export default function DashboardLive({
               const roomDevices = list.filter(d => d.room_id === room.id);
               const active      = roomDevices.filter(d => d.status === 'on' && countsAsActive(d.type as DeviceType)).length;
               return (
-                <Link key={room.id} href={`/rooms/${room.id}`}>
+                <Link key={room.id} href={`/rooms/${room.id}`} prefetch>
                   <div className={cn(
                     'rounded-2xl border p-5 flex flex-col gap-3 min-h-[165px] cursor-pointer',
                     'transition-all duration-300 ease-in-out active:scale-[0.97]',

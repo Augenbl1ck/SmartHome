@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Events\DeviceStatusUpdated;
 use App\Http\Controllers\Controller;
 use App\Models\Device;
 use App\Services\DeviceService;
@@ -98,7 +99,11 @@ class DeviceController extends Controller
     {
         $data = $request->validate(['status' => 'required|string|max:64']);
         $status = $data['status'];
-        $this->deviceService->setStatus($device, $status);
+        try {
+            $this->deviceService->setStatus($device, $status);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 503);
+        }
 
         // Wake-on-LAN: Status kommt vom Ping, nicht vom Magic Packet
         if ($device->isWakeOnLan()) {
@@ -162,7 +167,12 @@ class DeviceController extends Controller
             ]);
         }
 
-        return response()->json($device->fresh());
+        $fresh = $device->fresh();
+        if ($fresh) {
+            DeviceStatusUpdated::dispatch($fresh);
+        }
+
+        return response()->json($fresh);
     }
 
     public function thermostatCommand(Request $request, Device $device): JsonResponse
@@ -181,6 +191,8 @@ class DeviceController extends Controller
             $patch = $this->deviceService->applyThermostatCommand($device, $data);
         } catch (\InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
+        } catch (\RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 503);
         }
 
         $attrs = array_merge($device->attributes ?? [], $patch);
@@ -188,8 +200,12 @@ class DeviceController extends Controller
             'attributes' => $attrs,
             'last_seen'  => now(),
         ]);
+        $fresh = $device->fresh();
+        if ($fresh) {
+            DeviceStatusUpdated::dispatch($fresh);
+        }
 
-        return response()->json($device->fresh());
+        return response()->json($fresh);
     }
 
     /**

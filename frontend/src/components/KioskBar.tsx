@@ -31,7 +31,7 @@ export default function KioskBar() {
       {/* Räume (scrollbar) */}
       <div className="flex-1 flex items-stretch overflow-x-auto scrollbar-none">
         {rooms.map(room => (
-          <Link key={room.id} href={`/rooms/${room.id}`} className={cn('flex flex-col items-center justify-center gap-1 min-w-[80px] px-2 text-xs font-medium transition-colors', isActive(`/rooms/${room.id}`) ? 'text-primary' : 'text-muted-foreground')}>
+          <Link key={room.id} href={`/rooms/${room.id}`} prefetch className={cn('flex flex-col items-center justify-center gap-1 min-w-[80px] px-2 text-xs font-medium transition-colors', isActive(`/rooms/${room.id}`) ? 'text-primary' : 'text-muted-foreground')}>
             <div className={cn('h-9 w-9 rounded-xl flex items-center justify-center text-xl', isActive(`/rooms/${room.id}`) ? 'bg-primary/10' : 'hover:bg-accent')}>
               {room.icon ?? '🏠'}
             </div>

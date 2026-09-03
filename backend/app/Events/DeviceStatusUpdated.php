@@ -30,6 +30,7 @@ class DeviceStatusUpdated implements ShouldBroadcast
     {
         return [
             'id'         => $this->device->id,
+            'room_id'    => $this->device->room_id,
             'status'     => $this->device->status,
             'attributes' => $this->device->attributes ?? [],
             'last_seen'  => $this->device->last_seen,

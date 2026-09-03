@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect, useTransition, useCallback, useMemo, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { api, Device, DeviceType, Room, ZigbeeDevice, type LanHost, type TransitConfig, type TransitConnection, type TransitStop, type TransitStopRef } from '@/lib/api';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { deviceLabels, CUSTOM_COLORS, formatMacAddress } from '@/lib/devices';
 import { getEcho } from '@/lib/echo';
+import { useSmartHomeStore } from '@/store/smarthome';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -314,13 +316,16 @@ interface DiscoveredDevice {
 
 const ZIGBEE_PAIR_SECONDS = 90;
 
-function inferZigbeeDeviceType(description: string): DeviceType {
+function inferZigbeeDeviceType(description: string, model?: string): DeviceType {
+  const m = (model ?? '').toLowerCase();
   const d = description.toLowerCase();
+  if (m.includes('trvzb') || m.includes('trv')) return 'thermostat';
+  if (m.includes('snzb-02') || (d.includes('temperature') && d.includes('humidity'))) return 'sensor_temperature';
   if (d.includes('plug') || d.includes('socket') || d.includes('outlet')) return 'plug';
-  if (d.includes('thermostat') || d.includes('trv') || d.includes('radiator')) return 'thermostat';
-  if (d.includes('temperature') || d.includes('humidity') || d.includes('sensor')) return 'sensor_temperature';
+  if (d.includes('thermostat') || d.includes('radiator')) return 'thermostat';
   if (d.includes('contact') || d.includes('door') || d.includes('window')) return 'sensor_door';
   if (d.includes('motion') || d.includes('presence') || d.includes('occupancy')) return 'sensor_motion';
+  if (d.includes('temperature') || d.includes('humidity') || d.includes('sensor')) return 'sensor_temperature';
   if (d.includes('light') || d.includes('bulb') || d.includes('lamp')) return 'light';
   if (d.includes('switch') || d.includes('relay')) return 'switch';
   return 'plug';
@@ -335,7 +340,7 @@ function zigbeeToDiscovered(z: ZigbeeDevice): DiscoveredDevice {
     model: z.definition?.model ?? null,
     description,
     supported: z.supported,
-    device_type: inferZigbeeDeviceType(description ?? ''),
+    device_type: inferZigbeeDeviceType(description ?? '', z.definition?.model),
     mqtt_topic: `zigbee2mqtt/${z.friendly_name}`,
     protocol: 'zigbee2mqtt',
     source: 'zigbee2mqtt',
@@ -1374,7 +1379,11 @@ function EnergySection() {
 // Zigbee-Verwaltung
 // ─────────────────────────────────────────────────────────────────
 
-function ZigbeeSection({ rooms, onDeviceImported }: { rooms: Room[]; onDeviceImported: (d: Device) => void }) {
+function ZigbeeSection({ rooms, onDeviceImported, onLinkedDeviceRemoved }: {
+  rooms: Room[];
+  onDeviceImported: (d: Device) => void;
+  onLinkedDeviceRemoved?: (id: number) => void;
+}) {
   const [zbDevices, setZbDevices] = useState<ZigbeeDevice[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -1388,6 +1397,9 @@ function ZigbeeSection({ rooms, onDeviceImported }: { rooms: Room[]; onDeviceImp
     open: false, name: '', saving: false, err: '',
   });
   const [removeConfirm, setRemoveConfirm] = useState<ZigbeeDevice | null>(null);
+  const [removeForce, setRemoveForce] = useState(false);
+  const [removeErr, setRemoveErr] = useState('');
+  const [removeSaving, setRemoveSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -1467,15 +1479,30 @@ function ZigbeeSection({ rooms, onDeviceImported }: { rooms: Room[]; onDeviceImp
     }
   };
 
-  const doRemove = async () => {
+  const doRemove = async (force = removeForce) => {
     if (!removeConfirm) return;
+    setRemoveSaving(true);
+    setRemoveErr('');
     try {
-      await api.zigbeeRemove(removeConfirm.ieee_address);
+      await api.zigbeeRemove(removeConfirm.ieee_address, { force });
+      const linkedId = removeConfirm.smarthome_device?.id;
+      if (linkedId) {
+        await api.deleteDevice(linkedId).catch(() => {});
+        onLinkedDeviceRemoved?.(linkedId);
+      }
       setZbDevices(prev => prev.filter(d => d.ieee_address !== removeConfirm.ieee_address));
       setRemoveConfirm(null);
+      setRemoveForce(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Fehler');
-      setRemoveConfirm(null);
+      const msg = e instanceof Error ? e.message : 'Fehler';
+      if (!force && /mgmtLeaveRsp|Failed to remove/i.test(msg)) {
+        setRemoveForce(true);
+        setRemoveErr('Gerät antwortet nicht (typisch bei Thermostaten). Mit „Erzwingen“ nur aus Zigbee2MQTT löschen — Gerät danach ggf. zurücksetzen.');
+      } else {
+        setRemoveErr(msg);
+      }
+    } finally {
+      setRemoveSaving(false);
     }
   };
 
@@ -1534,11 +1561,24 @@ function ZigbeeSection({ rooms, onDeviceImported }: { rooms: Room[]; onDeviceImp
                   {dev.definition?.description ? ` — ${dev.definition.description}` : ''}
                 </p>
                 <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{dev.ieee_address}</p>
+                {(dev.last_seen || dev.interview_completed === false) && (
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    {dev.interview_completed === false ? 'Interview unvollständig' : ''}
+                    {dev.interview_completed === false && dev.last_seen ? ' · ' : ''}
+                    {typeof dev.last_seen === 'number' && dev.last_seen > 0
+                      ? `Zuletzt gesehen: ${new Date(dev.last_seen > 1e12 ? dev.last_seen : dev.last_seen * 1000).toLocaleString('de-DE')}`
+                      : ''}
+                  </p>
+                )}
               </div>
               <div className="flex gap-1 shrink-0">
                 {!dev.smarthome_device && (
                   <Button size="sm" variant="outline" className="h-7 text-xs"
-                    onClick={() => setImportDialog({ open: true, device: dev, name: dev.friendly_name, type: 'plug', room_id: '', saving: false, err: '' })}>
+                    onClick={() => setImportDialog({
+                      open: true, device: dev, name: dev.friendly_name,
+                      type: inferZigbeeDeviceType(dev.definition?.description ?? '', dev.definition?.model),
+                      room_id: '', saving: false, err: '',
+                    })}>
                     Importieren
                   </Button>
                 )}
@@ -1546,7 +1586,7 @@ function ZigbeeSection({ rooms, onDeviceImported }: { rooms: Room[]; onDeviceImp
                   className="cursor-pointer h-7 w-7 flex items-center justify-center rounded hover:bg-accent">
                   <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                 </button>
-                <button onClick={() => setRemoveConfirm(dev)}
+                <button onClick={() => { setRemoveConfirm(dev); setRemoveForce(false); setRemoveErr(''); }}
                   className="cursor-pointer h-7 w-7 flex items-center justify-center rounded hover:bg-destructive/10">
                   <Trash2 className="h-3.5 w-3.5 text-destructive" />
                 </button>
@@ -1606,15 +1646,25 @@ function ZigbeeSection({ rooms, onDeviceImported }: { rooms: Room[]; onDeviceImp
       </Dialog>
 
       {/* Entfernen bestätigen */}
-      <Dialog open={!!removeConfirm} onOpenChange={open => !open && setRemoveConfirm(null)}>
+      <Dialog open={!!removeConfirm} onOpenChange={open => { if (!open) { setRemoveConfirm(null); setRemoveForce(false); setRemoveErr(''); } }}>
         <DialogContent className="sm:max-w-xs">
           <DialogHeader><DialogTitle>Gerät entfernen?</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground py-1">
-            <span className="font-medium">{removeConfirm?.friendly_name}</span> wird aus Zigbee2MQTT entfernt.
-          </p>
+          <div className="space-y-3 py-1">
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium">{removeConfirm?.friendly_name}</span> wird aus Zigbee2MQTT entfernt.
+            </p>
+            <label className="flex items-start gap-2 text-sm cursor-pointer">
+              <input type="checkbox" className="mt-1" checked={removeForce}
+                onChange={e => setRemoveForce(e.target.checked)} />
+              <span>Erzwingen — wenn das Gerät nicht antwortet (z.&nbsp;B. Batterie leer). Danach ggf. am Gerät zurücksetzen.</span>
+            </label>
+            {removeErr && <p className="text-sm text-destructive">{removeErr}</p>}
+          </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setRemoveConfirm(null)}>Abbrechen</Button>
-            <Button variant="destructive" onClick={doRemove}>Entfernen</Button>
+            <Button variant="ghost" onClick={() => { setRemoveConfirm(null); setRemoveForce(false); setRemoveErr(''); }}>Abbrechen</Button>
+            <Button variant="destructive" onClick={() => void doRemove(removeForce)} disabled={removeSaving}>
+              {removeSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : (removeForce ? 'Erzwingen' : 'Entfernen')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1856,8 +1906,18 @@ function SystemSection() {
 }
 
 export default function SettingsClient({ initialRooms, initialDevices }: Props) {
+  const router = useRouter();
   const [rooms, setRooms]     = useState(initialRooms);
   const [devices, setDevices] = useState(initialDevices);
+  const upsertDevice = useSmartHomeStore(s => s.upsertDevice);
+  const removeDeviceFromStore = useSmartHomeStore(s => s.removeDevice);
+  const upsertRoom = useSmartHomeStore(s => s.upsertRoom);
+  const removeRoomFromStore = useSmartHomeStore(s => s.removeRoom);
+  const hydrate = useSmartHomeStore(s => s.hydrate);
+
+  useEffect(() => {
+    hydrate({ rooms: initialRooms, devices: initialDevices });
+  }, [hydrate, initialRooms, initialDevices]);
   const pinLock = usePinLockContext();
   const [view, setView] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -2070,7 +2130,11 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
         if (form.ip.trim()) attrs.ip = form.ip.trim();
       }
       if (form.ble_address.trim()) attrs.ble_address = form.ble_address.trim();
-      if (form.shelly_ip.trim())   attrs.shelly_ip   = form.shelly_ip.trim();
+      if (form.shelly_ip.trim()) {
+        attrs.shelly_ip = form.shelly_ip.trim();
+      } else if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(form.mqtt_topic.trim())) {
+        attrs.shelly_ip = form.mqtt_topic.trim();
+      }
       if (form.custom_emoji.trim()) attrs.custom_emoji = form.custom_emoji.trim();
       if (form.custom_color) attrs.custom_color = form.custom_color;
       // Laufzeit-Attribute (power_w, temperature usw.) erhalten
@@ -2096,10 +2160,13 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
       if (editing) {
         const updated = await api.updateDevice(editing.id, payload);
         setDevices(prev => prev.map(d => d.id === updated.id ? updated : d));
+        upsertDevice(updated);
       } else {
         const created = await api.createDevice(payload);
         setDevices(prev => [...prev, created]);
+        upsertDevice(created);
       }
+      router.refresh();
       closeDeviceDialog();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -2125,10 +2192,13 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
       if (editing) {
         const updated = await api.updateRoom(editing.id, payload);
         setRooms(prev => prev.map(r => r.id === updated.id ? updated : r));
+        upsertRoom(updated);
       } else {
         const created = await api.createRoom(payload);
         setRooms(prev => [...prev, created]);
+        upsertRoom(created);
       }
+      router.refresh();
       setRoomDialog({ open: false, editing: undefined, name: '', icon: '🏠', saving: false, error: '' });
     } catch {
       setRoomDialog(s => ({ ...s, saving: false, error: 'Speichern fehlgeschlagen.' }));
@@ -2145,11 +2215,14 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     if (deleteConfirm.type === 'device') {
       await api.deleteDevice(deleteConfirm.id);
       setDevices(prev => prev.filter(d => d.id !== deleteConfirm.id));
+      removeDeviceFromStore(deleteConfirm.id);
     } else {
       await api.deleteRoom(deleteConfirm.id);
       setRooms(prev => prev.filter(r => r.id !== deleteConfirm.id));
       setDevices(prev => prev.filter(d => d.room_id !== deleteConfirm.id));
+      removeRoomFromStore(deleteConfirm.id);
     }
+    router.refresh();
     setDeleteConfirm(null);
   };
 
@@ -2421,7 +2494,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
       {view === 'widgets'   && <div key="widgets"   className="animate-page-in"><WidgetsSection /></div>}
       {view === 'system'    && <div key="system"    className="animate-page-in"><SystemSection /></div>}
       {view === 'kiosk'     && <div key="kiosk"     className="animate-page-in"><KioskSection /></div>}
-      {view === 'zigbee'    && <div key="zigbee"    className="animate-page-in"><ZigbeeSection rooms={rooms} onDeviceImported={d => setDevices(prev => [...prev, d])} /></div>}
+      {view === 'zigbee'    && <div key="zigbee"    className="animate-page-in"><ZigbeeSection rooms={rooms} onDeviceImported={d => { setDevices(prev => [...prev, d]); upsertDevice(d); router.refresh(); }} onLinkedDeviceRemoved={id => { setDevices(prev => prev.filter(d => d.id !== id)); removeDeviceFromStore(id); router.refresh(); }} /></div>}
       {view === 'notifs'    && <div key="notifs"    className="animate-page-in"><NotificationsSection /></div>}
 
       {/* ═══════════════════════════════════════════════════════════

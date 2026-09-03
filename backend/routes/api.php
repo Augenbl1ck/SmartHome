@@ -19,9 +19,11 @@ use App\Http\Controllers\Api\TransitController;
 use App\Http\Controllers\Api\EnergyController;
 use App\Http\Controllers\Api\SpotifyController;
 use App\Http\Controllers\Api\ZigbeeController;
+use App\Http\Controllers\Api\BootstrapController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
+    Route::get('bootstrap', [BootstrapController::class, 'show']);
     Route::apiResource('rooms', RoomController::class);
     Route::apiResource('devices', DeviceController::class);
     Route::apiResource('automations', AutomationController::class);

@@ -1097,7 +1097,9 @@ export default function AutomationsClient({ initialAutomations, devices, rooms, 
   };
 
   const tempSensors = devices.filter((d) => d.type === 'sensor_temperature' || d.type === 'thermostat');
-  const humiditySensors = devices.filter((d) => d.type === 'sensor_humidity');
+  const humiditySensors = devices.filter((d) =>
+    d.type === 'sensor_humidity' || d.attributes?.humidity != null
+  );
   const motionSensors = devices.filter((d) => d.type === 'sensor_motion');
   const doorSensors = devices.filter((d) => d.type === 'sensor_door');
   const thermostats = devices.filter((d) => d.type === 'thermostat');
