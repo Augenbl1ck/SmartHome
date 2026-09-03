@@ -9,7 +9,7 @@ import { DeviceType } from '@/lib/api';
 import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Star, ChevronUp, ChevronDown, Square, Minus, Plus, PowerOff, Loader2, Power, Lock, Unlock, Wind, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import DeviceHistory from '@/components/DeviceHistory';
-import SensorChart from '@/components/SensorChart';
+import SensorDayStats from '@/components/SensorDayStats';
 import ShellyPlugPanel from '@/components/ShellyPlugPanel';
 import ZigbeePlugPanel from '@/components/ZigbeePlugPanel';
 import ThermostatAdvancedPanel from '@/components/ThermostatAdvancedPanel';
@@ -649,7 +649,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
               {/* ── Controls (event isolation, flex-1) ──────────────── */}
               <div className="flex-1" onClick={e => e.stopPropagation()}>
 
-                {/* Sensor-Wert + Verlaufsgraph */}
+                {/* Sensor-Wert + Min/Max heute */}
                 {sensor && (() => {
                   const LABELS: Partial<Record<string, [string, string]>> = {
                     sensor_door:      ['Offen',          'Geschlossen'],
@@ -699,6 +699,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
                           {battery != null && (
                             <p className="text-xs text-muted-foreground">Batterie {battery}%</p>
                           )}
+                          {temp != null && <SensorDayStats device={device} />}
                         </div>
                       ) : (
                         <p className="mt-3 text-2xl font-bold tabular-nums">
@@ -708,13 +709,6 @@ export default function RoomClient({ room, initialDevices }: Props) {
                             {device.type === 'sensor_lux' && 'lx'}
                           </span>
                         </p>
-                      )}
-                      {(isClimate) && !isBinary && (
-                        <SensorChart
-                          deviceId={device.id}
-                          deviceType={(device.type === 'sensor_humidity' && temp == null ? 'sensor_humidity' : 'sensor_temperature') as DeviceType}
-                          currentValue={String(device.type === 'sensor_humidity' && temp == null ? (humidity ?? device.status) : (temp ?? device.status))}
-                        />
                       )}
                     </>
                   );

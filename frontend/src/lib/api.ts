@@ -58,8 +58,11 @@ export const api = {
   setThermostatCommand: (id: number, body: Record<string, unknown>) =>
     request<Device>(`/devices/${id}/thermostat`, { method: 'POST', body: JSON.stringify(body) }),
   getDeviceLogs: (id: number) => request<DeviceLog[]>(`/devices/${id}/logs`),
-  getSensorHistory: (id: number, hours = 24) =>
-    request<SensorHistory>(`/devices/${id}/sensor-history?hours=${hours}`),
+  getSensorHistory: (id: number, hours = 24, opts?: { today?: boolean }) => {
+    const q = new URLSearchParams({ hours: String(hours) });
+    if (opts?.today) q.set('today', '1');
+    return request<SensorHistory>(`/devices/${id}/sensor-history?${q}`);
+  },
   saveBleMac: (id: number, ble_address: string) =>
     request<Device>(`/devices/${id}/ble-mac`, { method: 'POST', body: JSON.stringify({ ble_address }) }),
   shellyRpc: (id: number, method: string, params: Record<string, unknown> = {}) =>
@@ -212,6 +215,7 @@ export interface PanelSettings {
     sectionOrder?: string[];
     hiddenSections?: string[];
     fields?: { id: string; name: string; deviceIds: number[] }[];
+    roomTemperatureDeviceIds?: Record<string, number>;
   } | null;
   weather?: { city?: string; unit?: 'metric' | 'imperial' } | null;
   transit?: TransitConfig | null;

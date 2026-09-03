@@ -360,6 +360,16 @@ class MqttSubscribe extends Command
             $attrs['battery'] = (int) $data['battery'];
         }
 
+        $dayTemp = null;
+        if (isset($attrs['temperature']) && is_numeric($attrs['temperature'])) {
+            $dayTemp = (float) $attrs['temperature'];
+        } elseif (isset($attrs['local_temperature']) && is_numeric($attrs['local_temperature'])) {
+            $dayTemp = (float) $attrs['local_temperature'];
+        }
+        if ($dayTemp !== null) {
+            $this->updateDailyTempStats($device->id, $attrs, $dayTemp);
+        }
+
         $updates['attributes'] = $attrs;
         $previousStatus = $device->status;
         $statusChanged = isset($updates['status']) && $updates['status'] !== $previousStatus;
@@ -477,7 +487,7 @@ class MqttSubscribe extends Command
      */
     private function sensorAttrsChanged(array $old, array $new): bool
     {
-        foreach (['temperature', 'humidity', 'local_temperature', 'running_state', 'setpoint', 'open_window', 'child_lock', 'pi_heating_demand', 'battery'] as $key) {
+        foreach (['temperature', 'humidity', 'local_temperature', 'running_state', 'setpoint', 'open_window', 'child_lock', 'pi_heating_demand', 'battery', 'temperature_min_today', 'temperature_max_today', 'temperature_stats_date'] as $key) {
             if (($old[$key] ?? null) !== ($new[$key] ?? null)) {
                 return true;
             }
@@ -520,6 +530,58 @@ class MqttSubscribe extends Command
         }
         $this->lastBroadcastAt[$device->id] = $now;
         DeviceStatusUpdated::dispatch($device);
+    }
+
+    /**
+     * Min/Max-Temperatur seit Mitternacht (Europe/Berlin) am Geräte-Attribut halten.
+     *
+     * @param  array<string, mixed>  $attrs
+     */
+    private function updateDailyTempStats(int $deviceId, array &$attrs, float $temp): void
+    {
+        $temp = round($temp, 1);
+        $today = now('Europe/Berlin')->toDateString();
+        if (($attrs['temperature_stats_date'] ?? null) !== $today) {
+            $values = [$temp];
+            $logs = DeviceLog::where('device_id', $deviceId)
+                ->where('recorded_at', '>=', now('Europe/Berlin')->startOfDay())
+                ->get(['status', 'value']);
+            foreach ($logs as $log) {
+                $n = $this->numericTempFromLog($log->status, $log->value);
+                if ($n !== null) {
+                    $values[] = $n;
+                }
+            }
+            $attrs['temperature_stats_date'] = $today;
+            $attrs['temperature_min_today'] = round(min($values), 1);
+            $attrs['temperature_max_today'] = round(max($values), 1);
+
+            return;
+        }
+
+        $min = isset($attrs['temperature_min_today']) && is_numeric($attrs['temperature_min_today'])
+            ? (float) $attrs['temperature_min_today']
+            : $temp;
+        $max = isset($attrs['temperature_max_today']) && is_numeric($attrs['temperature_max_today'])
+            ? (float) $attrs['temperature_max_today']
+            : $temp;
+        $attrs['temperature_min_today'] = round(min($min, $temp), 1);
+        $attrs['temperature_max_today'] = round(max($max, $temp), 1);
+    }
+
+    private function numericTempFromLog(?string $status, ?string $value): ?float
+    {
+        if ($status === 'humidity') {
+            return null;
+        }
+        if (is_numeric($status)) {
+            return round((float) $status, 1);
+        }
+        if (in_array($status, ['temperature', 'value'], true) && is_numeric($value)) {
+            return round((float) $value, 1);
+        }
+
+        return null;
     }
 
     // -------------------------------------------------------------------------

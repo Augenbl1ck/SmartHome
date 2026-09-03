@@ -4,7 +4,7 @@ import { useState, useEffect, useTransition, useCallback, useMemo, useRef } from
 import { useRouter } from 'next/navigation';
 import { api, Device, DeviceType, Room, ZigbeeDevice, type LanHost, type TransitConfig, type TransitConnection, type TransitStop, type TransitStopRef } from '@/lib/api';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
-import { deviceLabels, CUSTOM_COLORS, formatMacAddress } from '@/lib/devices';
+import { deviceLabels, CUSTOM_COLORS, formatMacAddress, isTemperatureSource } from '@/lib/devices';
 import { getEcho } from '@/lib/echo';
 import { useSmartHomeStore } from '@/store/smarthome';
 import { Button } from '@/components/ui/button';
@@ -418,6 +418,7 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
   const [hiddenSections, setHiddenSections] = useState<SectionId[]>([]);
   const [roomOrder, setRoomOrder] = useState<number[]>([]);
   const [fields, setFields] = useState<DashboardField[]>([]);
+  const [roomTemperatureDeviceIds, setRoomTemperatureDeviceIds] = useState<Record<string, number>>({});
   const [expandedField, setExpandedField] = useState<string | null>(null);
 
   useEffect(() => {
@@ -432,6 +433,7 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
             sectionOrder: (s.dashboard_layout.sectionOrder ?? []) as SectionId[],
             hiddenSections: (s.dashboard_layout.hiddenSections ?? []) as SectionId[],
             fields: s.dashboard_layout.fields ?? [],
+            roomTemperatureDeviceIds: s.dashboard_layout.roomTemperatureDeviceIds ?? {},
           });
         }
       } catch { /* */ }
@@ -441,6 +443,7 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
       setHiddenSections(l.hiddenSections);
       setRoomOrder(l.roomOrder);
       setFields(l.fields);
+      setRoomTemperatureDeviceIds(l.roomTemperatureDeviceIds ?? {});
     })();
     return () => { cancelled = true; };
   }, []);
@@ -451,11 +454,13 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
       hiddenSections: patch.hiddenSections ?? hiddenSections,
       roomOrder: patch.roomOrder ?? roomOrder,
       fields: patch.fields ?? fields,
+      roomTemperatureDeviceIds: patch.roomTemperatureDeviceIds ?? roomTemperatureDeviceIds,
     };
     if (patch.sectionOrder) setSectionOrder(patch.sectionOrder);
     if (patch.hiddenSections) setHiddenSections(patch.hiddenSections);
     if (patch.roomOrder) setRoomOrder(patch.roomOrder);
     if (patch.fields) setFields(patch.fields);
+    if (patch.roomTemperatureDeviceIds) setRoomTemperatureDeviceIds(patch.roomTemperatureDeviceIds);
     void saveDashboardLayout(next);
   };
 
@@ -497,6 +502,15 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
     [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]];
     setRoomOrder(ids);
     persist({ roomOrder: ids });
+  };
+
+  const setRoomTemperatureDevice = (roomId: number, deviceId: number | null) => {
+    const next = { ...roomTemperatureDeviceIds };
+    const key = String(roomId);
+    if (deviceId == null) delete next[key];
+    else next[key] = deviceId;
+    setRoomTemperatureDeviceIds(next);
+    persist({ roomTemperatureDeviceIds: next });
   };
 
   const moveRoomDown = (i: number) => {
@@ -616,25 +630,43 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
 
       {rooms.length > 0 && (
         <div>
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Räume-Reihenfolge</p>
-          <p className="text-xs text-muted-foreground mb-3">Reihenfolge der Raum-Kacheln auf dem Dashboard.</p>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Räume</p>
+          <p className="text-xs text-muted-foreground mb-3">
+            Reihenfolge der Kacheln und optional die Temperatur eines Sensors oben rechts auf der Kachel.
+          </p>
           <div className="space-y-1">
-            {orderedRooms.map((room, i) => (
-              <div key={room.id} className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2">
-                <span className="text-base select-none w-6 text-center">{room.icon ?? '🏠'}</span>
-                <span className="text-sm flex-1 truncate">{room.name}</span>
-                <div className="flex gap-0.5 shrink-0">
-                  <button onClick={() => moveRoomUp(i)} disabled={i === 0}
-                    className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
-                    <ChevronUp className="h-3.5 w-3.5" />
-                  </button>
-                  <button onClick={() => moveRoomDown(i)} disabled={i === orderedRooms.length - 1}
-                    className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </button>
+            {orderedRooms.map((room, i) => {
+              const sensors = devices.filter(d => d.room_id === room.id && isTemperatureSource(d));
+              const selected = roomTemperatureDeviceIds[String(room.id)];
+              const selectedDev = selected ? devices.find(d => d.id === selected) : undefined;
+              const extraSelected = selectedDev && !sensors.some(d => d.id === selectedDev.id) ? [selectedDev] : [];
+              return (
+                <div key={room.id} className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2">
+                  <span className="text-base select-none w-6 text-center">{room.icon ?? '🏠'}</span>
+                  <span className="text-sm flex-1 truncate min-w-0">{room.name}</span>
+                  <select
+                    value={selected ? String(selected) : ''}
+                    onChange={e => setRoomTemperatureDevice(room.id, e.target.value ? Number(e.target.value) : null)}
+                    className="h-8 max-w-[10.5rem] shrink-0 rounded-md border bg-background px-2 text-xs"
+                  >
+                    <option value="">Keine Temperatur</option>
+                    {[...sensors, ...extraSelected].map(d => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
+                  <div className="flex gap-0.5 shrink-0">
+                    <button onClick={() => moveRoomUp(i)} disabled={i === 0}
+                      className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
+                      <ChevronUp className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => moveRoomDown(i)} disabled={i === orderedRooms.length - 1}
+                      className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

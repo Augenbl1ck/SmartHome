@@ -28,7 +28,9 @@ class DeviceLogController extends Controller
     public function sensorHistory(Request $request, Device $device): JsonResponse
     {
         $hours = min((int) $request->query('hours', 24), 168); // max 7 Tage
-        $since = now()->subHours($hours);
+        $since = $request->boolean('today')
+            ? now('Europe/Berlin')->startOfDay()
+            : now()->subHours($hours);
         $wantHumidity = $device->type === 'sensor_humidity';
 
         $logs = DeviceLog::where('device_id', $device->id)
@@ -47,6 +49,14 @@ class DeviceLogController extends Controller
             $hour = \Carbon\Carbon::parse($log->recorded_at)->format('Y-m-d H:00:00');
             $valuesByHour[$hour][] = $n;
             $allValues[] = $n;
+        }
+
+        if (!$wantHumidity) {
+            $attrs = $device->extra();
+            $current = $attrs['temperature'] ?? $attrs['local_temperature'] ?? (is_numeric($device->status) ? $device->status : null);
+            if (is_numeric($current)) {
+                $allValues[] = round((float) $current, 1);
+            }
         }
 
         if ($allValues === []) {

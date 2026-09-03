@@ -21,6 +21,8 @@ export interface DashboardLayout {
   sectionOrder: SectionId[];
   hiddenSections: SectionId[];
   fields: DashboardField[];
+  /** Raum-ID → Sensor-/Thermostat-Geräte-ID für die Temperatur auf der Raumkachel. */
+  roomTemperatureDeviceIds: Record<string, number>;
 }
 
 const DEFAULT_FIELD_ID = 'default-quickaccess';
@@ -32,6 +34,7 @@ const DEFAULT: DashboardLayout = {
   sectionOrder: ['weather', 'calendar', 'transit', 'energy', 'spotify', 'scenes', 'rooms', `field:${DEFAULT_FIELD_ID}`],
   hiddenSections: [],
   fields: [{ id: DEFAULT_FIELD_ID, name: 'Schnellzugriff', deviceIds: [] }],
+  roomTemperatureDeviceIds: {},
 };
 
 function readJson<T>(key: string): T | null {
@@ -43,6 +46,16 @@ function readJson<T>(key: string): T | null {
 
 function isBuiltin(s: string): s is BuiltInSectionId {
   return (BUILTIN_SECTIONS as string[]).includes(s);
+}
+
+function normalizeRoomTempIds(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const id = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
+    if (Number.isInteger(id) && id > 0) out[String(k)] = id;
+  }
+  return out;
 }
 
 function migrateLegacy(parsed: Partial<DashboardLayout> & { sectionOrder?: string[] }): DashboardLayout {
@@ -124,6 +137,7 @@ function migrateLegacy(parsed: Partial<DashboardLayout> & { sectionOrder?: strin
     sectionOrder: sectionOrder.length > 0 ? sectionOrder as SectionId[] : DEFAULT.sectionOrder,
     hiddenSections: hidden,
     fields,
+    roomTemperatureDeviceIds: normalizeRoomTempIds(parsed.roomTemperatureDeviceIds),
   };
 }
 
@@ -152,6 +166,7 @@ function isMeaningful(layout: DashboardLayout): boolean {
   if (layout.sectionOrder.join(',') !== defOrder) return true;
   if (layout.fields.length !== 1) return true;
   if (layout.fields[0]?.name !== 'Schnellzugriff') return true;
+  if (Object.keys(layout.roomTemperatureDeviceIds ?? {}).length > 0) return true;
   return false;
 }
 

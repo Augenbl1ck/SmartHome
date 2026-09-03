@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { api, Device, DeviceType, Room, Scene, type CalendarEventsResponse, type EnergyOverview, type TransitBoardResponse, type WeatherResponse } from '@/lib/api';
-import { countsAsActive } from '@/lib/devices';
+import { countsAsActive, deviceTemperature } from '@/lib/devices';
 import { DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { getEcho } from '@/lib/echo';
 import { useSmartHomeStore } from '@/store/smarthome';
@@ -249,6 +249,9 @@ export default function DashboardLive({
             {orderedRooms.map(room => {
               const roomDevices = list.filter(d => d.room_id === room.id);
               const active      = roomDevices.filter(d => d.status === 'on' && countsAsActive(d.type as DeviceType)).length;
+              const tempDeviceId = layout.roomTemperatureDeviceIds?.[String(room.id)];
+              const tempDevice = tempDeviceId ? list.find(d => d.id === tempDeviceId) : undefined;
+              const roomTemp = tempDevice ? deviceTemperature(tempDevice) : null;
               return (
                 <Link key={room.id} href={`/rooms/${room.id}`} prefetch>
                   <div className={cn(
@@ -258,11 +261,18 @@ export default function DashboardLive({
                       ? 'bg-amber-500/15 border-amber-400/40 shadow-sm'
                       : 'bg-card border-border hover:bg-accent/40'
                   )}>
-                    <div className={cn(
-                      'w-14 h-14 rounded-xl flex items-center justify-center text-3xl select-none',
-                      active > 0 ? 'bg-amber-500/20' : 'bg-muted'
-                    )}>
-                      {room.icon ?? '🏠'}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className={cn(
+                        'w-14 h-14 rounded-xl flex items-center justify-center text-3xl select-none',
+                        active > 0 ? 'bg-amber-500/20' : 'bg-muted'
+                      )}>
+                        {room.icon ?? '🏠'}
+                      </div>
+                      {roomTemp != null && (
+                        <span className="text-lg font-semibold tabular-nums leading-none pt-1 text-foreground">
+                          {roomTemp.toFixed(1)}°
+                        </span>
+                      )}
                     </div>
                     <div className="mt-auto">
                       <p className="font-semibold text-base leading-tight">{room.name}</p>

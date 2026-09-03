@@ -194,3 +194,44 @@ export function numericAttr(attrs: Record<string, unknown> | undefined | null, .
   }
   return null;
 }
+
+/** Aktuelle Temperatur eines Sensors oder Thermostats. */
+export function deviceTemperature(device: Device): number | null {
+  const fromAttr = numericAttr(device.attributes, 'temperature', 'local_temperature');
+  if (fromAttr != null) return fromAttr;
+  if (device.type === 'sensor_temperature') {
+    const n = Number(device.status);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+export function isTemperatureSource(device: Device): boolean {
+  return device.type === 'sensor_temperature'
+    || device.type === 'thermostat'
+    || device.type === 'sensor_humidity';
+}
+
+function localDateString(d = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Min/Max-Temperatur seit Mitternacht (lokal), inkl. aktuellem Wert. */
+export function deviceDayTempRange(device: Device, current?: number | null): { min: number | null; max: number | null } {
+  const temp = current !== undefined ? current : deviceTemperature(device);
+  const today = localDateString();
+  const date = typeof device.attributes?.temperature_stats_date === 'string'
+    ? device.attributes.temperature_stats_date
+    : null;
+  const fromToday = date === today;
+  let min = fromToday ? numericAttr(device.attributes, 'temperature_min_today') : null;
+  let max = fromToday ? numericAttr(device.attributes, 'temperature_max_today') : null;
+  if (temp != null) {
+    min = min == null ? temp : Math.min(min, temp);
+    max = max == null ? temp : Math.max(max, temp);
+  }
+  return { min, max };
+}
