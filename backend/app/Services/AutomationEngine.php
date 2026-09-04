@@ -552,6 +552,18 @@ class AutomationEngine
                 $deviceName(),
                 $action['value'] ?? '?'
             ),
+            'thermostat_boost' => sprintf(
+                '„%s" Boost %d Min.',
+                $deviceName(),
+                (int) ($action['duration'] ?? 30)
+            ),
+            'thermostat_timer' => sprintf(
+                '„%s" Timer %d Min. auf %s°C',
+                $deviceName(),
+                (int) ($action['duration'] ?? 60),
+                $action['temperature'] ?? '?'
+            ),
+            'thermostat_clear_boost' => sprintf('„%s" Boost/Timer beenden', $deviceName()),
             'activate_scene' => sprintf(
                 'Szene „%s" aktiviert',
                 optional(Scene::find($action['scene_id'] ?? null))->name ?? '?'

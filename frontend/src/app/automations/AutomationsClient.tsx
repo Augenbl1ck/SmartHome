@@ -38,6 +38,9 @@ type ActionType =
   | 'set_thermostat_open_window'
   | 'set_thermostat_calibration'
   | 'set_thermostat_frost_protection'
+  | 'thermostat_boost'
+  | 'thermostat_timer'
+  | 'thermostat_clear_boost'
   | 'activate_scene'
   | 'notify';
 
@@ -97,6 +100,9 @@ interface ActionFormItem {
   openWindow: boolean;
   calibration: string;
   frostProtection: string;
+  boostDuration: string;
+  timerDuration: string;
+  timerTemp: string;
 }
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -134,6 +140,9 @@ const newAction = (): ActionFormItem => ({
   openWindow: true,
   calibration: '0',
   frostProtection: '5',
+  boostDuration: '30',
+  timerDuration: '60',
+  timerTemp: '21',
 });
 
 // ── Form-State ────────────────────────────────────────────────────────────────
@@ -205,6 +214,9 @@ function actionFromJson(ac: Record<string, unknown>): ActionFormItem {
     frostProtection: ac.type === 'set_thermostat_frost_protection' && ac.value != null
       ? String(ac.value)
       : '5',
+    boostDuration: ac.duration != null ? String(ac.duration) : '30',
+    timerDuration: ac.duration != null ? String(ac.duration) : '60',
+    timerTemp: ac.temperature != null ? String(ac.temperature) : '21',
   };
 }
 
@@ -311,6 +323,17 @@ function buildActionItem(a: ActionFormItem): Record<string, unknown> {
       return { type: 'set_thermostat_calibration', device_id: Number(a.deviceId), value: Number(a.calibration) };
     case 'set_thermostat_frost_protection':
       return { type: 'set_thermostat_frost_protection', device_id: Number(a.deviceId), value: Number(a.frostProtection) };
+    case 'thermostat_boost':
+      return { type: 'thermostat_boost', device_id: Number(a.deviceId), duration: Number(a.boostDuration) };
+    case 'thermostat_timer':
+      return {
+        type: 'thermostat_timer',
+        device_id: Number(a.deviceId),
+        duration: Number(a.timerDuration),
+        temperature: Number(a.timerTemp),
+      };
+    case 'thermostat_clear_boost':
+      return { type: 'thermostat_clear_boost', device_id: Number(a.deviceId) };
     case 'activate_scene':
       return { type: 'activate_scene', scene_id: Number(a.sceneId) };
     case 'notify':
@@ -526,6 +549,12 @@ function describeActionItem(
       return `"${dev(action.device_id)}" Kalibrierung ${action.value}°C`;
     case 'set_thermostat_frost_protection':
       return `"${dev(action.device_id)}" Frostschutz ${action.value}°C`;
+    case 'thermostat_boost':
+      return `"${dev(action.device_id)}" Boost ${action.duration} Min.`;
+    case 'thermostat_timer':
+      return `"${dev(action.device_id)}" Timer ${action.duration} Min. auf ${action.temperature}°C`;
+    case 'thermostat_clear_boost':
+      return `"${dev(action.device_id)}" Boost/Timer beenden`;
     case 'activate_scene':
       return `Szene "${scene(action.scene_id)}" aktivieren`;
     case 'notify':
@@ -789,6 +818,7 @@ function actionIsComplete(a: ActionFormItem): boolean {
     'set_thermostat_setpoint', 'set_thermostat_mode',
     'set_thermostat_child_lock', 'set_thermostat_open_window',
     'set_thermostat_calibration', 'set_thermostat_frost_protection',
+    'thermostat_boost', 'thermostat_timer', 'thermostat_clear_boost',
   ].includes(a.type) && !!a.deviceId) return true;
   if (a.type === 'set_room_devices' && !!a.roomId) return true;
   if (a.type === 'activate_scene' && !!a.sceneId) return true;
@@ -1029,6 +1059,7 @@ export default function AutomationsClient({ initialAutomations, devices: devices
       'set_thermostat_setpoint', 'set_thermostat_mode',
       'set_thermostat_child_lock', 'set_thermostat_open_window',
       'set_thermostat_calibration', 'set_thermostat_frost_protection',
+      'thermostat_boost', 'thermostat_timer', 'thermostat_clear_boost',
     ];
 
     if (f.kind !== 'lock') {
@@ -1055,6 +1086,19 @@ export default function AutomationsClient({ initialAutomations, devices: devices
         const v = Number(a.frostProtection);
         if (Number.isNaN(v) || v < 4 || v > 35)
           return `${label}: Frostschutz muss zwischen 4 und 35°C liegen.`;
+      }
+      if (a.type === 'thermostat_boost') {
+        const d = Number(a.boostDuration);
+        if (Number.isNaN(d) || d < 1 || d > 180)
+          return `${label}: Boost-Dauer muss zwischen 1 und 180 Minuten liegen.`;
+      }
+      if (a.type === 'thermostat_timer') {
+        const d = Number(a.timerDuration);
+        const t = Number(a.timerTemp);
+        if (Number.isNaN(d) || d < 1 || d > 1440)
+          return `${label}: Timer-Dauer muss zwischen 1 und 1440 Minuten liegen.`;
+        if (Number.isNaN(t) || t < 4 || t > 35)
+          return `${label}: Timer-Temperatur muss zwischen 4 und 35°C liegen.`;
       }
       if (a.type === 'notify' && !a.notifyMessage.trim())
         return `${label}: bitte eine Benachrichtigungs-Nachricht eingeben.`;
@@ -1776,6 +1820,9 @@ export default function AutomationsClient({ initialAutomations, devices: devices
                             <SelectItem value="set_thermostat_open_window">Offenes-Fenster setzen</SelectItem>
                             <SelectItem value="set_thermostat_calibration">Kalibrierung setzen</SelectItem>
                             <SelectItem value="set_thermostat_frost_protection">Frostschutz setzen</SelectItem>
+                            <SelectItem value="thermostat_boost">Boost starten</SelectItem>
+                            <SelectItem value="thermostat_timer">Timer (Zieltemperatur)</SelectItem>
+                            <SelectItem value="thermostat_clear_boost">Boost/Timer beenden</SelectItem>
                           </SelectGroup>
                           <SelectGroup>
                             <SelectLabel>Raum / Szene</SelectLabel>
@@ -2020,6 +2067,62 @@ export default function AutomationsClient({ initialAutomations, devices: devices
                             onChange={(v) => patchAction(action.id, { frostProtection: v })} placeholder="5" />
                           <p className="text-xs text-muted-foreground">4–35°C</p>
                         </div>
+                      </div>
+                    )}
+
+                    {action.type === 'thermostat_boost' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <FieldLabel>Thermostat</FieldLabel>
+                          {thermostats.length > 0 ? (
+                            <DeviceSelect value={action.deviceId} onChange={(v) => patchAction(action.id, { deviceId: v })}
+                              devices={thermostats} rooms={rooms} />
+                          ) : (
+                            <p className="text-xs text-muted-foreground py-2">Keine Thermostate vorhanden.</p>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <FieldLabel>Dauer (Minuten)</FieldLabel>
+                          <TextInput type="number" value={action.boostDuration}
+                            onChange={(v) => patchAction(action.id, { boostDuration: v })} placeholder="30" />
+                          <p className="text-xs text-muted-foreground">1–180 Min.</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {action.type === 'thermostat_timer' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1 col-span-2">
+                          <FieldLabel>Thermostat</FieldLabel>
+                          {thermostats.length > 0 ? (
+                            <DeviceSelect value={action.deviceId} onChange={(v) => patchAction(action.id, { deviceId: v })}
+                              devices={thermostats} rooms={rooms} />
+                          ) : (
+                            <p className="text-xs text-muted-foreground py-2">Keine Thermostate vorhanden.</p>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <FieldLabel>Dauer (Minuten)</FieldLabel>
+                          <TextInput type="number" value={action.timerDuration}
+                            onChange={(v) => patchAction(action.id, { timerDuration: v })} placeholder="60" />
+                        </div>
+                        <div className="space-y-1">
+                          <FieldLabel>Ziel (°C)</FieldLabel>
+                          <TextInput type="number" value={action.timerTemp}
+                            onChange={(v) => patchAction(action.id, { timerTemp: v })} placeholder="21" />
+                        </div>
+                      </div>
+                    )}
+
+                    {action.type === 'thermostat_clear_boost' && (
+                      <div className="space-y-1">
+                        <FieldLabel>Thermostat</FieldLabel>
+                        {thermostats.length > 0 ? (
+                          <DeviceSelect value={action.deviceId} onChange={(v) => patchAction(action.id, { deviceId: v })}
+                            devices={thermostats} rooms={rooms} />
+                        ) : (
+                          <p className="text-xs text-muted-foreground py-2">Keine Thermostate vorhanden.</p>
+                        )}
                       </div>
                     )}
 

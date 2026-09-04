@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, Device, Room } from '@/lib/api';
 import { shellyBle, BleState } from '@/lib/bluetooth';
-import { deviceIcons, isSensor, isToggleable, isComputer, countsAsActive, getDeviceColors, getDeviceEmoji, commandBlocked, nextCommandBlocked, numericAttr } from '@/lib/devices';
+import { deviceIcons, isSensor, isToggleable, isComputer, countsAsActive, getDeviceColors, getDeviceEmoji, commandBlocked, nextCommandBlocked, numericAttr, isRoomTempSensor, temperatureSourceDeviceId, thermostatDisplayTemp } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
 import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Star, ChevronUp, ChevronDown, Square, Minus, Plus, PowerOff, Loader2, Power, Lock, Unlock, Wind, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -27,6 +27,7 @@ import {
   getRunningStateLabel,
 } from '@/lib/thermostat-capabilities';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
 // Tile-Hintergrundfarbe wenn Gerät aktiv ist (nach Typ)
@@ -98,6 +99,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
   const router = useRouter();
   const storeRoom = useSmartHomeStore(s => s.rooms.find(r => r.id === roomId) ?? null);
   const storeDevices = useSmartHomeStore(s => s.devices);
+  const storeRooms = useSmartHomeStore(s => s.rooms);
   const room = roomProp ?? storeRoom;
   const seedDevices = initialDevices.length > 0
     ? initialDevices
@@ -335,6 +337,23 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
       setDevices(prev => prev.map(d => d.id === device.id ? device : d));
     } finally {
       setPending(p => { const n = new Set(p); n.delete(device.id); return n; });
+    }
+  };
+
+  const handleTempSource = async (device: Device, sensorId: number | null) => {
+    const next = { ...(device.attributes ?? {}) };
+    next.temperature_source_device_id = sensorId;
+    try {
+      const updated = await api.updateDevice(device.id, { attributes: next });
+      setDevices(prev => prev.map(d => d.id === updated.id ? { ...d, ...updated } : d));
+      upsertDevice(updated);
+      toast.success(
+        sensorId
+          ? 'Raumfühler gesetzt. Ventil: TRVZB-Firmware 1.2.1+, Zigbee2MQTT 2.1.2+. Ohne neue Messung fällt es nach ca. 2 Std. auf intern zurück.'
+          : 'Interner Fühler am Ventil.',
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Raumfühler konnte nicht gespeichert werden.');
     }
   };
 
@@ -831,14 +850,18 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                 {isTherm && (
                   <div className="mt-4 space-y-2">
                     {(() => {
-                      const current = numericAttr(device.attributes, 'local_temperature', 'temperature');
-                      if (current == null) return null;
+                      const catalog = storeDevices.length ? storeDevices : devices;
+                      const shown = thermostatDisplayTemp(device, catalog);
+                      if (shown.temp == null) return null;
                       return (
                       <p className="text-sm text-muted-foreground">
                         Aktuell:{' '}
                         <span className="font-semibold text-foreground">
-                          {current.toFixed(1)}°C
+                          {shown.temp.toFixed(1)}°C
                         </span>
+                        {shown.fromRoomSensor && (
+                          <span className="ml-1.5 text-xs">Raumfühler</span>
+                        )}
                         {getRunningStateLabel(device.attributes) && (
                           <span className="ml-2 text-xs">
                             ({getRunningStateLabel(device.attributes)})
@@ -970,6 +993,46 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                                 )
                               }
                             />
+                          </div>
+
+                          <div className="rounded-xl bg-muted/50 px-3 py-2.5 space-y-1.5">
+                            <p className="text-xs text-muted-foreground">Raumtemperatur von</p>
+                            <Select
+                              value={temperatureSourceDeviceId(device) != null
+                                ? String(temperatureSourceDeviceId(device))
+                                : 'internal'}
+                              disabled={isDisabled}
+                              onValueChange={(v) => {
+                                void handleTempSource(device, v === 'internal' ? null : Number(v));
+                              }}
+                            >
+                              <SelectTrigger className="w-full bg-background">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="internal">Ventil (intern)</SelectItem>
+                                {(storeDevices.length ? storeDevices : devices)
+                                  .filter(isRoomTempSensor)
+                                  .slice()
+                                  .sort((a, b) => {
+                                    const ar = a.room_id === roomId ? 0 : 1;
+                                    const br = b.room_id === roomId ? 0 : 1;
+                                    if (ar !== br) return ar - br;
+                                    return a.name.localeCompare(b.name, 'de');
+                                  })
+                                  .map((s) => {
+                                    const roomName = storeRooms.find(r => r.id === s.room_id)?.name;
+                                    return (
+                                      <SelectItem key={s.id} value={String(s.id)}>
+                                        {roomName && s.room_id !== roomId ? `${roomName} · ${s.name}` : s.name}
+                                      </SelectItem>
+                                    );
+                                  })}
+                              </SelectContent>
+                            </Select>
+                            <p className="text-[11px] text-muted-foreground leading-snug">
+                              Der Fühler am Heizkörper misst oft zu warm. Ein Raumfühler kann mehrere Ventile versorgen.
+                            </p>
                           </div>
 
                           <div className="grid grid-cols-2 gap-2">

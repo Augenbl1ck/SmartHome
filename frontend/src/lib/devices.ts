@@ -212,6 +212,31 @@ export function isTemperatureSource(device: Device): boolean {
     || device.type === 'sensor_humidity';
 }
 
+export function temperatureSourceDeviceId(device: Device): number | null {
+  const n = Number(device.attributes?.temperature_source_device_id);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export function isRoomTempSensor(device: Device): boolean {
+  return device.type === 'sensor_temperature' || device.type === 'sensor_humidity';
+}
+
+/** Ist-Temperatur: Raumfühler wenn verknüpft, sonst Ventil. */
+export function thermostatDisplayTemp(
+  thermostat: Device,
+  allDevices: Device[],
+): { temp: number | null; fromRoomSensor: boolean } {
+  const sid = temperatureSourceDeviceId(thermostat);
+  if (sid != null) {
+    const src = allDevices.find((d) => d.id === sid);
+    if (src) {
+      const t = deviceTemperature(src);
+      if (t != null) return { temp: t, fromRoomSensor: true };
+    }
+  }
+  return { temp: deviceTemperature(thermostat), fromRoomSensor: false };
+}
+
 function localDateString(d = new Date()): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');

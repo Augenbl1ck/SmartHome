@@ -70,7 +70,33 @@ class DeviceController extends Controller
             'active'     => 'sometimes|boolean',
         ]);
 
+        $oldSource = (int) ($device->extra()['temperature_source_device_id'] ?? 0);
+        if (isset($data['attributes']) && is_array($data['attributes'])) {
+            $merged = array_merge($device->extra(), $data['attributes']);
+            if (array_key_exists('temperature_source_device_id', $data['attributes'])) {
+                $raw = $data['attributes']['temperature_source_device_id'];
+                if ($raw === null || $raw === '' || (int) $raw < 1) {
+                    unset($merged['temperature_source_device_id']);
+                } else {
+                    $merged['temperature_source_device_id'] = (int) $raw;
+                }
+            }
+            $data['attributes'] = $merged;
+        }
+
         $device->update($data);
+
+        $fresh = $device->fresh();
+        if ($fresh && $fresh->type === 'thermostat') {
+            $newSource = (int) ($fresh->extra()['temperature_source_device_id'] ?? 0);
+            if ($newSource !== $oldSource) {
+                if ($newSource > 0) {
+                    $this->deviceService->syncExternalTemperature($fresh);
+                } else {
+                    $this->deviceService->useInternalTemperature($fresh);
+                }
+            }
+        }
 
         // Sensor-Messwerte in device_logs mitschreiben
         if (isset($data['status']) && str_starts_with($device->type, 'sensor_')) {

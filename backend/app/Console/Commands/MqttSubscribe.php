@@ -259,6 +259,12 @@ class MqttSubscribe extends Command
         } elseif (isset($data['current_heating_setpoint'])) {
             $attrs['setpoint'] = (float) $data['current_heating_setpoint'];
         }
+        if (isset($data['temperature_sensor_select']) && is_string($data['temperature_sensor_select'])) {
+            $attrs['temperature_sensor_select'] = strtolower($data['temperature_sensor_select']);
+        }
+        if (isset($data['external_temperature_input']) && is_numeric($data['external_temperature_input'])) {
+            $attrs['external_temperature_input'] = round((float) $data['external_temperature_input'], 1);
+        }
         if (isset($data['local_temperature'])) {
             $attrs['local_temperature'] = round((float) $data['local_temperature'], 1);
         }
@@ -374,7 +380,18 @@ class MqttSubscribe extends Command
         $previousStatus = $device->status;
         $statusChanged = isset($updates['status']) && $updates['status'] !== $previousStatus;
         $powerW = isset($attrs['power_w']) && is_numeric($attrs['power_w']) ? (float) $attrs['power_w'] : null;
+        $tempChanged = array_key_exists('temperature', $attrs)
+            && ($oldAttrs['temperature'] ?? null) !== ($attrs['temperature'] ?? null);
         $device->update($updates);
+
+        if (! $isThermostat && $tempChanged) {
+            $celsius = isset($attrs['temperature']) && is_numeric($attrs['temperature'])
+                ? (float) $attrs['temperature']
+                : null;
+            if ($celsius !== null) {
+                app(\App\Services\DeviceService::class)->syncThermostatsFromSensor($device, $celsius);
+            }
+        }
 
         $fresh = $device->fresh();
         $sensorChanged = $this->sensorAttrsChanged($oldAttrs, $attrs);
@@ -383,8 +400,6 @@ class MqttSubscribe extends Command
             app(AutomationEngine::class)->onDeviceUpdated($fresh, $previousStatus);
         }
 
-        $tempChanged = array_key_exists('temperature', $attrs)
-            && ($oldAttrs['temperature'] ?? null) !== ($attrs['temperature'] ?? null);
         if ($logStatus && ($statusChanged || $tempChanged)) {
             DeviceLog::create([
                 'device_id'   => $device->id,
@@ -444,6 +459,9 @@ class MqttSubscribe extends Command
             }
             $device->update(['status' => $value, 'last_seen' => now()]);
             $fresh = $device->fresh();
+            if ($fresh && str_starts_with($fresh->type, 'sensor_')) {
+                app(\App\Services\DeviceService::class)->syncThermostatsFromSensor($fresh, (float) $value);
+            }
             $this->broadcastDevice($fresh, true);
             app(AutomationEngine::class)->onDeviceUpdated($fresh, $previousStatus);
             DeviceLog::create(['device_id' => $device->id, 'status' => 'value', 'value' => $value, 'recorded_at' => now()]);

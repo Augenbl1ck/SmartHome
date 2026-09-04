@@ -36,6 +36,9 @@ class ActionExecutor
             'set_thermostat_open_window' => $this->execThermostatOpenWindow($action),
             'set_thermostat_calibration' => $this->execThermostatCalibration($action),
             'set_thermostat_frost_protection' => $this->execThermostatFrost($action),
+            'thermostat_boost' => $this->execThermostatTempMode($action, 'boost'),
+            'thermostat_timer' => $this->execThermostatTempMode($action, 'timer'),
+            'thermostat_clear_boost' => $this->execThermostatTempMode($action, 'clear_boost'),
             'activate_scene' => $this->execActivateScene($action, $allowActivateScene),
             'notify' => $this->execNotify($action),
             default => true,
@@ -267,6 +270,32 @@ class ActionExecutor
         $this->persist($device, ['attributes' => $attrs, 'last_seen' => now()]);
 
         return true;
+    }
+
+    /**
+     * @param  array<string, mixed>  $action
+     */
+    private function execThermostatTempMode(array $action, string $command): bool
+    {
+        $device = Device::find($action['device_id'] ?? null);
+        if (! $device || $device->type !== 'thermostat') {
+            return true;
+        }
+        try {
+            $patch = $this->deviceService->applyThermostatCommand($device, [
+                'command' => $command,
+                'duration' => (int) ($action['duration'] ?? ($command === 'timer' ? 60 : 30)),
+                'temperature' => $action['temperature'] ?? 21,
+            ]);
+            $attrs = array_merge($device->extra(), $patch);
+            $this->persist($device, ['attributes' => $attrs, 'last_seen' => now()]);
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::error("[ActionExecutor] {$device->name} {$command}: ".$e->getMessage());
+
+            return false;
+        }
     }
 
     /**

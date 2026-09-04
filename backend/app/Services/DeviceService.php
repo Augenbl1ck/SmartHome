@@ -228,6 +228,104 @@ class DeviceService
         return $attrsPatch;
     }
 
+    public function sensorTemperature(Device $device): ?float
+    {
+        $attrs = $device->extra();
+        foreach (['temperature', 'local_temperature'] as $key) {
+            if (isset($attrs[$key]) && is_numeric($attrs[$key])) {
+                return round((float) $attrs[$key], 1);
+            }
+        }
+        if (is_numeric($device->status)) {
+            return round((float) $device->status, 1);
+        }
+
+        return null;
+    }
+
+    /**
+     * Schreibt die Raumfühler-Temperatur an den TRVZB (external_temperature_input).
+     */
+    public function syncExternalTemperature(Device $thermostat, ?float $celsius = null): bool
+    {
+        if ($thermostat->type !== 'thermostat') {
+            return false;
+        }
+        $sourceId = (int) ($thermostat->extra()['temperature_source_device_id'] ?? 0);
+        if ($sourceId < 1) {
+            return false;
+        }
+        if ($celsius === null) {
+            $sensor = Device::find($sourceId);
+            if (! $sensor) {
+                return false;
+            }
+            $celsius = $this->sensorTemperature($sensor);
+        }
+        if ($celsius === null) {
+            return false;
+        }
+        $celsius = max(0.0, min(99.9, round($celsius, 1)));
+
+        try {
+            $this->publishMqttJson($thermostat, [
+                'temperature_sensor_select' => 'external',
+                'external_temperature_input' => $celsius,
+            ]);
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning("[DeviceService] Externe Temperatur {$thermostat->name}: ".$e->getMessage());
+
+            return false;
+        }
+    }
+
+    public function syncThermostatsFromSensor(Device $sensor, ?float $celsius = null): void
+    {
+        $celsius ??= $this->sensorTemperature($sensor);
+        if ($celsius === null) {
+            return;
+        }
+        Device::query()
+            ->where('type', 'thermostat')
+            ->where('active', true)
+            ->get()
+            ->each(function (Device $thermostat) use ($sensor, $celsius) {
+                if ((int) ($thermostat->extra()['temperature_source_device_id'] ?? 0) === (int) $sensor->id) {
+                    $this->syncExternalTemperature($thermostat, $celsius);
+                }
+            });
+    }
+
+    public function useInternalTemperature(Device $thermostat): void
+    {
+        if ($thermostat->type !== 'thermostat') {
+            return;
+        }
+        try {
+            $this->publishMqttJson($thermostat, ['temperature_sensor_select' => 'internal']);
+        } catch (\Throwable $e) {
+            Log::warning("[DeviceService] Interner Fühler {$thermostat->name}: ".$e->getMessage());
+        }
+    }
+
+    public function syncAllExternalThermostats(): int
+    {
+        $count = 0;
+        Device::query()
+            ->where('type', 'thermostat')
+            ->where('active', true)
+            ->get()
+            ->each(function (Device $thermostat) use (&$count) {
+                if ($this->syncExternalTemperature($thermostat)) {
+                    $count++;
+                }
+            });
+
+        return $count;
+    }
+
     /**
      * @param  array<string, mixed>  $payload
      */

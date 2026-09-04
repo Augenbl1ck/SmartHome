@@ -304,6 +304,19 @@ async function executeAction(action: Record<string, unknown>, devices: Device[])
       Number(action.device_id),
       encodeCapStatus('frost_protection_temperature', String(val)),
     );
+  } else if (t === 'thermostat_boost') {
+    await api.setThermostatCommand(Number(action.device_id), {
+      command: 'boost',
+      duration: Number(action.duration ?? 30),
+    });
+  } else if (t === 'thermostat_timer') {
+    await api.setThermostatCommand(Number(action.device_id), {
+      command: 'timer',
+      duration: Number(action.duration ?? 60),
+      temperature: Number(action.temperature ?? 21),
+    });
+  } else if (t === 'thermostat_clear_boost') {
+    await api.setThermostatCommand(Number(action.device_id), { command: 'clear_boost' });
   } else if (t === 'activate_scene') {
     await api.activateScene(Number(action.scene_id));
   } else if (t === 'notify') {
