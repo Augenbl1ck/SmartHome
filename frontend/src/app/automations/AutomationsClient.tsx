@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { api, Automation, AutomationLog, Device, Room, Scene } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,7 +15,7 @@ import {
   Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  Pencil, Plus, Trash2, Clock, Zap, ChevronRight,
+  Pencil, Plus, Trash2, Clock, Zap, ChevronRight, ArrowLeft,
   Thermometer, Droplets, Activity, DoorOpen, Timer, History,
   Waves, Flame, Battery, Gauge, Filter, Clapperboard, Shield,
   List, LayoutGrid,
@@ -913,6 +914,7 @@ interface Props {
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
 export default function AutomationsClient({ initialAutomations, devices: devicesProp, rooms: roomsProp, scenes: scenesProp, initialLogs }: Props) {
+  const router = useRouter();
   const storeDevices = useSmartHomeStore(s => s.devices);
   const storeRooms = useSmartHomeStore(s => s.rooms);
   const storeScenes = useSmartHomeStore(s => s.scenes);
@@ -1138,8 +1140,18 @@ export default function AutomationsClient({ initialAutomations, devices: devices
   return (
     <div className="space-y-6 max-w-3xl">
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Automationen</h1>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            type="button"
+            onClick={() => router.push('/settings')}
+            className="cursor-pointer h-12 w-12 rounded-full bg-muted flex items-center justify-center shrink-0 active:scale-90 transition-all"
+            aria-label="Zurück zu Einstellungen"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <h1 className="text-2xl font-bold">Automationen</h1>
+        </div>
         {activeTab === 'automations' && (
           <Button size="sm" onClick={() => setDialog({ open: true, form: emptyForm(), saving: false, error: '' })}>
             <Plus className="h-4 w-4 mr-1" /> Neue Automation

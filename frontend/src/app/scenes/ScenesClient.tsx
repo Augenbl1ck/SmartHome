@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useReducer, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { api, Device, Scene, DeviceType } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { deviceLabels } from '@/lib/devices';
-import { Plus, Pencil, Trash2, Play, RotateCcw, AlertCircle } from 'lucide-react';
+import { Plus, Pencil, Trash2, Play, RotateCcw, AlertCircle, ArrowLeft, ChevronUp, ChevronDown, Timer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
@@ -13,6 +14,8 @@ import {
 import { shellyBle } from '@/lib/bluetooth';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { useSmartHomeStore } from '@/store/smarthome';
+import SceneDelayDialog, { formatDelayMinutes } from '@/components/SceneDelayDialog';
+import { toast } from 'sonner';
 
 const SCENE_ICONS = ['🎬', '💡', '🌙', '☀️', '🎵', '🍿', '🏠', '😴', '🚗', '🌿', '🎮', '📖'];
 const SNAPSHOTS_KEY = 'smarthome_scene_snapshots';
@@ -216,6 +219,7 @@ function resolvedOnOffTarget(
 }
 
 export default function ScenesClient({ initialScenes, devices: initialDevices }: Props) {
+  const router = useRouter();
   const storeDevices = useSmartHomeStore(s => s.devices);
   const storeScenes = useSmartHomeStore(s => s.scenes);
   const [scenes, setScenes]           = useState(initialScenes);
@@ -224,6 +228,7 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
   const [resetting, setResetting]     = useState<Set<number>>(new Set());
   const [snapshots, setSnapshots]     = useState<Snapshots>({});
   const [activateError, setActivateError] = useState<string | null>(null);
+  const [delayScene, setDelayScene]   = useState<Scene | null>(null);
   const [dialog, setDialog]           = useState<{
     open: boolean; editing?: Scene; form: SceneForm; saving: boolean; error: string;
   }>({ open: false, form: emptyForm(), saving: false, error: '' });
@@ -268,9 +273,31 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
     }));
   };
 
+  const moveAction = (id: string, dir: -1 | 1) => {
+    setDialog((s) => {
+      const actions = [...s.form.actions];
+      const i = actions.findIndex((a) => a.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= actions.length) return s;
+      [actions[i], actions[j]] = [actions[j], actions[i]];
+      return { ...s, form: { ...s.form, actions } };
+    });
+  };
+
   /* ── Szene ausführen ──────────────────────────────────────────── */
-  const activate = async (scene: Scene) => {
+  const activate = async (scene: Scene, delayMinutes?: number) => {
     setActivateError(null);
+
+    if (delayMinutes && delayMinutes > 0) {
+      try {
+        await api.activateScene(scene.id, { delay_minutes: delayMinutes });
+        toast.success(`${scene.name} startet in ${formatDelayMinutes(delayMinutes)}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setActivateError(`Fehler: ${msg}`);
+      }
+      return;
+    }
 
     // Snapshot nur für on/off-fähige Aktionen
     const snap: DeviceSnapshot[] = scene.actions
@@ -452,9 +479,19 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold">Szenen</h1>
-          <p className="text-sm text-muted-foreground">1 Klick schaltet mehrere Geräte gleichzeitig</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            type="button"
+            onClick={() => router.push('/settings')}
+            className="cursor-pointer h-12 w-12 rounded-full bg-muted flex items-center justify-center shrink-0 active:scale-90 transition-all"
+            aria-label="Zurück zu Einstellungen"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold">Szenen</h1>
+            <p className="text-sm text-muted-foreground">1 Klick schaltet mehrere Geräte nacheinander</p>
+          </div>
         </div>
         <Button size="sm" onClick={() => setDialog({ open: true, editing: undefined, form: emptyForm(), saving: false, error: '' })}>
           <Plus className="h-4 w-4 mr-1" /> Neue Szene
@@ -538,6 +575,15 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
                 <Play className="h-4 w-4" />
                 {isRunning ? 'Wird ausgeführt…' : 'Ausführen'}
               </button>
+              <button
+                type="button"
+                onClick={() => setDelayScene(scene)}
+                disabled={isRunning}
+                className="cursor-pointer w-full flex items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium border border-border hover:bg-accent transition-all active:scale-95 disabled:opacity-50"
+              >
+                <Timer className="h-4 w-4" />
+                Ausführen in…
+              </button>
             </div>
           );
         })}
@@ -582,6 +628,9 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
                   <Plus className="h-3 w-3 mr-1" /> Aktion
                 </Button>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Reihenfolge = Ausführungsreihenfolge. Bei Sperren zuerst das Gerät, das die Sperre auslöst.
+              </p>
 
               {dialog.form.actions.map((action, idx) => {
                 const target = switchableDevices.find((d) => String(d.id) === action.deviceId)
@@ -601,16 +650,36 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                         Aktion {idx + 1}
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => setDialog((s) => ({
-                          ...s,
-                          form: { ...s.form, actions: s.form.actions.filter((a) => a.id !== action.id) },
-                        }))}
-                        className="cursor-pointer h-7 w-7 flex items-center justify-center rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => moveAction(action.id, -1)}
+                          disabled={idx === 0}
+                          className="cursor-pointer h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                          aria-label="Nach oben"
+                        >
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveAction(action.id, 1)}
+                          disabled={idx === dialog.form.actions.length - 1}
+                          className="cursor-pointer h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                          aria-label="Nach unten"
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDialog((s) => ({
+                            ...s,
+                            form: { ...s.form, actions: s.form.actions.filter((a) => a.id !== action.id) },
+                          }))}
+                          className="cursor-pointer h-7 w-7 flex items-center justify-center rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
 
                     <Select
@@ -811,6 +880,17 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <SceneDelayDialog
+        open={delayScene != null}
+        sceneName={delayScene?.name ?? ''}
+        onClose={() => setDelayScene(null)}
+        onConfirm={(minutes) => {
+          const scene = delayScene;
+          setDelayScene(null);
+          if (scene) void activate(scene, minutes);
+        }}
+      />
     </div>
   );
 }

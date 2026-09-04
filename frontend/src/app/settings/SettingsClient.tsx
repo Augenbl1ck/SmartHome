@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useTransition, useCallback, useMemo, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api, Device, DeviceType, Room, ZigbeeDevice, type LanHost, type TransitConfig, type TransitConnection, type TransitStop, type TransitStopRef } from '@/lib/api';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { deviceLabels, CUSTOM_COLORS, formatMacAddress, isTemperatureSource } from '@/lib/devices';
@@ -2000,27 +2000,17 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     if (devices.length === 0 && storeDevices.length) setDevices(storeDevices);
   }, [storeRooms, storeDevices, rooms.length, devices.length]);
   const pinLock = usePinLockContext();
-  const [view, setView] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    try {
-      const v = new URLSearchParams(window.location.search).get('view');
-      if (v === 'weather' || v === 'calendar' || v === 'transit' || v === 'energy' || v === 'spotify') return 'widgets';
-      return v;
-    } catch {
-      return null;
-    }
-  });
-  const [isPending, startTransition] = useTransition();
+  const searchParams = useSearchParams();
+  const rawView = searchParams.get('view');
+  const view = (rawView === 'weather' || rawView === 'calendar' || rawView === 'transit' || rawView === 'energy' || rawView === 'spotify')
+    ? 'widgets'
+    : rawView;
+  const [, startTransition] = useTransition();
 
   const navigate = (target: string | null) =>
     startTransition(() => {
-      setView(target);
-      try {
-        const url = new URL(window.location.href);
-        if (target) url.searchParams.set('view', target);
-        else url.searchParams.delete('view');
-        window.history.replaceState(null, '', url.pathname + url.search);
-      } catch { /* */ }
+      if (target) router.replace(`/settings?view=${encodeURIComponent(target)}`);
+      else router.replace('/settings');
     });
 
   // WebSocket-Updates für Geräte (Status, Attribute, last_seen)

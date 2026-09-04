@@ -86,7 +86,14 @@ export const api = {
   createScene: (data: Partial<Scene>) => request<Scene>('/scenes', { method: 'POST', body: JSON.stringify(data) }),
   updateScene: (id: number, data: Partial<Scene>) => request<Scene>(`/scenes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteScene: (id: number) => request<void>(`/scenes/${id}`, { method: 'DELETE' }),
-  activateScene: (id: number) => request<{ activated: boolean; scene: string }>(`/scenes/${id}/activate`, { method: 'POST' }),
+  activateScene: (id: number, opts?: { delay_minutes?: number }) =>
+    request<{ activated: boolean; scheduled?: boolean; delay_minutes?: number; scene: string }>(
+      `/scenes/${id}/activate`,
+      {
+        method: 'POST',
+        body: JSON.stringify(opts?.delay_minutes ? { delay_minutes: opts.delay_minutes } : {}),
+      },
+    ),
 
   // Automations
   getAutomations: () => request<Automation[]>('/automations'),

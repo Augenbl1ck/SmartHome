@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
+import { Timer } from 'lucide-react';
 import { api, Device, DeviceType, Room, Scene, type CalendarEventsResponse, type EnergyOverview, type TransitBoardResponse, type WeatherResponse } from '@/lib/api';
 import { countsAsActive, deviceTemperature } from '@/lib/devices';
 import { DEVICE_UPDATE_EVENT } from '@/lib/device-events';
@@ -17,6 +18,8 @@ import CalendarWidget from '@/components/CalendarWidget';
 import TransitWidget from '@/components/TransitWidget';
 import EnergyWidget from '@/components/EnergyWidget';
 import SpotifyWidget from '@/components/SpotifyWidget';
+import SceneDelayDialog, { formatDelayMinutes } from '@/components/SceneDelayDialog';
+import { toast } from 'sonner';
 
 interface Props {
   initialDevices: Device[];
@@ -56,6 +59,7 @@ export default function DashboardLive({
   const [transitInit, setTransitInit] = useState(initialTransit);
   const [energyInit, setEnergyInit] = useState(initialEnergy);
   const [calendarInit, setCalendarInit] = useState(initialCalendar);
+  const [delayScene, setDelayScene] = useState<Scene | null>(null);
 
   useEffect(() => {
     const snap = loadBootstrapSnapshot();
@@ -136,8 +140,17 @@ export default function DashboardLive({
     [layout.fields],
   );
 
-  const activateScene = async (scene: Scene) => {
+  const activateScene = async (scene: Scene, delayMinutes?: number) => {
     if (running.has(scene.id)) return;
+    if (delayMinutes && delayMinutes > 0) {
+      try {
+        await api.activateScene(scene.id, { delay_minutes: delayMinutes });
+        toast.success(`${scene.name} startet in ${formatDelayMinutes(delayMinutes)}`);
+      } catch {
+        toast.error(`${scene.name} konnte nicht geplant werden`);
+      }
+      return;
+    }
     setRunning(r => new Set(r).add(scene.id));
     try {
       await api.activateScene(scene.id);
@@ -222,26 +235,37 @@ export default function DashboardLive({
               const isRunning = running.has(scene.id);
               const isDone    = done.has(scene.id);
               return (
-                <button
-                  key={scene.id}
-                  onClick={() => activateScene(scene)}
-                  disabled={isRunning}
-                  className={cn(
-                    'flex-shrink-0 flex flex-col items-center gap-2 rounded-2xl border p-4 min-w-[110px]',
-                    'transition-all duration-200 active:scale-[0.95] cursor-pointer',
-                    isDone
-                      ? 'bg-green-500/15 border-green-400/40 text-green-600 dark:text-green-400'
-                      : 'bg-card border-border hover:bg-accent/60',
-                    isRunning && 'opacity-60 animate-pulse cursor-not-allowed',
-                  )}
-                >
-                  <span className="text-3xl leading-none select-none">
-                    {isDone ? '✓' : scene.icon}
-                  </span>
-                  <span className="text-xs font-semibold text-center leading-tight line-clamp-2 w-full">
-                    {isDone ? 'Aktiviert' : scene.name}
-                  </span>
-                </button>
+                <div key={scene.id} className="relative flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => activateScene(scene)}
+                    disabled={isRunning}
+                    className={cn(
+                      'flex flex-col items-center gap-2 rounded-2xl border p-4 min-w-[110px] pr-10',
+                      'transition-all duration-200 active:scale-[0.95] cursor-pointer',
+                      isDone
+                        ? 'bg-green-500/15 border-green-400/40 text-green-600 dark:text-green-400'
+                        : 'bg-card border-border hover:bg-accent/60',
+                      isRunning && 'opacity-60 animate-pulse cursor-not-allowed',
+                    )}
+                  >
+                    <span className="text-3xl leading-none select-none">
+                      {isDone ? '✓' : scene.icon}
+                    </span>
+                    <span className="text-xs font-semibold text-center leading-tight line-clamp-2 w-full">
+                      {isDone ? 'Aktiviert' : scene.name}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDelayScene(scene)}
+                    disabled={isRunning}
+                    className="cursor-pointer absolute top-1.5 right-1.5 h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
+                    aria-label="Ausführen in…"
+                  >
+                    <Timer className="h-4 w-4" />
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -323,6 +347,16 @@ export default function DashboardLive({
         return null;
       })}
 
+      <SceneDelayDialog
+        open={delayScene != null}
+        sceneName={delayScene?.name ?? ''}
+        onClose={() => setDelayScene(null)}
+        onConfirm={(minutes) => {
+          const scene = delayScene;
+          setDelayScene(null);
+          if (scene) void activateScene(scene, minutes);
+        }}
+      />
     </div>
   );
 }

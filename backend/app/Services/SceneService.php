@@ -15,15 +15,33 @@ class SceneService
      */
     public function activate(Scene $scene): void
     {
+        $queue = [];
         foreach ($scene->actions ?? [] as $action) {
-            if (!is_array($action)) {
+            if (! is_array($action)) {
                 continue;
             }
             $normalized = $this->normalizeAction($action);
             if (($normalized['type'] ?? '') === 'activate_scene') {
                 continue;
             }
-            $this->actionExecutor->execute($normalized, allowActivateScene: false);
+            $queue[] = $normalized;
+        }
+
+        $maxPasses = max(1, count($queue));
+        for ($pass = 0; $pass < $maxPasses && $queue !== []; $pass++) {
+            $remaining = [];
+            $progress = false;
+            foreach ($queue as $action) {
+                if ($this->actionExecutor->execute($action, allowActivateScene: false)) {
+                    $progress = true;
+                } else {
+                    $remaining[] = $action;
+                }
+            }
+            if (! $progress) {
+                break;
+            }
+            $queue = $remaining;
         }
     }
 

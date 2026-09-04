@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\DelayedSceneActivate;
 use App\Models\Scene;
 use App\Services\SceneService;
 use Illuminate\Http\JsonResponse;
@@ -57,10 +58,30 @@ class SceneController extends Controller
         return response()->json(null, 204);
     }
 
-    public function activate(Scene $scene): JsonResponse
+    public function activate(Request $request, Scene $scene): JsonResponse
     {
+        $data = $request->validate([
+            'delay_minutes' => 'sometimes|nullable|integer|min:0|max:1440',
+        ]);
+        $delay = (int) ($data['delay_minutes'] ?? 0);
+        if ($delay > 0) {
+            DelayedSceneActivate::dispatch($scene->id)->delay(now()->addMinutes($delay));
+
+            return response()->json([
+                'activated' => false,
+                'scheduled' => true,
+                'delay_minutes' => $delay,
+                'scene' => $scene->name,
+            ]);
+        }
+
         $this->sceneService->activate($scene);
-        return response()->json(['activated' => true, 'scene' => $scene->name]);
+
+        return response()->json([
+            'activated' => true,
+            'scheduled' => false,
+            'scene' => $scene->name,
+        ]);
     }
 
     /**
