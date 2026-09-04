@@ -24,6 +24,11 @@ php8.4 artisan route:cache
 
 echo "[3/7] php-fpm + API-Nginx..."
 chmod +x "$INSTALL_DIR/deploy/run-backend.sh"
+[ -f "$INSTALL_DIR/deploy/fix-api-502.sh" ] && chmod +x "$INSTALL_DIR/deploy/fix-api-502.sh"
+# Port 8000 muss frei sein, sonst bekommt Nginx ihn nicht (502).
+sudo systemctl stop smarthome-backend 2>/dev/null || true
+sudo fuser -k 8000/tcp 2>/dev/null || true
+sleep 1
 if [ -d /etc/php/8.4/fpm/pool.d ]; then
   sudo cp "$INSTALL_DIR/deploy/php8.4-fpm-smarthome.conf" /etc/php/8.4/fpm/pool.d/smarthome.conf
   sudo systemctl enable php8.4-fpm >/dev/null 2>&1 || true
@@ -35,6 +40,9 @@ fi
 if [ -d /etc/nginx/sites-available ]; then
   sudo cp "$INSTALL_DIR/deploy/smarthome-api-php-fpm.conf" /etc/nginx/sites-available/smarthome-api
   sudo ln -sf /etc/nginx/sites-available/smarthome-api /etc/nginx/sites-enabled/smarthome-api
+  if [ -f /etc/nginx/sites-available/smarthome ]; then
+    sudo cp "$INSTALL_DIR/deploy/smarthome-nginx.conf" /etc/nginx/sites-available/smarthome
+  fi
   sudo nginx -t && sudo systemctl reload nginx
   echo "  nginx :8000  ✓"
 else
