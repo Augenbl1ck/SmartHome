@@ -97,9 +97,11 @@ function saveFavs(ids: number[]) {
 export default function RoomClient({ roomId, room: roomProp, initialDevices }: Props) {
   const router = useRouter();
   const storeRoom = useSmartHomeStore(s => s.rooms.find(r => r.id === roomId) ?? null);
-  const storeRoomDevices = useSmartHomeStore(s => s.devices.filter(d => d.room_id === roomId));
+  const storeDevices = useSmartHomeStore(s => s.devices);
   const room = roomProp ?? storeRoom;
-  const seedDevices = initialDevices.length > 0 ? initialDevices : storeRoomDevices;
+  const seedDevices = initialDevices.length > 0
+    ? initialDevices
+    : storeDevices.filter(d => d.room_id === roomId);
   const [devices, setDevices]     = useState(seedDevices);
   const [pending, setPending]     = useState<Set<number>>(new Set());
   const [bleStates, setBleStates] = useState<Map<number, BleState>>(new Map());
