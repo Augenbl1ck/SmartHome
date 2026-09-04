@@ -18,9 +18,9 @@ export default function SmartHomeProvider({
   useEffect(() => {
     const snap = loadBootstrapSnapshot();
     if (snap) hydrate(snap);
-    if (bootstrapHasContent(initial)) {
+    if (initial && bootstrapHasContent(initial)) {
       hydrate(initial);
-      if (initial) saveBootstrapSnapshot({
+      saveBootstrapSnapshot({
         rooms: initial.rooms ?? snap?.rooms ?? [],
         devices: initial.devices ?? snap?.devices ?? [],
         scenes: initial.scenes ?? snap?.scenes ?? [],
