@@ -12,7 +12,7 @@ cd "$INSTALL_DIR"
 
 echo "[1/7] Code aktualisieren..."
 # Lokale Deploy-Skript-Änderungen verwerfen (Autostart-Edits auf dem Pi)
-git checkout -- deploy/start-kiosk.sh deploy/update.sh deploy/smarthome-kiosk.desktop 2>/dev/null || true
+git checkout -- deploy/start-kiosk.sh deploy/update.sh deploy/smarthome-kiosk.desktop deploy/run-backend.sh 2>/dev/null || true
 git pull
 
 echo "[2/7] Backend-Abhängigkeiten..."
