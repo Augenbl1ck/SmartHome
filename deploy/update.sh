@@ -25,9 +25,9 @@ php8.4 artisan route:cache
 echo "[3/7] php-fpm + API-Nginx..."
 chmod +x "$INSTALL_DIR/deploy/run-backend.sh"
 [ -f "$INSTALL_DIR/deploy/fix-api-502.sh" ] && chmod +x "$INSTALL_DIR/deploy/fix-api-502.sh"
-# Port 8000 muss frei sein, sonst bekommt Nginx ihn nicht (502).
+# artisan serve stoppen — niemals fuser -k 8000 (das killt Nginx, der :8000 hält).
 sudo systemctl stop smarthome-backend 2>/dev/null || true
-sudo fuser -k 8000/tcp 2>/dev/null || true
+sudo pkill -f 'artisan serve --host' 2>/dev/null || true
 sleep 1
 if [ -d /etc/php/8.4/fpm/pool.d ]; then
   sudo cp "$INSTALL_DIR/deploy/php8.4-fpm-smarthome.conf" /etc/php/8.4/fpm/pool.d/smarthome.conf
@@ -43,7 +43,12 @@ if [ -d /etc/nginx/sites-available ]; then
   if [ -f /etc/nginx/sites-available/smarthome ]; then
     sudo cp "$INSTALL_DIR/deploy/smarthome-nginx.conf" /etc/nginx/sites-available/smarthome
   fi
-  sudo nginx -t && sudo systemctl reload nginx
+  sudo nginx -t
+  if sudo systemctl is-active --quiet nginx; then
+    sudo systemctl reload nginx
+  else
+    sudo systemctl start nginx
+  fi
   echo "  nginx :8000  ✓"
 else
   echo "  nginx        ✗"
@@ -76,6 +81,7 @@ cd "$INSTALL_DIR/backend"
 php8.4 artisan dashboard:refresh-cache || echo "  cache        ✗"
 
 echo "[Status]"
+sudo systemctl is-active --quiet nginx && echo "  nginx        ✓" || echo "  nginx        ✗"
 sudo systemctl is-active --quiet php8.4-fpm && echo "  php-fpm      ✓" || echo "  php-fpm      ✗"
 sudo systemctl is-active --quiet smarthome-backend  && echo "  backend      ✓" || echo "  backend      ✗"
 sudo systemctl is-active --quiet smarthome-frontend && echo "  frontend     ✓" || echo "  frontend     ✗"

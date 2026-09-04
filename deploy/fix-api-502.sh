@@ -6,9 +6,9 @@ INSTALL_DIR="${INSTALL_DIR:-/home/pi/SmartHome}"
 
 echo "=== API-502 Fix ==="
 
-echo "[1] artisan serve / Dummy-Backend stoppen, Port 8000 freimachen..."
+echo "[1] artisan serve stoppen (Nginx auf :8000 nicht killen)..."
 sudo systemctl stop smarthome-backend 2>/dev/null || true
-sudo fuser -k 8000/tcp 2>/dev/null || true
+sudo pkill -f 'artisan serve --host' 2>/dev/null || true
 sleep 1
 
 echo "[2] php-fpm Pool..."
@@ -32,7 +32,11 @@ if [ -d /etc/nginx/sites-available ]; then
   sudo cp "$INSTALL_DIR/deploy/smarthome-api-php-fpm.conf" /etc/nginx/sites-available/smarthome-api
   sudo ln -sf /etc/nginx/sites-available/smarthome-api /etc/nginx/sites-enabled/smarthome-api
   sudo nginx -t
-  sudo systemctl reload nginx
+  if sudo systemctl is-active --quiet nginx; then
+    sudo systemctl reload nginx
+  else
+    sudo systemctl start nginx
+  fi
 fi
 sleep 1
 
@@ -48,12 +52,16 @@ echo "  :8000/api/v1/bootstrap → HTTP $code"
 if [ "$code" != "200" ]; then
   echo "  Fallback: artisan serve (Port 8000 muss frei sein)"
   sudo systemctl stop smarthome-backend || true
-  sudo fuser -k 8000/tcp 2>/dev/null || true
   sudo rm -f /etc/nginx/sites-enabled/smarthome-api
   # Alten run-backend.sh (sleep sobald Socket da) austricksen:
   sudo mv /etc/php/8.4/fpm/pool.d/smarthome.conf /etc/php/8.4/fpm/pool.d/smarthome.conf.disabled 2>/dev/null || true
   sudo systemctl restart php8.4-fpm
-  sudo nginx -t && sudo systemctl reload nginx
+  sudo nginx -t
+  if sudo systemctl is-active --quiet nginx; then
+    sudo systemctl reload nginx
+  else
+    sudo systemctl start nginx
+  fi
   sudo systemctl start smarthome-backend
   sleep 2
   code=$(curl -sS -m 5 -o /tmp/smarthome-api-test.json -w '%{http_code}' http://127.0.0.1:8000/api/v1/bootstrap || echo 000)
