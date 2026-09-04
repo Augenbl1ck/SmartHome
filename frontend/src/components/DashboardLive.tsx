@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { api, Device, DeviceType, Room, Scene, type CalendarEventsResponse, type EnergyOverview, type TransitBoardResponse, type WeatherResponse } from '@/lib/api';
 import { countsAsActive, deviceTemperature } from '@/lib/devices';
@@ -8,6 +8,7 @@ import { DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { getEcho } from '@/lib/echo';
 import { useSmartHomeStore } from '@/store/smarthome';
 import { cn } from '@/lib/utils';
+import { loadBootstrapSnapshot, saveBootstrapSnapshot, mergeBootstrap, bootstrapHasContent } from '@/lib/bootstrap-snapshot';
 import DeviceFieldPanel from '@/components/DeviceFieldPanel';
 import { useDashboardLayout, parseFieldSectionId, type SectionId } from '@/hooks/useDashboardLayout';
 import DashboardActions from '@/components/DashboardActions';
@@ -42,39 +43,43 @@ export default function DashboardLive({
 }: Props) {
   const hydrate = useSmartHomeStore(s => s.hydrate);
   const patchDevice = useSmartHomeStore(s => s.patchDevice);
+  const storeRooms = useSmartHomeStore(s => s.rooms);
+  const storeDevices = useSmartHomeStore(s => s.devices);
+  const storeScenes = useSmartHomeStore(s => s.scenes);
 
-  // Server-Daten sofort nutzen → keine Farbverzögerung beim ersten Render
   const [devices,  setDevices]  = useState<Device[]>(initialDevices);
   const [mounted,  setMounted]  = useState(false);
   const [time,     setTime]     = useState('');
   const [running,  setRunning]  = useState<Set<number>>(new Set());
   const [done,     setDone]     = useState<Set<number>>(new Set());
-
-  const refresh = useCallback(async () => {
-    try {
-      const fresh = await api.getDevices();
-      setDevices(fresh);
-      useSmartHomeStore.getState().hydrate({ devices: fresh });
-    } catch { /* silent */ }
-  }, []);
+  const [weatherInit, setWeatherInit] = useState(initialWeather);
+  const [transitInit, setTransitInit] = useState(initialTransit);
+  const [energyInit, setEnergyInit] = useState(initialEnergy);
+  const [calendarInit, setCalendarInit] = useState(initialCalendar);
 
   useEffect(() => {
-    hydrate({ rooms, devices: initialDevices, scenes: initialScenes });
-  }, [hydrate, rooms, initialDevices, initialScenes]);
+    const snap = loadBootstrapSnapshot();
+    const ssr: Parameters<typeof mergeBootstrap>[1] = {
+      rooms, devices: initialDevices, scenes: initialScenes,
+      weather: initialWeather, transit: initialTransit, energy: initialEnergy, calendar: initialCalendar,
+    };
+    const merged = mergeBootstrap(snap, bootstrapHasContent(ssr) ? ssr : snap);
+    hydrate(merged);
+    saveBootstrapSnapshot(merged);
+    if (!initialWeather && merged.weather) setWeatherInit(merged.weather);
+    if (!initialTransit && merged.transit) setTransitInit(merged.transit);
+    if (!initialEnergy && merged.energy) setEnergyInit(merged.energy);
+    if (!initialCalendar && merged.calendar) setCalendarInit(merged.calendar);
+    if (merged.devices.length && initialDevices.length === 0) setDevices(merged.devices);
+  }, [hydrate, rooms, initialDevices, initialScenes, initialWeather, initialTransit, initialEnergy, initialCalendar]);
 
   useEffect(() => {
     setMounted(true);
 
-    // Echtzeit-Uhr
     const updateTime = () =>
       setTime(new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }));
     updateTime();
     const clock = setInterval(updateTime, 1000);
-
-    const onFocus = () => refresh();
-    window.addEventListener('focus', onFocus);
-
-    const interval = setInterval(refresh, 5 * 60_000);
 
     const handler = (e: Event) => {
       const { id, status } = (e as CustomEvent<{ id: number; status: string }>).detail;
@@ -82,7 +87,6 @@ export default function DashboardLive({
     };
     window.addEventListener(DEVICE_UPDATE_EVENT, handler);
 
-    // WebSocket via Laravel Reverb
     let echo: ReturnType<typeof getEcho> | null = null;
     try {
       echo = getEcho();
@@ -96,32 +100,32 @@ export default function DashboardLive({
         patchDevice(data.id, { status: data.status, attributes: data.attributes, last_seen: data.last_seen });
       });
     } catch (err) {
-      console.warn('[WebSocket] Reverb nicht erreichbar, nur Polling aktiv', err);
+      console.warn('[WebSocket] Reverb nicht erreichbar', err);
     }
 
     return () => {
       clearInterval(clock);
-      clearInterval(interval);
-      window.removeEventListener('focus', onFocus);
       window.removeEventListener(DEVICE_UPDATE_EVENT, handler);
       if (echo) echo.leaveChannel('devices');
     };
-  }, [refresh]);
+  }, [patchDevice]);
 
-  const list          = devices;
+  const list          = storeDevices.length > 0 ? storeDevices : devices;
+  const displayRooms  = storeRooms.length > 0 ? storeRooms : rooms;
+  const displayScenes = storeScenes.length > 0 ? storeScenes : initialScenes;
   const activeDevices = list.filter(d => d.status === 'on' && countsAsActive(d.type as DeviceType)).length;
 
   const layout = useDashboardLayout();
 
   const orderedRooms = useMemo(() => {
     const { roomOrder } = layout;
-    if (roomOrder.length === 0) return rooms;
-    return [...rooms].sort((a, b) => {
+    if (roomOrder.length === 0) return displayRooms;
+    return [...displayRooms].sort((a, b) => {
       const ai = roomOrder.indexOf(a.id);
       const bi = roomOrder.indexOf(b.id);
       return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
     });
-  }, [rooms, layout]);
+  }, [displayRooms, layout]);
 
   const sectionOrder: SectionId[] = layout.sectionOrder.length > 0
     ? layout.sectionOrder
@@ -137,7 +141,6 @@ export default function DashboardLive({
     setRunning(r => new Set(r).add(scene.id));
     try {
       await api.activateScene(scene.id);
-      await refresh();
       setDone(d => new Set(d).add(scene.id));
       setTimeout(() => setDone(d => { const n = new Set(d); n.delete(scene.id); return n; }), 2000);
     } finally {
@@ -185,25 +188,25 @@ export default function DashboardLive({
 
         if (sectionId === 'weather') return (
           <div key="weather">
-            <WeatherWidget initial={initialWeather} />
+            <WeatherWidget initial={weatherInit} />
           </div>
         );
 
         if (sectionId === 'calendar') return (
           <div key="calendar">
-            <CalendarWidget initial={initialCalendar} />
+            <CalendarWidget initial={calendarInit} />
           </div>
         );
 
         if (sectionId === 'transit') return (
           <div key="transit">
-            <TransitWidget initial={initialTransit} />
+            <TransitWidget initial={transitInit} />
           </div>
         );
 
         if (sectionId === 'energy') return (
           <div key="energy">
-            <EnergyWidget initial={initialEnergy} />
+            <EnergyWidget initial={energyInit} />
           </div>
         );
 
@@ -213,9 +216,9 @@ export default function DashboardLive({
           </div>
         );
 
-        if (sectionId === 'scenes') return initialScenes.length > 0 ? (
+        if (sectionId === 'scenes') return displayScenes.length > 0 ? (
           <div key="scenes" className="flex gap-3 overflow-x-auto pb-1 -mb-1 scrollbar-none">
-            {initialScenes.map(scene => {
+            {displayScenes.map(scene => {
               const isRunning = running.has(scene.id);
               const isDone    = done.has(scene.id);
               return (
@@ -295,7 +298,7 @@ export default function DashboardLive({
               );
             })}
 
-            {rooms.length === 0 && (
+            {displayRooms.length === 0 && (
               <p className="text-muted-foreground text-sm col-span-full py-12 text-center">
                 Noch keine Räume. Gehe zu Einstellungen um welche hinzuzufügen.
               </p>

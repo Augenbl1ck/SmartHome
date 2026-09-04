@@ -216,6 +216,8 @@ function resolvedOnOffTarget(
 }
 
 export default function ScenesClient({ initialScenes, devices: initialDevices }: Props) {
+  const storeDevices = useSmartHomeStore(s => s.devices);
+  const storeScenes = useSmartHomeStore(s => s.scenes);
   const [scenes, setScenes]           = useState(initialScenes);
   const [devices, setDevices]         = useState(initialDevices);
   const [running, setRunning]         = useState<Set<number>>(new Set());
@@ -226,6 +228,11 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
     open: boolean; editing?: Scene; form: SceneForm; saving: boolean; error: string;
   }>({ open: false, form: emptyForm(), saving: false, error: '' });
   const [deleteId, setDeleteId]       = useState<number | null>(null);
+
+  useEffect(() => {
+    if (devices.length === 0 && storeDevices.length) setDevices(storeDevices);
+    if (scenes.length === 0 && storeScenes.length) setScenes(storeScenes);
+  }, [storeDevices, storeScenes, devices.length, scenes.length]);
 
   const switchableDevices = devices.filter((d) => SWITCHABLE_TYPES.includes(d.type));
   const thermostats = devices.filter((d) => d.type === 'thermostat');

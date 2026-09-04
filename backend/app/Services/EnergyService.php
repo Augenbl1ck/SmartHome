@@ -6,6 +6,7 @@ use App\Models\Device;
 use App\Models\EnergyDaily;
 use App\Models\EnergySample;
 use App\Models\PanelSetting;
+use App\Support\SnapshotCache;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -21,7 +22,25 @@ class EnergyService
      */
     public function overview(): array
     {
-        return Cache::remember('energy_overview', 20, fn () => $this->computeOverview());
+        $cached = SnapshotCache::get('energy_overview');
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        return $this->refreshOverview();
+    }
+
+    /**
+     * Rechnet die Übersicht aus der DB neu. Scheduler oder Cache-Miss.
+     *
+     * @return array<string, mixed>
+     */
+    public function refreshOverview(): array
+    {
+        $data = $this->computeOverview();
+        SnapshotCache::put('energy_overview', $data);
+
+        return $data;
     }
 
     /**

@@ -1,10 +1,10 @@
 import { Automation, AutomationLog, BootstrapPayload, CalendarEventsResponse, Device, EnergyHistoryResponse, EnergyOverview, EnergyPeriod, PanelSettings, Room, Scene, TransitBoardResponse, WeatherResponse } from './api';
-import { fetchWeatherData } from './weather-fetch';
+import { EMPTY_BOOTSTRAP } from './bootstrap-snapshot';
 
 const API_BASE = process.env.API_URL ?? 'http://localhost:8000/api/v1';
 
-/** Laravel `artisan serve` ist single-thread — nicht ewig auf Header warten. */
-const FETCH_MS = 10_000;
+/** Kurz halten: wenn Laravel hängt, Client + localStorage übernehmen. */
+const FETCH_MS = 1_500;
 
 async function serverFetch<T>(path: string, revalidate?: number): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -27,7 +27,7 @@ function isoDate(d: Date): string {
 }
 
 export const serverApi = {
-  getBootstrap: () => serverFetch<BootstrapPayload>('/bootstrap'),
+  getBootstrap: () => serverFetch<BootstrapPayload>('/bootstrap').catch(() => EMPTY_BOOTSTRAP),
   getRooms: () => serverFetch<Room[]>('/rooms'),
   getDevices: (roomId?: number) =>
     serverFetch<Device[]>(`/devices${roomId ? `?room_id=${roomId}` : ''}`),
@@ -54,10 +54,7 @@ export const serverApi = {
     to.setDate(to.getDate() + 7);
     return serverApi.getCalendarEvents({ from: isoDate(from), to: isoDate(to) });
   },
-  getWeather: async (): Promise<WeatherResponse> => {
-    const settings = await serverApi.getPanelSettings();
-    return fetchWeatherData(settings);
-  },
+  getWeather: () => serverFetch<WeatherResponse>('/weather'),
   getTransitBoard: () => serverFetch<TransitBoardResponse>('/transit/board', 30),
   getEnergy: () => serverFetch<EnergyOverview>('/energy', 20),
   getEnergyHistory: (range: EnergyPeriod = 'day') =>

@@ -3,15 +3,13 @@
 namespace App\Services;
 
 use App\Models\PanelSetting;
+use App\Support\SnapshotCache;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 class CalendarService
 {
-    private const CACHE_TTL_SECONDS = 900; // 15 Min
-
     private const WEEKDAY_MAP = [
         'SU' => Carbon::SUNDAY,
         'MO' => Carbon::MONDAY,
@@ -36,14 +34,17 @@ class CalendarService
         $from ??= Carbon::now()->startOfDay();
         $to ??= Carbon::now()->addDays(14)->endOfDay();
 
-        try {
-            $ics = $this->fetchIcs($url);
-            $parsedKey = 'calendar_parsed_' . sha1($ics) . '_' . $from->toDateString() . '_' . $to->toDateString();
-            $events = Cache::remember($parsedKey, self::CACHE_TTL_SECONDS, function () use ($ics, $from, $to) {
-                return $this->parseEvents($ics, $from, $to);
-            });
+        $ics = SnapshotCache::get($this->icsKey($url));
+        if (!is_string($ics) || $ics === '') {
+            return [
+                'events' => [],
+                'configured' => true,
+                'error' => 'Kalender noch nicht geladen',
+            ];
+        }
 
-            return ['events' => $events, 'configured' => true];
+        try {
+            return ['events' => $this->parseEvents($ics, $from, $to), 'configured' => true];
         } catch (\Throwable $e) {
             return [
                 'events' => [],
@@ -53,35 +54,71 @@ class CalendarService
         }
     }
 
-    private function fetchIcs(string $url): string
+    /**
+     * Holt den iCal-Feed. Nur Scheduler / CLI.
+     *
+     * @return array{events: list<array<string, mixed>>, configured: bool, error?: string}
+     */
+    public function refresh(?Carbon $from = null, ?Carbon $to = null): array
     {
-        $cacheKey = 'calendar_ics_' . sha1($url);
+        $url = PanelSetting::getValue('calendar_ical_url');
+        if (!is_string($url) || trim($url) === '') {
+            return ['events' => [], 'configured' => false];
+        }
 
-        return Cache::remember($cacheKey, self::CACHE_TTL_SECONDS, function () use ($url) {
-            if (!filter_var($url, FILTER_VALIDATE_URL)) {
-                throw new RuntimeException('Ungültige iCal-URL');
+        $url = trim($url);
+        $from ??= Carbon::now('Europe/Berlin')->startOfMonth()->subDays(7)->startOfDay();
+        $to ??= Carbon::now('Europe/Berlin')->endOfMonth()->addDays(7)->endOfDay();
+
+        try {
+            $ics = $this->downloadIcs($url);
+            SnapshotCache::put($this->icsKey($url), $ics);
+
+            return ['events' => $this->parseEvents($ics, $from, $to), 'configured' => true];
+        } catch (\Throwable $e) {
+            $stale = $this->events($from, $to);
+            if (($stale['events'] ?? []) !== []) {
+                return $stale;
             }
 
-            $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
-            if (!in_array($scheme, ['http', 'https'], true)) {
-                throw new RuntimeException('iCal-URL muss http(s) sein');
-            }
+            return [
+                'events' => [],
+                'configured' => true,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
 
-            $response = Http::timeout(8)
-                ->withHeaders(['Accept' => 'text/calendar, text/plain, */*'])
-                ->get($url);
+    private function icsKey(string $url): string
+    {
+        return 'calendar_ics_' . sha1($url);
+    }
 
-            if (!$response->successful()) {
-                throw new RuntimeException('Kalender-Feed nicht erreichbar (HTTP ' . $response->status() . ')');
-            }
+    private function downloadIcs(string $url): string
+    {
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            throw new RuntimeException('Ungültige iCal-URL');
+        }
 
-            $body = $response->body();
-            if (!str_contains($body, 'BEGIN:VCALENDAR') && !str_contains($body, 'BEGIN:VEVENT')) {
-                throw new RuntimeException('Antwort ist kein gültiger iCal-Feed');
-            }
+        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+        if (!in_array($scheme, ['http', 'https'], true)) {
+            throw new RuntimeException('iCal-URL muss http(s) sein');
+        }
 
-            return $body;
-        });
+        $response = Http::timeout(8)
+            ->withHeaders(['Accept' => 'text/calendar, text/plain, */*'])
+            ->get($url);
+
+        if (!$response->successful()) {
+            throw new RuntimeException('Kalender-Feed nicht erreichbar (HTTP ' . $response->status() . ')');
+        }
+
+        $body = $response->body();
+        if (!str_contains($body, 'BEGIN:VCALENDAR') && !str_contains($body, 'BEGIN:VEVENT')) {
+            throw new RuntimeException('Antwort ist kein gültiger iCal-Feed');
+        }
+
+        return $body;
     }
 
     /**

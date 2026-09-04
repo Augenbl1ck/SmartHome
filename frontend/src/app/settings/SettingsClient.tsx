@@ -1986,10 +1986,19 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
   const upsertRoom = useSmartHomeStore(s => s.upsertRoom);
   const removeRoomFromStore = useSmartHomeStore(s => s.removeRoom);
   const hydrate = useSmartHomeStore(s => s.hydrate);
+  const storeRooms = useSmartHomeStore(s => s.rooms);
+  const storeDevices = useSmartHomeStore(s => s.devices);
 
   useEffect(() => {
-    hydrate({ rooms: initialRooms, devices: initialDevices });
+    if (initialRooms.length || initialDevices.length) {
+      hydrate({ rooms: initialRooms, devices: initialDevices });
+    }
   }, [hydrate, initialRooms, initialDevices]);
+
+  useEffect(() => {
+    if (rooms.length === 0 && storeRooms.length) setRooms(storeRooms);
+    if (devices.length === 0 && storeDevices.length) setDevices(storeDevices);
+  }, [storeRooms, storeDevices, rooms.length, devices.length]);
   const pinLock = usePinLockContext();
   const [view, setView] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;

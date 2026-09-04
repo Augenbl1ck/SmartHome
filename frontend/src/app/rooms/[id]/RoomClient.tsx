@@ -73,7 +73,8 @@ function formatLastSeen(lastSeen: string | null | undefined): string | null {
 }
 
 interface Props {
-  room: Room;
+  roomId: number;
+  room: Room | null;
   initialDevices: Device[];
 }
 
@@ -93,9 +94,13 @@ function saveFavs(ids: number[]) {
   void saveFavorites(ids);
 }
 
-export default function RoomClient({ room, initialDevices }: Props) {
+export default function RoomClient({ roomId, room: roomProp, initialDevices }: Props) {
   const router = useRouter();
-  const [devices, setDevices]     = useState(initialDevices);
+  const storeRoom = useSmartHomeStore(s => s.rooms.find(r => r.id === roomId) ?? null);
+  const storeRoomDevices = useSmartHomeStore(s => s.devices.filter(d => d.room_id === roomId));
+  const room = roomProp ?? storeRoom;
+  const seedDevices = initialDevices.length > 0 ? initialDevices : storeRoomDevices;
+  const [devices, setDevices]     = useState(seedDevices);
   const [pending, setPending]     = useState<Set<number>>(new Set());
   const [bleStates, setBleStates] = useState<Map<number, BleState>>(new Map());
   const [bleError, setBleError]   = useState<string | null>(null);
@@ -106,6 +111,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
   const [thermoConfigOpen, setThermoConfigOpen] = useState<Set<number>>(new Set());
   const [editingSetpointId, setEditingSetpointId] = useState<number | null>(null);
   const [setpointDraft, setSetpointDraft] = useState('');
+  const [roomWaited, setRoomWaited] = useState(false);
 
   // Setpoints + Dimmer-Level sofort aus Server-Daten (kein Flicker)
   const [setpoints, setSetpoints] = useState<Map<number, number>>(() => {
@@ -134,7 +140,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
 
   const applyDeviceList = (fresh: Device[]) => {
     setDevices(fresh);
-    replaceRoomDevices(room.id, fresh);
+    replaceRoomDevices(roomId, fresh);
     setSetpoints(prev => {
       const m = new Map(prev);
       for (const d of fresh) {
@@ -158,18 +164,24 @@ export default function RoomClient({ room, initialDevices }: Props) {
   };
 
   const refreshDevices = () => {
-    api.getDevices(room.id).then(applyDeviceList).catch(() => {});
+    api.getDevices(roomId).then(applyDeviceList).catch(() => {});
   };
 
   // Beim Betreten des Raums + Tab-Focus neu laden (nicht nur Focus)
   useEffect(() => {
-    const fromStore = useSmartHomeStore.getState().devices.filter(d => d.room_id === room.id);
+    const fromStore = useSmartHomeStore.getState().devices.filter(d => d.room_id === roomId);
     if (fromStore.length) applyDeviceList(fromStore);
     refreshDevices();
     window.addEventListener('focus', refreshDevices);
     return () => window.removeEventListener('focus', refreshDevices);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room.id]);
+  }, [roomId]);
+
+  useEffect(() => {
+    if (room) return;
+    const t = window.setTimeout(() => setRoomWaited(true), 2500);
+    return () => window.clearTimeout(t);
+  }, [room]);
 
   useEffect(() => {
     setFavorites(loadFavs());
@@ -194,7 +206,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
       echo.channel('devices').listen('.device.updated', (data: {
         id: number; room_id?: number; status: string; attributes: Record<string, unknown>; last_seen: string;
       }) => {
-        if (data.room_id != null && data.room_id !== room.id) return;
+        if (data.room_id != null && data.room_id !== roomId) return;
         setDevices(prev => {
           const exists = prev.some(d => d.id === data.id);
           if (!exists) {
@@ -226,7 +238,7 @@ export default function RoomClient({ room, initialDevices }: Props) {
       if (echo) echo.leaveChannel('devices');
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room.id]);
+  }, [roomId]);
 
   const toggleFav = (id: number) => {
     setFavorites(prev => {
@@ -436,6 +448,14 @@ export default function RoomClient({ room, initialDevices }: Props) {
     setTurningOff(false);
     if (skipped > 0) toast.warning(`${skipped} Gerät${skipped === 1 ? '' : 'e'} wegen Sperre nicht ausgeschaltet.`);
   };
+
+  if (!room) {
+    return (
+      <div className="py-16 text-center text-sm text-muted-foreground">
+        {roomWaited ? 'Raum nicht gefunden.' : 'Raum wird geladen…'}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 animate-page-in">

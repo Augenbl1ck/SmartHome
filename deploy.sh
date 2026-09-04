@@ -60,6 +60,8 @@ fi
 $PHP artisan migrate --force
 info "Datenbank-Migrations ausgeführt"
 
+$PHP artisan dashboard:refresh-cache || warn "Widget-Cache konnte nicht vorgewärmt werden"
+
 $PHP artisan config:cache
 $PHP artisan route:cache
 $PHP artisan event:cache
@@ -86,7 +88,6 @@ if [ "$SETUP" = true ]; then
   section "4. Systemd Services einrichten"
 
   SERVICES=(
-    "smarthome-backend:php artisan serve --host=0.0.0.0 --port=8000:backend:SmartHome Laravel Backend"
     "smarthome-mqtt:php artisan mqtt:subscribe:backend:SmartHome MQTT Subscriber"
     "smarthome-reverb:php artisan reverb:start:backend:SmartHome Reverb WebSocket"
     "smarthome-queue:php artisan queue:work --sleep=3 --tries=3:backend:SmartHome Queue Worker"
@@ -119,6 +120,26 @@ EOF
     systemctl enable "$name"
     info "Service ${name} eingerichtet"
   done
+
+  chmod +x "$REPO_DIR/deploy/run-backend.sh"
+  cp "$REPO_DIR/deploy/smarthome-backend.service" /etc/systemd/system/smarthome-backend.service
+  systemctl enable smarthome-backend
+  info "Service smarthome-backend eingerichtet"
+
+  if [ -d /etc/php/8.4/fpm/pool.d ]; then
+    cp "$REPO_DIR/deploy/php8.4-fpm-smarthome.conf" /etc/php/8.4/fpm/pool.d/smarthome.conf
+    systemctl enable php8.4-fpm
+    systemctl restart php8.4-fpm
+    info "php-fpm Pool eingerichtet"
+  else
+    warn "php8.4-fpm fehlt — sudo apt install php8.4-fpm"
+  fi
+  if [ -d /etc/nginx/sites-available ]; then
+    cp "$REPO_DIR/deploy/smarthome-api-php-fpm.conf" /etc/nginx/sites-available/smarthome-api
+    ln -sf /etc/nginx/sites-available/smarthome-api /etc/nginx/sites-enabled/smarthome-api
+    nginx -t && systemctl reload nginx
+    info "Nginx API :8000 eingerichtet"
+  fi
 
   systemctl daemon-reload
 

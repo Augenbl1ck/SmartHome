@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { getEcho } from '@/lib/echo';
 import { isInterlockAutomation } from '@/lib/devices';
+import { useSmartHomeStore } from '@/store/smarthome';
 
 // ── Aktions-Typen ─────────────────────────────────────────────────────────────
 
@@ -911,7 +912,13 @@ interface Props {
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
-export default function AutomationsClient({ initialAutomations, devices, rooms, scenes, initialLogs }: Props) {
+export default function AutomationsClient({ initialAutomations, devices: devicesProp, rooms: roomsProp, scenes: scenesProp, initialLogs }: Props) {
+  const storeDevices = useSmartHomeStore(s => s.devices);
+  const storeRooms = useSmartHomeStore(s => s.rooms);
+  const storeScenes = useSmartHomeStore(s => s.scenes);
+  const devices = devicesProp.length ? devicesProp : storeDevices;
+  const rooms = roomsProp.length ? roomsProp : storeRooms;
+  const scenes = scenesProp.length ? scenesProp : storeScenes;
   const [automations, setAutomations] = useState(initialAutomations);
   const [logs, setLogs]               = useState<AutomationLog[]>(initialLogs);
   const [activeTab, setActiveTab]     = useState<'automations' | 'locks' | 'history'>('automations');

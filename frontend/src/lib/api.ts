@@ -564,6 +564,10 @@ export interface BootstrapPayload {
   rooms: Room[];
   devices: Device[];
   scenes: Scene[];
+  weather?: WeatherResponse | null;
+  transit?: TransitBoardResponse | null;
+  energy?: EnergyOverview | null;
+  calendar?: CalendarEventsResponse | null;
 }
 
 export interface DeviceLog {

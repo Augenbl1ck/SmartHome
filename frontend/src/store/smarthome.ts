@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api, Device, Room, Scene, type BootstrapPayload } from '@/lib/api';
+import { saveBootstrapSnapshot } from '@/lib/bootstrap-snapshot';
 
 interface SmartHomeState {
   rooms: Room[];
@@ -92,7 +93,14 @@ export const useSmartHomeStore = create<SmartHomeState>((set, get) => ({
     set({ loading: true });
     try {
       const data = await api.getBootstrap();
-      set({ ...data, hydrated: true, loading: false });
+      set({
+        rooms: data.rooms,
+        devices: data.devices,
+        scenes: data.scenes,
+        hydrated: true,
+        loading: false,
+      });
+      saveBootstrapSnapshot(data);
     } catch {
       set({ loading: false });
     }

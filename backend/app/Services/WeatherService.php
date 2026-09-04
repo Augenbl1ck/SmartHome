@@ -3,13 +3,12 @@
 namespace App\Services;
 
 use App\Models\PanelSetting;
-use Illuminate\Support\Facades\Cache;
+use App\Support\SnapshotCache;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 class WeatherService
 {
-    private const CACHE_TTL = 300; // 5 Min
 
     /**
      * @return array{
@@ -31,19 +30,56 @@ class WeatherService
             return ['configured' => false, 'unit' => $unit];
         }
 
-        $cacheKey = 'weather_om_' . sha1($city . '|' . $unit);
+        $cacheKey = $this->cacheKey($city, $unit);
+        $cached = SnapshotCache::get($cacheKey);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        return [
+            'configured' => true,
+            'unit' => $unit,
+            'error' => 'Wetter noch nicht geladen',
+        ];
+    }
+
+    /**
+     * Holt Open-Meteo und schreibt den Snapshot. Nur Scheduler / CLI.
+     *
+     * @return array<string, mixed>
+     */
+    public function refresh(): array
+    {
+        $weather = PanelSetting::getValue('weather');
+        $city = is_array($weather) ? trim((string) ($weather['city'] ?? '')) : '';
+        $unit = is_array($weather) && ($weather['unit'] ?? '') === 'imperial' ? 'imperial' : 'metric';
+
+        if ($city === '') {
+            return ['configured' => false, 'unit' => $unit];
+        }
 
         try {
-            return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($city, $unit) {
-                return $this->fetchAll($city, $unit);
-            });
+            $data = $this->fetchAll($city, $unit);
+            SnapshotCache::put($this->cacheKey($city, $unit), $data);
+
+            return $data;
         } catch (\Throwable $e) {
+            $stale = SnapshotCache::get($this->cacheKey($city, $unit));
+            if (is_array($stale)) {
+                return $stale;
+            }
+
             return [
                 'configured' => true,
                 'unit' => $unit,
                 'error' => $e->getMessage(),
             ];
         }
+    }
+
+    private function cacheKey(string $city, string $unit): string
+    {
+        return 'weather_om_' . sha1($city . '|' . $unit);
     }
 
     /**

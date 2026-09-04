@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\PanelSetting;
+use App\Support\SnapshotCache;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -20,6 +21,8 @@ class TransitService
     private const LOCATIONS_TTL = 300;
 
     private const BOARD_TTL = 60;
+
+    private const BOARD_SNAPSHOT_KEY = 'transit_board_snapshot';
 
     /**
      * @return list<array{id: string, name: string, type: string}>
@@ -195,6 +198,42 @@ class TransitService
             ];
         }
 
+        $cached = SnapshotCache::get(self::BOARD_SNAPSHOT_KEY);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        return [
+            'configured' => true,
+            'stations' => [],
+            'connections' => [],
+            'error' => 'Bahn noch nicht geladen',
+        ];
+    }
+
+    /**
+     * Holt Transitous und schreibt den Snapshot. Nur Scheduler / CLI.
+     *
+     * @return array<string, mixed>
+     */
+    public function refreshBoard(): array
+    {
+        $cfg = $this->normalizedConfig();
+        $stationsCfg = $cfg['stations'];
+        $connectionsCfg = $cfg['connections'];
+
+        if ($stationsCfg === [] && $connectionsCfg === []) {
+            $empty = [
+                'configured' => false,
+                'stations' => [],
+                'connections' => [],
+                'error' => null,
+            ];
+            SnapshotCache::put(self::BOARD_SNAPSHOT_KEY, $empty);
+
+            return $empty;
+        }
+
         $errors = [];
         $stations = [];
         foreach ($stationsCfg as $stop) {
@@ -241,12 +280,15 @@ class TransitService
             }
         }
 
-        return [
+        $data = [
             'configured' => true,
             'stations' => $stations,
             'connections' => $connections,
             'error' => $errors === [] ? null : implode('; ', array_unique($errors)),
         ];
+        SnapshotCache::put(self::BOARD_SNAPSHOT_KEY, $data);
+
+        return $data;
     }
 
     /**

@@ -41,7 +41,9 @@ export function useStaleWhileRevalidate<T>(
       setData(initial);
       setLoading(false);
     }
-    void load();
+    if (initial == null) {
+      void load();
+    }
     const t = setInterval(() => void load(), intervalMs);
     return () => clearInterval(t);
   }, [key, intervalMs, load, initial]);

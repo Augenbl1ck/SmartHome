@@ -16,3 +16,9 @@ Schedule::command('devices:ping-computers')->everyMinute();
 
 // Energie-Samples alle 5 Minuten
 Schedule::command('energy:sample')->everyFiveMinutes();
+
+// Dashboard-Widgets vorwärmen (keine HTTP-Blocks beim Seitenaufruf)
+Schedule::command('dashboard:refresh-cache --only=transit')->everyMinute();
+Schedule::command('dashboard:refresh-cache --only=energy')->everyMinute();
+Schedule::command('dashboard:refresh-cache --only=weather')->everyTenMinutes();
+Schedule::command('dashboard:refresh-cache --only=calendar')->everyFifteenMinutes();

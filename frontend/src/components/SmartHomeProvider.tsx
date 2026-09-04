@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useSmartHomeStore } from '@/store/smarthome';
 import type { BootstrapPayload } from '@/lib/api';
+import { bootstrapHasContent, loadBootstrapSnapshot, saveBootstrapSnapshot } from '@/lib/bootstrap-snapshot';
 
 export default function SmartHomeProvider({
   children,
@@ -15,17 +16,22 @@ export default function SmartHomeProvider({
   const fetchBootstrap = useSmartHomeStore((s) => s.fetchBootstrap);
 
   useEffect(() => {
-    if (initial && (initial.rooms || initial.devices || initial.scenes)) {
+    const snap = loadBootstrapSnapshot();
+    if (snap) hydrate(snap);
+    if (bootstrapHasContent(initial)) {
       hydrate(initial);
+      if (initial) saveBootstrapSnapshot({
+        rooms: initial.rooms ?? snap?.rooms ?? [],
+        devices: initial.devices ?? snap?.devices ?? [],
+        scenes: initial.scenes ?? snap?.scenes ?? [],
+        weather: initial.weather ?? snap?.weather,
+        transit: initial.transit ?? snap?.transit,
+        energy: initial.energy ?? snap?.energy,
+        calendar: initial.calendar ?? snap?.calendar,
+      });
     }
-  }, [hydrate, initial]);
-
-  useEffect(() => {
-    const t = window.setTimeout(() => {
-      if (!useSmartHomeStore.getState().hydrated) void fetchBootstrap();
-    }, 0);
-    return () => window.clearTimeout(t);
-  }, [fetchBootstrap]);
+    void fetchBootstrap();
+  }, [hydrate, fetchBootstrap, initial]);
 
   return children;
 }
