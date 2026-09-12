@@ -10,6 +10,7 @@ import {
 } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useStaleWhileRevalidate } from '@/hooks/useStaleWhileRevalidate';
+import { useKiosk } from '@/components/KioskProvider';
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
@@ -85,6 +86,7 @@ interface Props {
 }
 
 export default function TransitWidget({ initial = null }: Props) {
+  const { kioskMode } = useKiosk();
   const { data: board, loading, error: loadError } = useStaleWhileRevalidate(
     'dash-transit',
     api.getTransitBoard,
@@ -129,7 +131,7 @@ export default function TransitWidget({ initial = null }: Props) {
   }
 
   return (
-    <div className="rounded-2xl border bg-card p-4 space-y-4">
+    <div className={cn('rounded-2xl border bg-card', kioskMode ? 'p-3 space-y-2' : 'p-4 space-y-4')}>
       <div className="flex items-center gap-2">
         <TrainFront className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0" />
         <h2 className="text-sm font-semibold">Bahn</h2>

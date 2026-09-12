@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { shellyBle } from '@/lib/bluetooth';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { toast } from 'sonner';
+import { useKiosk } from '@/components/KioskProvider';
 
 function isBle(device: Device): boolean {
   return device.attributes?.protocol === 'bluetooth_shelly_gen3';
@@ -93,6 +94,7 @@ interface Props {
 }
 
 export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: Props) {
+  const { kioskMode } = useKiosk();
   const [devices, setDevices] = useState(initialDevices);
   const [toggling, setToggling] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -215,7 +217,7 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
+      <div className={cn('flex items-center justify-between', kioskMode ? 'mb-1.5' : 'mb-3')}>
         <p className="text-sm font-medium text-muted-foreground">{title}</p>
         <span className="text-xs text-muted-foreground">{fieldDevices.length} Geräte</span>
       </div>
@@ -247,7 +249,8 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
             const label = statusLabel(device);
 
             const className = cn(
-              'rounded-2xl border p-4 flex items-center gap-3 text-left transition-all w-full',
+              'rounded-2xl border flex items-center text-left transition-all w-full',
+              kioskMode ? 'p-2.5 gap-2' : 'p-4 gap-3',
               interactive && !lockReason && 'cursor-pointer active:scale-95',
               interactive && lockReason && 'cursor-not-allowed opacity-70',
               isOn && connected ? 'bg-amber-500/15 border-amber-400/40 shadow-sm' : 'bg-card border-border',
@@ -257,7 +260,8 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
             const inner = (
               <>
                 <div className={cn(
-                  'h-11 w-11 rounded-full flex items-center justify-center shrink-0 transition-colors',
+                  'rounded-full flex items-center justify-center shrink-0 transition-colors',
+                  kioskMode ? 'h-9 w-9' : 'h-11 w-11',
                   isOn && connected ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground',
                 )}>
                   {Icon && <Icon className="h-5 w-5" />}

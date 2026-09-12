@@ -7,6 +7,7 @@ import { api, type CalendarEventsResponse } from '@/lib/api';
 import CalendarMonthGrid from '@/components/CalendarMonthGrid';
 import { isoDate, startOfLocalDay } from '@/lib/calendar-layout';
 import { useStaleWhileRevalidate } from '@/hooks/useStaleWhileRevalidate';
+import { useKiosk } from '@/components/KioskProvider';
 
 interface Props {
   initial?: CalendarEventsResponse | null;
@@ -21,6 +22,7 @@ function monthRange(year: number, month: number): { from: string; to: string } {
 }
 
 export default function CalendarWidget({ initial = null }: Props) {
+  const { kioskMode } = useKiosk();
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth();
@@ -77,7 +79,7 @@ export default function CalendarWidget({ initial = null }: Props) {
   }
 
   return (
-    <div className="rounded-2xl border bg-card p-3 sm:p-4">
+    <div className={kioskMode ? 'rounded-2xl border bg-card p-2' : 'rounded-2xl border bg-card p-3 sm:p-4'}>
       <Link href="/calendar" className="flex items-center gap-2 min-w-0 mb-2 hover:opacity-80 transition-opacity">
         <CalendarDays className="h-5 w-5 text-violet-500 shrink-0" />
         <p className="font-semibold text-sm">Kalender</p>
@@ -89,6 +91,7 @@ export default function CalendarWidget({ initial = null }: Props) {
           month={month}
           events={events}
           today={today}
+          compact={kioskMode}
         />
       </Link>
     </div>

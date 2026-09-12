@@ -5,6 +5,7 @@ import { Cloud, CloudRain, CloudSnow, Sun, Wind, Droplets, Thermometer } from 'l
 import { cn } from '@/lib/utils';
 import { api, type WeatherCurrent, type WeatherResponse } from '@/lib/api';
 import { useStaleWhileRevalidate } from '@/hooks/useStaleWhileRevalidate';
+import { useKiosk } from '@/components/KioskProvider';
 
 function WeatherIcon({ icon, className }: { icon: string; className?: string }) {
   const cls = cn('shrink-0', className);
@@ -32,6 +33,8 @@ function windLabel(unit: string): string {
 }
 
 export default function WeatherWidget({ initial = null, compact = false }: Props) {
+  const { kioskMode } = useKiosk();
+  const pad = kioskMode ? 'p-3' : 'p-5';
   const { data: weather, error: loadError } = useStaleWhileRevalidate(
     'dash-weather',
     api.getWeather,
@@ -59,13 +62,13 @@ export default function WeatherWidget({ initial = null, compact = false }: Props
   if (!weather) {
     if (error) {
       return (
-        <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5">
+        <div className={cn('rounded-2xl border border-destructive/30 bg-destructive/5', pad)}>
           <p className="text-sm text-destructive">{error}</p>
         </div>
       );
     }
     return (
-      <div className="rounded-2xl border bg-card p-5 flex items-center gap-3 animate-pulse">
+      <div className={cn('rounded-2xl border bg-card flex items-center gap-3 animate-pulse', pad)}>
         <Cloud className="h-8 w-8 text-muted-foreground/30 shrink-0" />
         <div className="space-y-1.5 flex-1">
           <div className="h-4 bg-muted rounded w-24" />
@@ -91,7 +94,7 @@ export default function WeatherWidget({ initial = null, compact = false }: Props
 
   if (error && !data) {
     return (
-      <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5">
+      <div className={cn('rounded-2xl border border-destructive/30 bg-destructive/5', pad)}>
         <p className="text-sm text-destructive">{error}</p>
       </div>
     );
@@ -99,7 +102,7 @@ export default function WeatherWidget({ initial = null, compact = false }: Props
 
   if (!data) {
     return (
-      <div className="rounded-2xl border bg-card p-5 flex items-center gap-3 animate-pulse">
+      <div className={cn('rounded-2xl border bg-card flex items-center gap-3 animate-pulse', pad)}>
         <Cloud className="h-8 w-8 text-muted-foreground/30 shrink-0" />
         <div className="space-y-1.5 flex-1">
           <div className="h-4 bg-muted rounded w-24" />
@@ -112,13 +115,13 @@ export default function WeatherWidget({ initial = null, compact = false }: Props
   return (
     <Link
       href="/weather"
-      className="block rounded-2xl border bg-card p-5 transition-colors hover:bg-accent/40 active:scale-[0.99]"
+      className={cn('block rounded-2xl border bg-card transition-colors hover:bg-accent/40 active:scale-[0.99]', pad)}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
-          <WeatherIcon icon={data.icon} className="h-10 w-10 text-amber-500" />
+          <WeatherIcon icon={data.icon} className={cn(kioskMode ? 'h-8 w-8' : 'h-10 w-10', 'text-amber-500')} />
           <div className="min-w-0">
-            <p className="text-3xl font-bold tabular-nums leading-none">
+            <p className={cn('font-bold tabular-nums leading-none', kioskMode ? 'text-2xl' : 'text-3xl')}>
               {data.temp}{unit}
             </p>
             <p className="text-xs text-muted-foreground capitalize mt-0.5 truncate">

@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { Zap } from 'lucide-react';
 import { api, type EnergyOverview } from '@/lib/api';
 import { useStaleWhileRevalidate } from '@/hooks/useStaleWhileRevalidate';
+import { useKiosk } from '@/components/KioskProvider';
+import { cn } from '@/lib/utils';
 
 interface Props {
   initial?: EnergyOverview | null;
@@ -20,6 +22,8 @@ function formatEuro(v: number): string {
 }
 
 export default function EnergyWidget({ initial = null }: Props) {
+  const { kioskMode } = useKiosk();
+  const pad = kioskMode ? 'p-3' : 'p-4';
   const { data, loading } = useStaleWhileRevalidate(
     'dash-energy',
     api.getEnergy,
@@ -29,7 +33,7 @@ export default function EnergyWidget({ initial = null }: Props) {
 
   if (loading && !data) {
     return (
-      <div className="rounded-2xl border bg-card p-4 animate-pulse space-y-3">
+      <div className={cn('rounded-2xl border bg-card animate-pulse space-y-3', pad)}>
         <div className="h-4 bg-muted rounded w-24" />
         <div className="h-10 bg-muted rounded w-full" />
       </div>
@@ -58,23 +62,23 @@ export default function EnergyWidget({ initial = null }: Props) {
   return (
     <Link
       href="/energy"
-      className="block rounded-2xl border bg-card p-4 hover:bg-accent/40 transition-colors active:scale-[0.99]"
+      className={cn('block rounded-2xl border bg-card hover:bg-accent/40 transition-colors active:scale-[0.99]', pad)}
     >
-      <div className="flex items-center gap-2 mb-3">
+      <div className={cn('flex items-center gap-2', kioskMode ? 'mb-2' : 'mb-3')}>
         <Zap className="h-5 w-5 text-amber-500 shrink-0" />
         <h2 className="text-sm font-semibold">Energie</h2>
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div>
           <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Live</p>
-          <p className="text-xl font-bold tabular-nums leading-tight">
+          <p className={cn('font-bold tabular-nums leading-tight', kioskMode ? 'text-lg' : 'text-xl')}>
             {Math.round(data?.live_power_w ?? 0)}
             <span className="text-sm font-medium text-muted-foreground ml-0.5">W</span>
           </p>
         </div>
         <div>
           <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Heute</p>
-          <p className="text-xl font-bold tabular-nums leading-tight">
+          <p className={cn('font-bold tabular-nums leading-tight', kioskMode ? 'text-lg' : 'text-xl')}>
             {formatEuro(data?.today_cost ?? 0)}
           </p>
           <p className="text-xs text-muted-foreground tabular-nums mt-0.5">
@@ -83,7 +87,7 @@ export default function EnergyWidget({ initial = null }: Props) {
         </div>
         <div>
           <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Monat</p>
-          <p className="text-xl font-bold tabular-nums leading-tight">
+          <p className={cn('font-bold tabular-nums leading-tight', kioskMode ? 'text-lg' : 'text-xl')}>
             {formatEuro(data?.month_cost ?? 0)}
           </p>
           <p className="text-xs text-muted-foreground tabular-nums mt-0.5">

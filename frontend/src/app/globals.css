@@ -29,9 +29,10 @@ summary {
   animation: shake 0.5s ease-in-out;
 }
 
-/* ─── Kiosk-Modus: Content-Padding für KioskBar (h-20 = 80px) ───── */
+/* ─── Kiosk-Modus: engeres Padding, unten Platz für KioskBar ───── */
+html.kiosk-boot main,
 body.kiosk-active main {
-  padding-bottom: 88px !important;
+  padding: 8px 12px 88px !important;
 }
 
 /* ─── Kiosk: Scrollbars verstecken (Touch-/Wheel-Scroll bleibt) ─── */

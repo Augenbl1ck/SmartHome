@@ -19,6 +19,7 @@ import TransitWidget from '@/components/TransitWidget';
 import EnergyWidget from '@/components/EnergyWidget';
 import SpotifyWidget from '@/components/SpotifyWidget';
 import SceneDelayDialog, { formatDelayMinutes } from '@/components/SceneDelayDialog';
+import { useKiosk } from '@/components/KioskProvider';
 import { toast } from 'sonner';
 
 interface Props {
@@ -120,6 +121,7 @@ export default function DashboardLive({
   const activeDevices = list.filter(d => d.status === 'on' && countsAsActive(d.type as DeviceType)).length;
 
   const layout = useDashboardLayout();
+  const { kioskMode } = useKiosk();
 
   const orderedRooms = useMemo(() => {
     const { roomOrder } = layout;
@@ -162,13 +164,13 @@ export default function DashboardLive({
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className={cn('flex flex-col', kioskMode ? 'gap-2' : 'gap-4')}>
 
       {/* ── Panel-Header: Uhr + Status + Action ─────────────────── */}
-      <div className="flex items-center gap-4 rounded-2xl border bg-card p-5">
+      <div className={cn('flex items-center rounded-2xl border bg-card', kioskMode ? 'gap-3 p-3' : 'gap-4 p-5')}>
         {/* Uhr + Datum — suppressHydrationWarning: Server rendert leer, Client überschreibt sofort */}
         <div className="min-w-0">
-          <p className="text-5xl font-bold tabular-nums leading-none tracking-tight" suppressHydrationWarning>
+          <p className={cn('font-bold tabular-nums leading-none tracking-tight', kioskMode ? 'text-3xl' : 'text-5xl')} suppressHydrationWarning>
             {time || '\u00a0'}
           </p>
           <p className="text-sm text-muted-foreground mt-1" suppressHydrationWarning>
@@ -230,7 +232,7 @@ export default function DashboardLive({
         );
 
         if (sectionId === 'scenes') return displayScenes.length > 0 ? (
-          <div key="scenes" className="flex gap-3 overflow-x-auto pb-1 -mb-1 scrollbar-none">
+          <div key="scenes" className={cn('flex overflow-x-auto pb-1 -mb-1 scrollbar-none', kioskMode ? 'gap-2' : 'gap-3')}>
             {displayScenes.map(scene => {
               const isRunning = running.has(scene.id);
               const isDone    = done.has(scene.id);
@@ -241,7 +243,8 @@ export default function DashboardLive({
                     onClick={() => activateScene(scene)}
                     disabled={isRunning}
                     className={cn(
-                      'flex flex-col items-center gap-2 rounded-2xl border p-4 min-w-[110px] pr-10',
+                      'flex flex-col items-center gap-2 rounded-2xl border',
+                      kioskMode ? 'p-2 min-w-[88px] pr-8' : 'p-4 min-w-[110px] pr-10',
                       'transition-all duration-200 active:scale-[0.95] cursor-pointer',
                       isDone
                         ? 'bg-green-500/15 border-green-400/40 text-green-600 dark:text-green-400'
@@ -249,7 +252,7 @@ export default function DashboardLive({
                       isRunning && 'opacity-60 animate-pulse cursor-not-allowed',
                     )}
                   >
-                    <span className="text-3xl leading-none select-none">
+                    <span className={cn('leading-none select-none', kioskMode ? 'text-2xl' : 'text-3xl')}>
                       {isDone ? '✓' : scene.icon}
                     </span>
                     <span className="text-xs font-semibold text-center leading-tight line-clamp-2 w-full">
@@ -272,7 +275,7 @@ export default function DashboardLive({
         ) : null;
 
         if (sectionId === 'rooms') return (
-          <div key="rooms" className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          <div key="rooms" className={cn('grid grid-cols-2 sm:grid-cols-3', kioskMode ? 'gap-2' : 'gap-4')}>
             {orderedRooms.map(room => {
               const roomDevices = list.filter(d => d.room_id === room.id);
               const active      = roomDevices.filter(d => d.status === 'on' && countsAsActive(d.type as DeviceType)).length;
@@ -282,7 +285,8 @@ export default function DashboardLive({
               return (
                 <Link key={room.id} href={`/rooms/${room.id}`} prefetch>
                   <div className={cn(
-                    'rounded-2xl border p-5 flex flex-col gap-3 min-h-[165px] cursor-pointer',
+                    'rounded-2xl border flex flex-col cursor-pointer',
+                    kioskMode ? 'p-3 gap-2 min-h-[112px]' : 'p-5 gap-3 min-h-[165px]',
                     'transition-all duration-300 ease-in-out active:scale-[0.97]',
                     active > 0
                       ? 'bg-amber-500/15 border-amber-400/40 shadow-sm'
@@ -290,7 +294,8 @@ export default function DashboardLive({
                   )}>
                     <div className="flex items-start justify-between gap-2">
                       <div className={cn(
-                        'w-14 h-14 rounded-xl flex items-center justify-center text-3xl select-none',
+                        'rounded-xl flex items-center justify-center select-none',
+                        kioskMode ? 'w-10 h-10 text-2xl' : 'w-14 h-14 text-3xl',
                         active > 0 ? 'bg-amber-500/20' : 'bg-muted'
                       )}>
                         {room.icon ?? '🏠'}

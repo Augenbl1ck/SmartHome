@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Delete } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -16,20 +16,55 @@ export default function PinLockScreen({ onUnlock, onWake, isScreenOff }: Props) 
   const [pin,   setPin]   = useState('');
   const [error, setError] = useState(false);
   const [shake, setShake] = useState(false);
+  const [inputArmed, setInputArmed] = useState(!isScreenOff);
+  const wokeFromOff = useRef(!!isScreenOff);
 
-  // Bildschirm schlafen → Touch weckt
+  useEffect(() => {
+    if (isScreenOff) {
+      wokeFromOff.current = true;
+      setInputArmed(false);
+      return;
+    }
+    if (!wokeFromOff.current) {
+      setInputArmed(true);
+      return;
+    }
+    wokeFromOff.current = false;
+    setInputArmed(false);
+
+    const swallow = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    window.addEventListener('click', swallow, true);
+    window.addEventListener('pointerup', swallow, true);
+
+    const arm = () => {
+      window.removeEventListener('click', swallow, true);
+      window.removeEventListener('pointerup', swallow, true);
+      setInputArmed(true);
+    };
+    const t = window.setTimeout(arm, 400);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener('click', swallow, true);
+      window.removeEventListener('pointerup', swallow, true);
+    };
+  }, [isScreenOff]);
+
+  // Bildschirm schlafen → erst nach Ende der Geste wecken (kein TouchStart)
   if (isScreenOff) {
     return (
       <div
         className="fixed inset-0 z-[100] bg-black cursor-pointer"
-        onClick={onWake}
-        onTouchStart={onWake}
+        onPointerUp={() => onWake?.()}
         aria-label="Bildschirm dunkel — tippen zum Fortfahren"
       />
     );
   }
 
   const append = async (char: string) => {
+    if (!inputArmed) return;
     if (char === '⌫') {
       setPin((p) => p.slice(0, -1));
       setError(false);
@@ -83,7 +118,7 @@ export default function PinLockScreen({ onUnlock, onWake, isScreenOff }: Props) 
       )}
 
       {/* Numpad */}
-      <div className="grid grid-cols-3 gap-3 w-64">
+      <div className={cn('grid grid-cols-3 gap-3 w-64', !inputArmed && 'pointer-events-none')}>
         {BUTTONS.map((btn, i) => {
           if (btn === '') return <div key={i} />;
           return (

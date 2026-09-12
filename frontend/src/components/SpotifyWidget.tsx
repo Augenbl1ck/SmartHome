@@ -24,6 +24,7 @@ import {
 import { createPanelPlayer, type SpotifyWebPlayer } from '@/lib/spotify-player';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useKiosk } from '@/components/KioskProvider';
 
 function formatMs(ms: number): string {
   const s = Math.floor(ms / 1000);
@@ -32,6 +33,7 @@ function formatMs(ms: number): string {
 }
 
 export default function SpotifyWidget() {
+  const { kioskMode } = useKiosk();
   const [player, setPlayer] = useState<SpotifyPlayerState | null>(null);
   const [devices, setDevices] = useState<SpotifyDevice[]>([]);
   const [queue, setQueue] = useState<SpotifyTrack[]>([]);
@@ -232,7 +234,7 @@ export default function SpotifyWidget() {
   }
 
   return (
-    <div className="rounded-2xl border bg-card p-4 space-y-3">
+    <div className={cn('rounded-2xl border bg-card', kioskMode ? 'p-3 space-y-2' : 'p-4 space-y-3')}>
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
           <Music2 className="h-3.5 w-3.5" />
@@ -275,9 +277,9 @@ export default function SpotifyWidget() {
           <div className="flex gap-3 items-center">
             {item?.image ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={item.image} alt="" className="h-16 w-16 rounded-lg object-cover shrink-0" />
+              <img src={item.image} alt="" className={cn('rounded-lg object-cover shrink-0', kioskMode ? 'h-12 w-12' : 'h-16 w-16')} />
             ) : (
-              <div className="h-16 w-16 rounded-lg bg-muted flex items-center justify-center shrink-0">
+              <div className={cn('rounded-lg bg-muted flex items-center justify-center shrink-0', kioskMode ? 'h-12 w-12' : 'h-16 w-16')}>
                 <Music2 className="h-6 w-6 text-muted-foreground opacity-40" />
               </div>
             )}
