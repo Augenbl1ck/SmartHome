@@ -249,8 +249,7 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
             const label = statusLabel(device);
 
             const className = cn(
-              'rounded-2xl border flex items-center text-left transition-all w-full',
-              kioskMode ? 'p-1.5 gap-1.5' : 'p-4 gap-3',
+              'rounded-2xl border p-4 gap-3 flex items-center text-left transition-all w-full',
               interactive && !lockReason && 'cursor-pointer active:scale-95',
               interactive && lockReason && 'cursor-not-allowed opacity-70',
               isOn && connected ? 'bg-amber-500/15 border-amber-400/40 shadow-sm' : 'bg-card border-border',
