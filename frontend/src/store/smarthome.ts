@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { api, Device, Room, Scene, type BootstrapPayload } from '@/lib/api';
 import { saveBootstrapSnapshot } from '@/lib/bootstrap-snapshot';
+import { reconcileRemoteDevice } from '@/lib/device-status-hold';
 
 interface SmartHomeState {
   rooms: Room[];
@@ -31,7 +32,12 @@ export const useSmartHomeStore = create<SmartHomeState>((set, get) => ({
 
   hydrate: (data) => set((state) => {
     const nextRooms = data.rooms ?? state.rooms;
-    const nextDevices = data.devices ?? state.devices;
+    const nextDevices = data.devices
+      ? data.devices.map((incoming) => {
+          const current = state.devices.find((d) => d.id === incoming.id);
+          return current ? reconcileRemoteDevice(current, incoming) : incoming;
+        })
+      : state.devices;
     const nextScenes = data.scenes ?? state.scenes;
     const incomingEmpty = (data.rooms?.length ?? 0) === 0
       && (data.devices?.length ?? 0) === 0
@@ -53,12 +59,12 @@ export const useSmartHomeStore = create<SmartHomeState>((set, get) => ({
     const idx = state.devices.findIndex((d) => d.id === device.id);
     const devices = idx === -1
       ? [...state.devices, device]
-      : state.devices.map((d) => (d.id === device.id ? { ...d, ...device } : d));
+      : state.devices.map((d) => (d.id === device.id ? reconcileRemoteDevice(d, device) : d));
     return { devices };
   }),
 
   patchDevice: (id, patch) => set((state) => ({
-    devices: state.devices.map((d) => (d.id === id ? { ...d, ...patch } : d)),
+    devices: state.devices.map((d) => (d.id === id ? reconcileRemoteDevice(d, { ...patch, id }) : d)),
   })),
 
   removeDevice: (id) => set((state) => ({
@@ -68,7 +74,10 @@ export const useSmartHomeStore = create<SmartHomeState>((set, get) => ({
   replaceRoomDevices: (roomId, roomDevices) => set((state) => ({
     devices: [
       ...state.devices.filter((d) => d.room_id !== roomId),
-      ...roomDevices,
+      ...roomDevices.map((incoming) => {
+        const current = state.devices.find((d) => d.id === incoming.id);
+        return current ? reconcileRemoteDevice(current, incoming) : incoming;
+      }),
     ],
   })),
 
@@ -93,13 +102,16 @@ export const useSmartHomeStore = create<SmartHomeState>((set, get) => ({
     set({ loading: true });
     try {
       const data = await api.getBootstrap();
-      set({
+      set((state) => ({
         rooms: data.rooms,
-        devices: data.devices,
+        devices: data.devices.map((incoming) => {
+          const current = state.devices.find((d) => d.id === incoming.id);
+          return current ? reconcileRemoteDevice(current, incoming) : incoming;
+        }),
         scenes: data.scenes,
         hydrated: true,
         loading: false,
-      });
+      }));
       saveBootstrapSnapshot(data);
     } catch {
       set({ loading: false });
@@ -113,7 +125,12 @@ export const useSmartHomeStore = create<SmartHomeState>((set, get) => ({
       if (roomId != null) {
         get().replaceRoomDevices(roomId, devices);
       } else {
-        set({ devices });
+        set((state) => ({
+          devices: devices.map((incoming) => {
+            const current = state.devices.find((d) => d.id === incoming.id);
+            return current ? reconcileRemoteDevice(current, incoming) : incoming;
+          }),
+        }));
       }
     } finally {
       set({ loading: false });

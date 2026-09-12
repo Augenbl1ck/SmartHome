@@ -8,6 +8,7 @@ import { Star, Bluetooth, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { shellyBle } from '@/lib/bluetooth';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
+import { holdDeviceStatus, clearDeviceStatusHold, reconcileRemoteDevice, reconcileRemoteStatus } from '@/lib/device-status-hold';
 import { loadFavoritesLocal, saveFavorites, syncFavoritesFromServer, subscribeFavorites } from '@/lib/favorites';
 import { toast } from 'sonner';
 
@@ -50,7 +51,7 @@ export default function QuickAccess({ initialDevices }: Props) {
       // Nur Geräte updaten die nicht gerade getoggelt werden
       return prev.map(d => {
         const fresh = initialDevices.find(f => f.id === d.id);
-        return fresh && !toggling.has(d.id) ? { ...d, status: fresh.status } : d;
+        return fresh && !toggling.has(d.id) ? reconcileRemoteDevice(d, fresh) : d;
       });
     });
   }, [initialDevices]);
@@ -59,7 +60,7 @@ export default function QuickAccess({ initialDevices }: Props) {
   useEffect(() => {
     const handler = (e: Event) => {
       const { id, status } = (e as CustomEvent<{ id: number; status: string }>).detail;
-      setDevices(prev => prev.map(d => d.id === id ? { ...d, status } : d));
+      setDevices(prev => prev.map(d => d.id === id ? { ...d, status: reconcileRemoteStatus(id, status, d.status) } : d));
     };
     window.addEventListener(DEVICE_UPDATE_EVENT, handler);
     return () => window.removeEventListener(DEVICE_UPDATE_EVENT, handler);
@@ -107,7 +108,7 @@ export default function QuickAccess({ initialDevices }: Props) {
     setError(null);
     setToggling(t => new Set(t).add(device.id));
     const newStatus = device.status === 'on' ? 'off' : 'on';
-    // Optimistisch: sofort den Dashboard-Room-Tile updaten (keine API-Wartzeit)
+    holdDeviceStatus(device.id, newStatus);
     setDevices(prev => prev.map(d => d.id === device.id ? { ...d, status: newStatus } : d));
     emitDeviceUpdate(device.id, newStatus);
     try {
@@ -115,13 +116,9 @@ export default function QuickAccess({ initialDevices }: Props) {
         try { await shellyBle.switchSet(device.id, newStatus === 'on'); } catch { /* Bridge übernimmt */ }
       }
       const updated = await api.toggleDevice(device.id);
-      // Mit bestätigtem Status überschreiben falls abweichend
-      if (updated.status !== newStatus) {
-        setDevices(prev => prev.map(d => d.id === device.id ? updated : d));
-        emitDeviceUpdate(device.id, updated.status);
-      }
+      setDevices(prev => prev.map(d => d.id === device.id ? reconcileRemoteDevice(d, updated) : d));
     } catch (err) {
-      // Rollback bei Fehler
+      clearDeviceStatusHold(device.id);
       setDevices(prev => prev.map(d => d.id === device.id ? { ...d, status: device.status } : d));
       emitDeviceUpdate(device.id, device.status);
       const msg = err instanceof Error ? err.message : String(err);

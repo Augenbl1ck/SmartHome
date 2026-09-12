@@ -28,9 +28,10 @@ interface Config {
   nightModeTo: string;
 }
 
+/** Zigbee2MQTT `indicator_mode`: `aus/an` = LED bei Stecker aus / LED bei Stecker an. */
 const INDICATOR_OPTIONS: { value: IndicatorMode; label: string; desc: string }[] = [
-  { value: 'on/off', label: 'An wenn an', desc: 'LED leuchtet, wenn die Steckdose eingeschaltet ist' },
-  { value: 'off/on', label: 'An wenn aus', desc: 'LED leuchtet, wenn die Steckdose ausgeschaltet ist' },
+  { value: 'off/on', label: 'An wenn an', desc: 'LED leuchtet, wenn die Steckdose eingeschaltet ist' },
+  { value: 'on/off', label: 'An wenn aus', desc: 'LED leuchtet, wenn die Steckdose ausgeschaltet ist' },
   { value: 'on', label: 'Immer an', desc: 'LED leuchtet unabhängig vom Schaltzustand' },
   { value: 'off', label: 'Immer aus', desc: 'LED bleibt aus — z. B. im Schlafzimmer' },
 ];

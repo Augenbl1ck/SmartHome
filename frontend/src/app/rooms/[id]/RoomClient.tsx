@@ -15,6 +15,7 @@ import ZigbeePlugPanel from '@/components/ZigbeePlugPanel';
 import ThermostatAdvancedPanel from '@/components/ThermostatAdvancedPanel';
 import { loadFavoritesLocal, saveFavorites, syncFavoritesFromServer } from '@/lib/favorites';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
+import { holdDeviceStatus, clearDeviceStatusHold, reconcileRemoteDevice, reconcileRemoteStatus } from '@/lib/device-status-hold';
 import { getEcho } from '@/lib/echo';
 import { useSmartHomeStore } from '@/store/smarthome';
 import BleScanDialog from '@/components/BleScanDialog';
@@ -143,7 +144,13 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
   const upsertDevice = useSmartHomeStore(s => s.upsertDevice);
 
   const applyDeviceList = (fresh: Device[]) => {
-    setDevices(fresh);
+    setDevices(prev => {
+      const byId = new Map(prev.map(d => [d.id, d]));
+      return fresh.map(incoming => {
+        const current = byId.get(incoming.id);
+        return current ? reconcileRemoteDevice(current, incoming) : incoming;
+      });
+    });
     replaceRoomDevices(roomId, fresh);
     setSetpoints(prev => {
       const m = new Map(prev);
@@ -196,7 +203,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
   useEffect(() => {
     const handler = (e: Event) => {
       const { id, status } = (e as CustomEvent<{ id: number; status: string }>).detail;
-      setDevices(prev => prev.map(d => d.id === id ? { ...d, status } : d));
+      setDevices(prev => prev.map(d => d.id === id ? { ...d, status: reconcileRemoteStatus(id, status, d.status) } : d));
     };
     window.addEventListener(DEVICE_UPDATE_EVENT, handler);
     return () => window.removeEventListener(DEVICE_UPDATE_EVENT, handler);
@@ -218,7 +225,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
             return prev;
           }
           return prev.map(d => d.id === data.id
-            ? { ...d, status: data.status, attributes: data.attributes, last_seen: data.last_seen }
+            ? reconcileRemoteDevice(d, { status: data.status, attributes: data.attributes, last_seen: data.last_seen })
             : d
           );
         });
@@ -419,9 +426,11 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
     }
     const newStatus = device.status === 'on' ? 'off' : 'on';
     setPending((p) => new Set(p).add(device.id));
+    holdDeviceStatus(device.id, newStatus);
     setDevices((prev) =>
       prev.map((d) => (d.id === device.id ? { ...d, status: newStatus } : d))
     );
+    emitDeviceUpdate(device.id, newStatus);
     try {
       if (isBleDevice(device) && shellyBle.isSupported()) {
         // Web Bluetooth immer versuchen wenn im Browser (Chrome/Windows).
@@ -434,10 +443,11 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
       }
       // Server-API (MQTT / HTTP / BLE Bridge via MAC)
       const updated = await api.toggleDevice(device.id);
-      setDevices((prev) => prev.map((d) => (d.id === device.id ? updated : d)));
-      emitDeviceUpdate(device.id, newStatus);
+      setDevices((prev) => prev.map((d) => (d.id === device.id ? reconcileRemoteDevice(d, updated) : d)));
     } catch (err) {
+      clearDeviceStatusHold(device.id);
       setDevices((prev) => prev.map((d) => (d.id === device.id ? device : d)));
+      emitDeviceUpdate(device.id, device.status);
       const msg = err instanceof Error ? err.message : String(err);
       setBleError(msg);
     } finally {
@@ -460,11 +470,12 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
     }
     setTurningOff(true);
     await Promise.allSettled(
-      free.map(d =>
-        api.setDeviceStatus(d.id, 'off')
+      free.map(d => {
+        holdDeviceStatus(d.id, 'off');
+        return api.setDeviceStatus(d.id, 'off')
           .then(() => { setDevices(prev => prev.map(x => x.id === d.id ? { ...x, status: 'off' } : x)); emitDeviceUpdate(d.id, 'off'); })
-          .catch(() => {})
-      )
+          .catch(() => { clearDeviceStatusHold(d.id); });
+      })
     );
     setTurningOff(false);
     if (skipped > 0) toast.warning(`${skipped} Gerät${skipped === 1 ? '' : 'e'} wegen Sperre nicht ausgeschaltet.`);

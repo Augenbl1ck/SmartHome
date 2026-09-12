@@ -8,6 +8,8 @@ import { Bluetooth, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { shellyBle } from '@/lib/bluetooth';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
+import { holdDeviceStatus, clearDeviceStatusHold, reconcileRemoteDevice, reconcileRemoteStatus } from '@/lib/device-status-hold';
+import { useSmartHomeStore } from '@/store/smarthome';
 import { toast } from 'sonner';
 import { useKiosk } from '@/components/KioskProvider';
 
@@ -95,6 +97,7 @@ interface Props {
 
 export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: Props) {
   const { kioskMode } = useKiosk();
+  const patchDevice = useSmartHomeStore(s => s.patchDevice);
   const [devices, setDevices] = useState(initialDevices);
   const [toggling, setToggling] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -112,14 +115,14 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
   useEffect(() => {
     setDevices(prev => prev.map(d => {
       const fresh = initialDevices.find(f => f.id === d.id);
-      return fresh && !toggling.has(d.id) ? { ...d, ...fresh } : d;
+      return fresh && !toggling.has(d.id) ? reconcileRemoteDevice(d, fresh) : d;
     }));
   }, [initialDevices, toggling]);
 
   useEffect(() => {
     const handler = (e: Event) => {
       const { id, status } = (e as CustomEvent<{ id: number; status: string }>).detail;
-      setDevices(prev => prev.map(d => d.id === id ? { ...d, status } : d));
+      setDevices(prev => prev.map(d => d.id === id ? { ...d, status: reconcileRemoteStatus(id, status, d.status) } : d));
     };
     window.addEventListener(DEVICE_UPDATE_EVENT, handler);
     return () => window.removeEventListener(DEVICE_UPDATE_EVENT, handler);
@@ -186,7 +189,9 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
     }
 
     const prevStatus = device.status;
+    holdDeviceStatus(device.id, newStatus);
     setDevices(prev => prev.map(d => d.id === device.id ? { ...d, status: newStatus } : d));
+    patchDevice(device.id, { status: newStatus });
     emitDeviceUpdate(device.id, newStatus);
     try {
       if (isOnOffToggle(type)) {
@@ -194,17 +199,15 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
           try { await shellyBle.switchSet(device.id, newStatus === 'on'); } catch { /* Bridge */ }
         }
         const updated = await api.toggleDevice(device.id);
-        if (updated.status !== newStatus) {
-          setDevices(prev => prev.map(d => d.id === device.id ? updated : d));
-          emitDeviceUpdate(device.id, updated.status);
-        }
+        setDevices(prev => prev.map(d => d.id === device.id ? reconcileRemoteDevice(d, updated) : d));
       } else {
         const updated = await api.setDeviceStatus(device.id, newStatus);
-        setDevices(prev => prev.map(d => d.id === device.id ? { ...d, ...updated } : d));
-        emitDeviceUpdate(device.id, updated.status);
+        setDevices(prev => prev.map(d => d.id === device.id ? reconcileRemoteDevice(d, updated) : d));
       }
     } catch (err) {
+      clearDeviceStatusHold(device.id);
       setDevices(prev => prev.map(d => d.id === device.id ? { ...d, status: prevStatus } : d));
+      patchDevice(device.id, { status: prevStatus });
       emitDeviceUpdate(device.id, prevStatus);
       const msg = err instanceof Error ? err.message : String(err);
       setError(`Fehler bei "${device.name}": ${msg}`);

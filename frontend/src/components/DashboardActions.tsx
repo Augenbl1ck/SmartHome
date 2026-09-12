@@ -6,6 +6,7 @@ import { isToggleable, commandBlocked } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
 import { PowerOff, Loader2 } from 'lucide-react';
 import { emitDeviceUpdate } from '@/lib/device-events';
+import { holdDeviceStatus } from '@/lib/device-status-hold';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -28,11 +29,12 @@ export default function DashboardActions({ devices }: Props) {
 
     setLoading(true);
     await Promise.allSettled(
-      free.map(d =>
-        api.setDeviceStatus(d.id, 'off')
+      free.map(d => {
+        holdDeviceStatus(d.id, 'off');
+        return api.setDeviceStatus(d.id, 'off')
           .then(() => emitDeviceUpdate(d.id, 'off'))
-          .catch(() => {})
-      )
+          .catch(() => {});
+      })
     );
     setLoading(false);
     setDone(true);

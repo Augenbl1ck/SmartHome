@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/select';
 import { shellyBle } from '@/lib/bluetooth';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
+import { reconcileRemoteStatus } from '@/lib/device-status-hold';
 import { useSmartHomeStore } from '@/store/smarthome';
 import SceneDelayDialog, { formatDelayMinutes } from '@/components/SceneDelayDialog';
 import { toast } from 'sonner';
@@ -257,7 +258,7 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
   useEffect(() => {
     const handler = (e: Event) => {
       const { id, status } = (e as CustomEvent<{ id: number; status: string }>).detail;
-      setDevices(prev => prev.map(d => d.id === id ? { ...d, status } : d));
+      setDevices(prev => prev.map(d => d.id === id ? { ...d, status: reconcileRemoteStatus(id, status, d.status) } : d));
     };
     window.addEventListener(DEVICE_UPDATE_EVENT, handler);
     return () => window.removeEventListener(DEVICE_UPDATE_EVENT, handler);

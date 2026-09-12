@@ -58,6 +58,11 @@ class DeviceService
             'status'      => $status,
             'recorded_at' => now(),
         ]);
+
+        $normalized = strtolower($status);
+        if (in_array($normalized, ['on', 'off'], true)) {
+            $device->markCommandedStatus($normalized);
+        }
     }
 
     // -------------------------------------------------------------------------

@@ -138,9 +138,14 @@ class MqttSubscribe extends Command
             return;
         }
 
+        $device->refresh();
         $status = $on ? 'on' : 'off';
         $previousStatus = $device->status;
-        $statusChanged = $status !== $previousStatus;
+        $ignoreStatus = $device->shouldIgnoreReportedStatus($status);
+        if ($ignoreStatus) {
+            $status = $previousStatus;
+        }
+        $statusChanged = ! $ignoreStatus && $status !== $previousStatus;
         $powerW = $power !== null ? round((float) $power, 1) : null;
 
         $attrs = $device->extra();
@@ -150,12 +155,18 @@ class MqttSubscribe extends Command
         if ($energy !== null) {
             $attrs['energy_wh'] = round($energy, 1);
         }
+        if (! $ignoreStatus) {
+            $attrs = $device->attributesWithoutCommandHoldIfConfirmed($attrs, $status);
+        }
 
-        $device->update([
-            'status'    => $status,
-            'attributes'=> $attrs,
-            'last_seen' => now(),
-        ]);
+        $update = [
+            'attributes' => $attrs,
+            'last_seen'  => now(),
+        ];
+        if (! $ignoreStatus) {
+            $update['status'] = $status;
+        }
+        $device->update($update);
 
         $fresh = $device->fresh();
         $this->broadcastDevice($fresh, $statusChanged);
@@ -376,8 +387,17 @@ class MqttSubscribe extends Command
             $this->updateDailyTempStats($device->id, $attrs, $dayTemp);
         }
 
-        $updates['attributes'] = $attrs;
+        $device->refresh();
         $previousStatus = $device->status;
+        $ignoreStatus = isset($updates['status']) && $device->shouldIgnoreReportedStatus((string) $updates['status']);
+        if ($ignoreStatus) {
+            unset($updates['status']);
+        }
+        $attrs = array_merge($device->extra(), $attrs);
+        if (! $ignoreStatus && isset($updates['status'])) {
+            $attrs = $device->attributesWithoutCommandHoldIfConfirmed($attrs, (string) $updates['status']);
+        }
+        $updates['attributes'] = $attrs;
         $statusChanged = isset($updates['status']) && $updates['status'] !== $previousStatus;
         $powerW = isset($attrs['power_w']) && is_numeric($attrs['power_w']) ? (float) $attrs['power_w'] : null;
         $tempChanged = array_key_exists('temperature', $attrs)
@@ -436,12 +456,19 @@ class MqttSubscribe extends Command
         // Boolean
         if (in_array($status, ['on', 'off', 'true', 'false', '1', '0'])) {
             $normalized = in_array($status, ['on', 'true', '1']) ? 'on' : 'off';
+            $device->refresh();
             $previousStatus = $device->status;
-            if ($normalized === $previousStatus) {
+            if ($device->shouldIgnoreReportedStatus($normalized)) {
                 $device->update(['last_seen' => now()]);
                 return;
             }
-            $device->update(['status' => $normalized, 'last_seen' => now()]);
+            if ($normalized === $previousStatus) {
+                $attrs = $device->attributesWithoutCommandHoldIfConfirmed($device->extra(), $normalized);
+                $device->update(['attributes' => $attrs, 'last_seen' => now()]);
+                return;
+            }
+            $attrs = $device->attributesWithoutCommandHoldIfConfirmed($device->extra(), $normalized);
+            $device->update(['status' => $normalized, 'attributes' => $attrs, 'last_seen' => now()]);
             $fresh = $device->fresh();
             $this->broadcastDevice($fresh, true);
             app(AutomationEngine::class)->onDeviceUpdated($fresh, $previousStatus);

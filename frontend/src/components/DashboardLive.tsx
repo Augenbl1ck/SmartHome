@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { api, Device, DeviceType, Room, Scene, type CalendarEventsResponse, type EnergyOverview, type TransitBoardResponse, type WeatherResponse } from '@/lib/api';
 import { countsAsActive, deviceTemperature } from '@/lib/devices';
 import { DEVICE_UPDATE_EVENT } from '@/lib/device-events';
+import { reconcileRemoteDevice, reconcileRemoteStatus } from '@/lib/device-status-hold';
 import { getEcho } from '@/lib/echo';
 import { useSmartHomeStore } from '@/store/smarthome';
 import { cn } from '@/lib/utils';
@@ -130,7 +131,8 @@ export default function DashboardLive({
 
     const handler = (e: Event) => {
       const { id, status } = (e as CustomEvent<{ id: number; status: string }>).detail;
-      setDevices(prev => prev.map(d => d.id === id ? { ...d, status } : d));
+      setDevices(prev => prev.map(d => d.id === id ? { ...d, status: reconcileRemoteStatus(id, status, d.status) } : d));
+      patchDevice(id, { status });
     };
     window.addEventListener(DEVICE_UPDATE_EVENT, handler);
 
@@ -141,7 +143,7 @@ export default function DashboardLive({
         id: number; status: string; attributes: Record<string, unknown>; last_seen: string;
       }) => {
         setDevices(prev => prev.map(d => d.id === data.id
-          ? { ...d, status: data.status, attributes: data.attributes, last_seen: data.last_seen }
+          ? reconcileRemoteDevice(d, { status: data.status, attributes: data.attributes, last_seen: data.last_seen })
           : d
         ));
         patchDevice(data.id, { status: data.status, attributes: data.attributes, last_seen: data.last_seen });

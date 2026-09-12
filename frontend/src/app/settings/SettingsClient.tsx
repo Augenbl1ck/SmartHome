@@ -6,6 +6,7 @@ import { api, Device, DeviceType, Room, ZigbeeDevice, type LanHost, type Transit
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { deviceLabels, CUSTOM_COLORS, formatMacAddress, isTemperatureSource } from '@/lib/devices';
 import { getEcho } from '@/lib/echo';
+import { reconcileRemoteDevice } from '@/lib/device-status-hold';
 import { useSmartHomeStore } from '@/store/smarthome';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -2131,7 +2132,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
         id: number; status: string; attributes: Record<string, unknown>; last_seen: string;
       }) => {
         setDevices(prev => prev.map(d => d.id === data.id
-          ? { ...d, status: data.status, attributes: data.attributes, last_seen: data.last_seen }
+          ? reconcileRemoteDevice(d, { status: data.status, attributes: data.attributes, last_seen: data.last_seen })
           : d
         ));
       });

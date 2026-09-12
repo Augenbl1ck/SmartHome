@@ -78,6 +78,56 @@ class Device extends Model
     }
 
     /**
+     * Nach einem Schaltbefehl den Zielstatus merken, damit ein verspätetes
+     * MQTT-Echo (noch „an“, obwohl wir „aus“ gesendet haben) die DB nicht
+     * zurückschreibt.
+     */
+    public function markCommandedStatus(string $status, int $seconds = 10): void
+    {
+        $attrs = $this->extra();
+        $attrs['commanded_status'] = $status;
+        $attrs['commanded_until'] = now()->utc()->addSeconds($seconds)->toIso8601String();
+        $this->update(['attributes' => $attrs]);
+    }
+
+    public function shouldIgnoreReportedStatus(string $reported): bool
+    {
+        if (! in_array($reported, ['on', 'off'], true)) {
+            return false;
+        }
+        $attrs = $this->extra();
+        $expected = $attrs['commanded_status'] ?? null;
+        $until = $attrs['commanded_until'] ?? null;
+        if (! is_string($expected) || $expected === '' || ! is_string($until) || $until === '') {
+            return false;
+        }
+        try {
+            if (now()->gte(\Carbon\Carbon::parse($until))) {
+                return false;
+            }
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return $reported !== $expected;
+    }
+
+    /**
+     * Command-Hold löschen, sobald das Gerät den gewünschten Status bestätigt.
+     *
+     * @param  array<string, mixed>  $attrs
+     * @return array<string, mixed>
+     */
+    public function attributesWithoutCommandHoldIfConfirmed(array $attrs, string $reported): array
+    {
+        if (($attrs['commanded_status'] ?? null) === $reported) {
+            unset($attrs['commanded_status'], $attrs['commanded_until']);
+        }
+
+        return $attrs;
+    }
+
+    /**
      * @return array<string, string>
      */
     public function getBlockedCommandsAttribute(): array
