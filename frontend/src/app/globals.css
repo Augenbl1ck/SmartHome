@@ -163,8 +163,10 @@ input, textarea, select {
 /* Bottom-Bars (Kiosk/Nav) verdecken sonst die Tasten */
 .vk-app-shell.vk-open nav.fixed,
 .vk-app-shell.vk-open [data-slot="kiosk-bar"],
+.vk-app-shell.vk-open [data-slot="page-dots"],
 body.vk-open nav.fixed,
-body.vk-open [data-slot="kiosk-bar"] {
+body.vk-open [data-slot="kiosk-bar"],
+body.vk-open [data-slot="page-dots"] {
   visibility: hidden !important;
   pointer-events: none !important;
 }
