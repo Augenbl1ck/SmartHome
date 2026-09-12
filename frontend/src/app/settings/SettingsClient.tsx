@@ -19,11 +19,12 @@ import {
   Pencil, Plus, Trash2, Wifi, LockKeyhole, LockKeyholeOpen, Timer,
   ChevronDown, Home, Cpu, Cloud, LayoutDashboard, Search, Loader2, Radio,
   ChevronUp, X, ChevronRight, ArrowLeft, Clapperboard, Zap, Monitor, RefreshCw, Check, Bell, Activity,
-  Eye, EyeOff, TrainFront,
+  Eye, EyeOff, TrainFront, Palette, Sun, Moon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePinLockContext } from '@/components/PinLockProvider';
 import { useKiosk } from '@/components/KioskProvider';
+import { useTheme } from '@/components/ThemeToggle';
 import EmojiPicker from '@/components/EmojiPicker';
 import { cn } from '@/lib/utils';
 import { saveDashboardLayout, loadDashboardLayout, createFieldId, fieldSectionId, sectionLabel, type SectionId, type DashboardField, type DashboardLayout } from '@/hooks/useDashboardLayout';
@@ -1798,6 +1799,40 @@ function NotificationsSection() {
   );
 }
 
+function AppearanceSection() {
+  const { theme, setTheme } = useTheme();
+  const options = [
+    { id: 'light' as const,  label: 'Hell',    desc: 'Helles Erscheinungsbild', icon: Sun },
+    { id: 'dark' as const,   label: 'Dunkel',  desc: 'Dunkles Erscheinungsbild', icon: Moon },
+    { id: 'system' as const, label: 'System',  desc: 'Folgt dem Gerät', icon: Monitor },
+  ];
+  return (
+    <div className="divide-y rounded-2xl border bg-card overflow-hidden">
+      {options.map(opt => {
+        const Icon = opt.icon;
+        const active = theme === opt.id;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => setTheme(opt.id)}
+            className="w-full flex items-center gap-3 px-4 py-3 text-left cursor-pointer hover:bg-accent/50 transition-colors"
+          >
+            <div className={cn('h-9 w-9 rounded-xl flex items-center justify-center shrink-0', active ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>
+              <Icon className="h-4 w-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">{opt.label}</p>
+              <p className="text-xs text-muted-foreground">{opt.desc}</p>
+            </div>
+            {active && <Check className="h-4 w-4 text-primary shrink-0" />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function KioskSection() {
   const { kioskMode, setKioskMode } = useKiosk();
   return (
@@ -2339,6 +2374,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     { id: 'widgets',  icon: Cloud,        color: 'text-sky-500    bg-sky-500/10',    label: 'Widgets',         desc: 'Wetter, Kalender, Bahn, Energie & Spotify' },
     { id: 'system',   icon: Activity,     color: 'text-emerald-500 bg-emerald-500/10', label: 'System',         desc: 'CPU-Temp & Status' },
     { id: 'security', icon: LockKeyhole,  color: 'text-orange-500 bg-orange-500/10', label: 'Sicherheit',       desc: 'PIN & Bildschirmsperre' },
+    { id: 'appearance', icon: Palette,    color: 'text-fuchsia-500 bg-fuchsia-500/10', label: 'Darstellung',    desc: 'Hell, Dunkel & System' },
     { id: 'kiosk',    icon: Monitor,      color: 'text-teal-500   bg-teal-500/10',   label: 'Kiosk-Modus',      desc: 'Wandbildschirm einrichten' },
     { id: 'zigbee',   icon: Radio,        color: 'text-cyan-500   bg-cyan-500/10',   label: 'Zigbee',           desc: 'Geräte anlernen & verwalten' },
     { id: 'notifs',   icon: Bell,         color: 'text-rose-500   bg-rose-500/10',   label: 'Benachrichtigungen', desc: 'Push-Nachrichten' },
@@ -2564,6 +2600,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
       {view === 'dashboard' && <div key="dashboard" className="animate-page-in"><DashboardWidgetsSection devices={devices} rooms={rooms} /></div>}
       {view === 'widgets'   && <div key="widgets"   className="animate-page-in"><WidgetsSection /></div>}
       {view === 'system'    && <div key="system"    className="animate-page-in"><SystemSection /></div>}
+      {view === 'appearance' && <div key="appearance" className="animate-page-in"><AppearanceSection /></div>}
       {view === 'kiosk'     && <div key="kiosk"     className="animate-page-in"><KioskSection /></div>}
       {view === 'zigbee'    && <div key="zigbee"    className="animate-page-in"><ZigbeeSection rooms={rooms} onDeviceImported={d => { setDevices(prev => [...prev, d]); upsertDevice(d); router.refresh(); }} onLinkedDeviceRemoved={id => { setDevices(prev => prev.filter(d => d.id !== id)); removeDeviceFromStore(id); router.refresh(); }} /></div>}
       {view === 'notifs'    && <div key="notifs"    className="animate-page-in"><NotificationsSection /></div>}

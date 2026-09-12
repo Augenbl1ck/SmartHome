@@ -33,6 +33,23 @@ summary {
 body.kiosk-active main {
   padding-bottom: 88px !important;
 }
+
+/* ─── Kiosk: Scrollbars verstecken (Touch-/Wheel-Scroll bleibt) ─── */
+html.kiosk-boot,
+html.kiosk-boot *,
+body.kiosk-active,
+body.kiosk-active * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+html.kiosk-boot::-webkit-scrollbar,
+html.kiosk-boot *::-webkit-scrollbar,
+body.kiosk-active::-webkit-scrollbar,
+body.kiosk-active *::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
 .animate-page-in {
   animation: page-in 0.25s ease-out both;
 }

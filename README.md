@@ -242,7 +242,7 @@ zigbee2mqtt
 
 ### 7. Chromium Autostart + In-App-Tastatur
 
-Der Browser startet über `deploy/start-kiosk.sh` (maximiertes App-Fenster, **kein** Chromium-`--kiosk` — das sperrt F11 und blockiert die System-OSK).
+Der Browser startet über `deploy/start-kiosk.sh` im Chromium-`--kiosk` (echtes Vollbild auf dem Pi). Eingabe läuft über die In-App-Tastatur.
 
 ```bash
 mkdir -p ~/.config/autostart

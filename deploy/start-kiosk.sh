@@ -1,9 +1,9 @@
 #!/bin/bash
-# SmartHome Chromium Autostart (Vollbild + App-Kiosk)
+# SmartHome Chromium Autostart (echtes Vollbild + App-Kiosk)
 #
-# - --start-fullscreen: echter Vollbild-Start, F11 kann beenden (anders als --kiosk)
+# - --kiosk: zuverlässiger Vollbild-Start auf Pi/labwc (anders als --app + --start-fullscreen)
 # - App-Kiosk: ?kiosk=1 + #kiosk -> Bottom-Bar, keine NavBar
-# - Eingabe: In-App-Tastatur
+# - Eingabe: In-App-Tastatur (kein System-OSK nötig)
 
 set -e
 
@@ -33,11 +33,12 @@ fi
 # Kein GNOME-Keyring-Dialog nach Reboot (Autologin / kein Login-Passwort)
 exec "$CHROMIUM" \
   --password-store=basic \
-  --app="$URL" \
-  --start-fullscreen \
+  --kiosk \
   --noerrdialogs \
   --disable-infobars \
   --disable-session-crashed-bubble \
   --disable-restore-session-state \
   --check-for-update-interval=604800 \
-  --overscroll-history-navigation=0
+  --overscroll-history-navigation=0 \
+  --enable-features=OverlayScrollbar \
+  "$URL"
