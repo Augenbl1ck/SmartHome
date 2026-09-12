@@ -203,9 +203,12 @@ export function eventsByDayMap(events: CalendarEvent[]): Map<string, CalendarEve
 
 export function buildMonthCells(year: number, month: number): Date[] {
   const first = new Date(year, month, 1);
+  const last = new Date(year, month + 1, 0);
   const gridStart = addDays(first, -mondayIndex(first));
+  const gridEnd = addDays(last, 6 - mondayIndex(last));
+  const count = diffDays(gridStart, gridEnd) + 1;
   const cells: Date[] = [];
-  for (let i = 0; i < 42; i++) cells.push(addDays(gridStart, i));
+  for (let i = 0; i < count; i++) cells.push(addDays(gridStart, i));
   return cells;
 }
 
