@@ -235,12 +235,7 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
           <p className="text-xs">Keine Geräte in diesem Feld (vielleicht gelöscht).</p>
         </div>
       ) : (
-        <div className={cn(
-          'grid gap-2',
-          kioskMode
-            ? 'grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10'
-            : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5',
-        )}>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {fieldDevices.map(device => {
             const type = device.type as DeviceType;
             const interactive = isOnOffToggle(type) || isCoverLike(type) || (isWakeable(type) && device.status !== 'on');
