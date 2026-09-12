@@ -2668,8 +2668,8 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
             <div>
               <p className="text-sm font-medium">Display wirklich aus</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Monitor per DDC/CEC in Standby (HDMI bleibt). Sonst Fallback
-                HDMI am Pi. Mit Knopf oder Tippen wieder an — kein schwarzes Overlay.
+                HDMI bzw. Hintergrundlicht am Pi. Mit Monitor-Knopf oder Tippen
+                wieder an — dann kein schwarzes Overlay.
               </p>
             </div>
             <input
