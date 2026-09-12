@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { Timer } from 'lucide-react';
 import { api, Device, DeviceType, Room, Scene, type CalendarEventsResponse, type EnergyOverview, type TransitBoardResponse, type WeatherResponse } from '@/lib/api';
@@ -11,7 +11,7 @@ import { useSmartHomeStore } from '@/store/smarthome';
 import { cn } from '@/lib/utils';
 import { loadBootstrapSnapshot, saveBootstrapSnapshot, mergeBootstrap, bootstrapHasContent } from '@/lib/bootstrap-snapshot';
 import DeviceFieldPanel from '@/components/DeviceFieldPanel';
-import { useDashboardLayout, parseFieldSectionId, type SectionId } from '@/hooks/useDashboardLayout';
+import { useDashboardLayout, parseFieldSectionId, type DashboardPage, type SectionId } from '@/hooks/useDashboardLayout';
 import DashboardActions from '@/components/DashboardActions';
 import WeatherWidget from '@/components/WeatherWidget';
 import CalendarWidget from '@/components/CalendarWidget';
@@ -34,6 +34,50 @@ interface Props {
 
 function getFormattedDate(): string {
   return new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function ClockWidget({
+  time,
+  dateReady,
+  activeDevices,
+  devices,
+  kioskMode,
+}: {
+  time: string;
+  dateReady: boolean;
+  activeDevices: number;
+  devices: Device[];
+  kioskMode: boolean;
+}) {
+  return (
+    <div className={cn('flex items-center rounded-2xl border bg-card', kioskMode ? 'gap-3 p-3' : 'gap-4 p-5')}>
+      <div className="min-w-0">
+        <p className={cn('font-bold tabular-nums leading-none tracking-tight', kioskMode ? 'text-3xl' : 'text-5xl')} suppressHydrationWarning>
+          {time || '\u00a0'}
+        </p>
+        <p className="text-sm text-muted-foreground mt-1" suppressHydrationWarning>
+          {dateReady ? getFormattedDate() : '\u00a0'}
+        </p>
+      </div>
+
+      <div className="flex-1" />
+
+      <div className={cn(
+        'flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-xl transition-colors',
+        activeDevices > 0
+          ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+          : 'text-muted-foreground'
+      )}>
+        <span className={cn(
+          'h-2 w-2 rounded-full',
+          activeDevices > 0 ? 'bg-amber-500' : 'bg-muted-foreground/40'
+        )} />
+        {activeDevices > 0 ? `${activeDevices} aktiv` : 'Alles aus'}
+      </div>
+
+      <DashboardActions devices={devices} />
+    </div>
+  );
 }
 
 export default function DashboardLive({
@@ -61,6 +105,8 @@ export default function DashboardLive({
   const [energyInit, setEnergyInit] = useState(initialEnergy);
   const [calendarInit, setCalendarInit] = useState(initialCalendar);
   const [delayScene, setDelayScene] = useState<Scene | null>(null);
+  const [pageIndex, setPageIndex] = useState(0);
+  const scrollerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const snap = loadBootstrapSnapshot();
@@ -123,6 +169,29 @@ export default function DashboardLive({
   const layout = useDashboardLayout();
   const { kioskMode } = useKiosk();
 
+  const pages: DashboardPage[] = layout.pages.length > 0
+    ? layout.pages
+    : [{ id: 'home', name: 'Home', sectionOrder: layout.sectionOrder }];
+
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const w = el.clientWidth || 1;
+      const i = Math.round(el.scrollLeft / w);
+      setPageIndex(Math.min(pages.length - 1, Math.max(0, i)));
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [pages.length]);
+
+  const goToPage = useCallback((i: number) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' });
+    setPageIndex(i);
+  }, []);
+
   const orderedRooms = useMemo(() => {
     const { roomOrder } = layout;
     if (roomOrder.length === 0) return displayRooms;
@@ -133,10 +202,6 @@ export default function DashboardLive({
     });
   }, [displayRooms, layout]);
 
-  const sectionOrder: SectionId[] = layout.sectionOrder.length > 0
-    ? layout.sectionOrder
-    : ['weather', 'calendar', 'transit', 'energy', 'spotify', 'scenes', 'rooms'];
-  const hiddenSections = new Set(layout.hiddenSections);
   const fieldsById = useMemo(
     () => new Map(layout.fields.map(f => [f.id, f])),
     [layout.fields],
@@ -163,194 +228,214 @@ export default function DashboardLive({
     }
   };
 
+  const renderSection = (sectionId: SectionId, keyPrefix: string) => {
+    const key = `${keyPrefix}:${sectionId}`;
+
+    if (sectionId === 'clock') {
+      return (
+        <ClockWidget
+          key={key}
+          time={time}
+          dateReady={mounted}
+          activeDevices={activeDevices}
+          devices={list}
+          kioskMode={kioskMode}
+        />
+      );
+    }
+
+    if (sectionId === 'weather') return (
+      <div key={key}>
+        <WeatherWidget initial={weatherInit} />
+      </div>
+    );
+
+    if (sectionId === 'calendar') return (
+      <div key={key}>
+        <CalendarWidget initial={calendarInit} />
+      </div>
+    );
+
+    if (sectionId === 'transit') return (
+      <div key={key}>
+        <TransitWidget initial={transitInit} />
+      </div>
+    );
+
+    if (sectionId === 'energy') return (
+      <div key={key}>
+        <EnergyWidget initial={energyInit} />
+      </div>
+    );
+
+    if (sectionId === 'spotify') return (
+      <div key={key}>
+        <SpotifyWidget />
+      </div>
+    );
+
+    if (sectionId === 'scenes') return displayScenes.length > 0 ? (
+      <div key={key} className={cn('flex overflow-x-auto pb-1 -mb-1 scrollbar-none', kioskMode ? 'gap-2' : 'gap-3')}>
+        {displayScenes.map(scene => {
+          const isRunning = running.has(scene.id);
+          const isDone    = done.has(scene.id);
+          return (
+            <div key={scene.id} className="relative flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => activateScene(scene)}
+                disabled={isRunning}
+                className={cn(
+                  'flex flex-col items-center gap-2 rounded-2xl border',
+                  kioskMode ? 'p-2 min-w-[88px] pr-8' : 'p-4 min-w-[110px] pr-10',
+                  'transition-all duration-200 active:scale-[0.95] cursor-pointer',
+                  isDone
+                    ? 'bg-green-500/15 border-green-400/40 text-green-600 dark:text-green-400'
+                    : 'bg-card border-border hover:bg-accent/60',
+                  isRunning && 'opacity-60 animate-pulse cursor-not-allowed',
+                )}
+              >
+                <span className={cn('leading-none select-none', kioskMode ? 'text-2xl' : 'text-3xl')}>
+                  {isDone ? '✓' : scene.icon}
+                </span>
+                <span className="text-xs font-semibold text-center leading-tight line-clamp-2 w-full">
+                  {isDone ? 'Aktiviert' : scene.name}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDelayScene(scene)}
+                disabled={isRunning}
+                className="cursor-pointer absolute top-1.5 right-1.5 h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
+                aria-label="Ausführen in…"
+              >
+                <Timer className="h-4 w-4" />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    ) : null;
+
+    if (sectionId === 'rooms') return (
+      <div key={key} className={cn('grid grid-cols-2 sm:grid-cols-3', kioskMode ? 'gap-2' : 'gap-4')}>
+        {orderedRooms.map(room => {
+          const roomDevices = list.filter(d => d.room_id === room.id);
+          const active      = roomDevices.filter(d => d.status === 'on' && countsAsActive(d.type as DeviceType)).length;
+          const tempDeviceId = layout.roomTemperatureDeviceIds?.[String(room.id)];
+          const tempDevice = tempDeviceId ? list.find(d => d.id === tempDeviceId) : undefined;
+          const roomTemp = tempDevice ? deviceTemperature(tempDevice) : null;
+          return (
+            <Link key={room.id} href={`/rooms/${room.id}`} prefetch>
+              <div className={cn(
+                'rounded-2xl border flex flex-col cursor-pointer',
+                kioskMode ? 'p-3 gap-2 min-h-[112px]' : 'p-5 gap-3 min-h-[165px]',
+                'transition-all duration-300 ease-in-out active:scale-[0.97]',
+                active > 0
+                  ? 'bg-amber-500/15 border-amber-400/40 shadow-sm'
+                  : 'bg-card border-border hover:bg-accent/40'
+              )}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className={cn(
+                    'rounded-xl flex items-center justify-center select-none',
+                    kioskMode ? 'w-10 h-10 text-2xl' : 'w-14 h-14 text-3xl',
+                    active > 0 ? 'bg-amber-500/20' : 'bg-muted'
+                  )}>
+                    {room.icon ?? '🏠'}
+                  </div>
+                  {roomTemp != null && (
+                    <span className="text-lg font-semibold tabular-nums leading-none pt-1 text-foreground">
+                      {roomTemp.toFixed(1)}°
+                    </span>
+                  )}
+                </div>
+                <div className="mt-auto">
+                  <p className="font-semibold text-base leading-tight">{room.name}</p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className={cn(
+                      'h-2 w-2 rounded-full transition-colors',
+                      active > 0 ? 'bg-amber-500' : 'bg-muted-foreground/30'
+                    )} />
+                    <p className="text-sm text-muted-foreground">
+                      {active > 0
+                        ? `${active} aktiv`
+                        : roomDevices.length > 0
+                        ? 'Alles aus'
+                        : 'Keine Geräte'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </Link>
+          );
+        })}
+
+        {displayRooms.length === 0 && (
+          <p className="text-muted-foreground text-sm col-span-full py-12 text-center">
+            Noch keine Räume. Gehe zu Einstellungen um welche hinzuzufügen.
+          </p>
+        )}
+      </div>
+    );
+
+    const fieldId = parseFieldSectionId(sectionId);
+    if (fieldId && mounted) {
+      const field = fieldsById.get(fieldId);
+      if (!field || field.deviceIds.length === 0) return null;
+      return (
+        <DeviceFieldPanel
+          key={key}
+          title={field.name}
+          deviceIds={field.deviceIds}
+          initialDevices={list}
+        />
+      );
+    }
+
+    return null;
+  };
+
+  const multiPage = pages.length > 1;
+
   return (
-    <div className={cn('flex flex-col', kioskMode ? 'gap-2' : 'gap-4')}>
-
-      {/* ── Panel-Header: Uhr + Status + Action ─────────────────── */}
-      <div className={cn('flex items-center rounded-2xl border bg-card', kioskMode ? 'gap-3 p-3' : 'gap-4 p-5')}>
-        {/* Uhr + Datum — suppressHydrationWarning: Server rendert leer, Client überschreibt sofort */}
-        <div className="min-w-0">
-          <p className={cn('font-bold tabular-nums leading-none tracking-tight', kioskMode ? 'text-3xl' : 'text-5xl')} suppressHydrationWarning>
-            {time || '\u00a0'}
-          </p>
-          <p className="text-sm text-muted-foreground mt-1" suppressHydrationWarning>
-            {mounted ? getFormattedDate() : '\u00a0'}
-          </p>
-        </div>
-
-        <div className="flex-1" />
-
-        {/* Aktiv-Badge — immer sichtbar (Server-Daten vorhanden) */}
-        <div className={cn(
-            'flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-xl transition-colors',
-            activeDevices > 0
-              ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
-              : 'text-muted-foreground'
-          )}>
-            <span className={cn(
-              'h-2 w-2 rounded-full',
-              activeDevices > 0 ? 'bg-amber-500' : 'bg-muted-foreground/40'
-            )} />
-            {activeDevices > 0 ? `${activeDevices} aktiv` : 'Alles aus'}
-          </div>
-
-        {/* Alle ausschalten */}
-        <DashboardActions devices={list} />
+    <div>
+      <div
+        ref={scrollerRef}
+        className={cn(
+          multiPage && 'flex overflow-x-auto snap-x snap-mandatory scrollbar-none overscroll-x-contain',
+        )}
+      >
+        {pages.map(page => (
+          <section
+            key={page.id}
+            className={cn(
+              kioskMode ? 'flex flex-col gap-2' : 'flex flex-col gap-4',
+              multiPage && 'w-full min-w-full shrink-0 snap-start',
+            )}
+          >
+            {page.sectionOrder.map(id => renderSection(id, page.id))}
+          </section>
+        ))}
       </div>
 
-      {sectionOrder.map(sectionId => {
-        if (hiddenSections.has(sectionId)) return null;
-
-        if (sectionId === 'weather') return (
-          <div key="weather">
-            <WeatherWidget initial={weatherInit} />
-          </div>
-        );
-
-        if (sectionId === 'calendar') return (
-          <div key="calendar">
-            <CalendarWidget initial={calendarInit} />
-          </div>
-        );
-
-        if (sectionId === 'transit') return (
-          <div key="transit">
-            <TransitWidget initial={transitInit} />
-          </div>
-        );
-
-        if (sectionId === 'energy') return (
-          <div key="energy">
-            <EnergyWidget initial={energyInit} />
-          </div>
-        );
-
-        if (sectionId === 'spotify') return (
-          <div key="spotify">
-            <SpotifyWidget />
-          </div>
-        );
-
-        if (sectionId === 'scenes') return displayScenes.length > 0 ? (
-          <div key="scenes" className={cn('flex overflow-x-auto pb-1 -mb-1 scrollbar-none', kioskMode ? 'gap-2' : 'gap-3')}>
-            {displayScenes.map(scene => {
-              const isRunning = running.has(scene.id);
-              const isDone    = done.has(scene.id);
-              return (
-                <div key={scene.id} className="relative flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => activateScene(scene)}
-                    disabled={isRunning}
-                    className={cn(
-                      'flex flex-col items-center gap-2 rounded-2xl border',
-                      kioskMode ? 'p-2 min-w-[88px] pr-8' : 'p-4 min-w-[110px] pr-10',
-                      'transition-all duration-200 active:scale-[0.95] cursor-pointer',
-                      isDone
-                        ? 'bg-green-500/15 border-green-400/40 text-green-600 dark:text-green-400'
-                        : 'bg-card border-border hover:bg-accent/60',
-                      isRunning && 'opacity-60 animate-pulse cursor-not-allowed',
-                    )}
-                  >
-                    <span className={cn('leading-none select-none', kioskMode ? 'text-2xl' : 'text-3xl')}>
-                      {isDone ? '✓' : scene.icon}
-                    </span>
-                    <span className="text-xs font-semibold text-center leading-tight line-clamp-2 w-full">
-                      {isDone ? 'Aktiviert' : scene.name}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDelayScene(scene)}
-                    disabled={isRunning}
-                    className="cursor-pointer absolute top-1.5 right-1.5 h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40"
-                    aria-label="Ausführen in…"
-                  >
-                    <Timer className="h-4 w-4" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        ) : null;
-
-        if (sectionId === 'rooms') return (
-          <div key="rooms" className={cn('grid grid-cols-2 sm:grid-cols-3', kioskMode ? 'gap-2' : 'gap-4')}>
-            {orderedRooms.map(room => {
-              const roomDevices = list.filter(d => d.room_id === room.id);
-              const active      = roomDevices.filter(d => d.status === 'on' && countsAsActive(d.type as DeviceType)).length;
-              const tempDeviceId = layout.roomTemperatureDeviceIds?.[String(room.id)];
-              const tempDevice = tempDeviceId ? list.find(d => d.id === tempDeviceId) : undefined;
-              const roomTemp = tempDevice ? deviceTemperature(tempDevice) : null;
-              return (
-                <Link key={room.id} href={`/rooms/${room.id}`} prefetch>
-                  <div className={cn(
-                    'rounded-2xl border flex flex-col cursor-pointer',
-                    kioskMode ? 'p-3 gap-2 min-h-[112px]' : 'p-5 gap-3 min-h-[165px]',
-                    'transition-all duration-300 ease-in-out active:scale-[0.97]',
-                    active > 0
-                      ? 'bg-amber-500/15 border-amber-400/40 shadow-sm'
-                      : 'bg-card border-border hover:bg-accent/40'
-                  )}>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className={cn(
-                        'rounded-xl flex items-center justify-center select-none',
-                        kioskMode ? 'w-10 h-10 text-2xl' : 'w-14 h-14 text-3xl',
-                        active > 0 ? 'bg-amber-500/20' : 'bg-muted'
-                      )}>
-                        {room.icon ?? '🏠'}
-                      </div>
-                      {roomTemp != null && (
-                        <span className="text-lg font-semibold tabular-nums leading-none pt-1 text-foreground">
-                          {roomTemp.toFixed(1)}°
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-auto">
-                      <p className="font-semibold text-base leading-tight">{room.name}</p>
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <span className={cn(
-                          'h-2 w-2 rounded-full transition-colors',
-                          active > 0 ? 'bg-amber-500' : 'bg-muted-foreground/30'
-                        )} />
-                        <p className="text-sm text-muted-foreground">
-                          {active > 0
-                            ? `${active} aktiv`
-                            : roomDevices.length > 0
-                            ? 'Alles aus'
-                            : 'Keine Geräte'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-              );
-            })}
-
-            {displayRooms.length === 0 && (
-              <p className="text-muted-foreground text-sm col-span-full py-12 text-center">
-                Noch keine Räume. Gehe zu Einstellungen um welche hinzuzufügen.
-              </p>
-            )}
-          </div>
-        );
-
-        const fieldId = parseFieldSectionId(sectionId);
-        if (fieldId && mounted) {
-          const field = fieldsById.get(fieldId);
-          if (!field || field.deviceIds.length === 0) return null;
-          return (
-            <DeviceFieldPanel
-              key={sectionId}
-              title={field.name}
-              deviceIds={field.deviceIds}
-              initialDevices={list}
+      {multiPage && (
+        <div className="flex justify-center items-center gap-2 pt-3 pb-1">
+          {pages.map((page, i) => (
+            <button
+              key={page.id}
+              type="button"
+              onClick={() => goToPage(i)}
+              aria-label={page.name}
+              className={cn(
+                'rounded-full transition-all cursor-pointer',
+                i === pageIndex
+                  ? 'h-2.5 w-6 bg-primary'
+                  : 'h-2.5 w-2.5 bg-muted-foreground/40 hover:bg-muted-foreground/70',
+              )}
             />
-          );
-        }
-
-        return null;
-      })}
+          ))}
+        </div>
+      )}
 
       <SceneDelayDialog
         open={delayScene != null}

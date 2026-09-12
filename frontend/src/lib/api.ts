@@ -218,6 +218,7 @@ export interface PanelSettings {
   kiosk_mode: boolean;
   calendar_ical_url?: string | null;
   dashboard_layout?: {
+    pages?: { id: string; name: string; sectionOrder: string[] }[];
     roomOrder?: number[];
     sectionOrder?: string[];
     hiddenSections?: string[];

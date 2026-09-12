@@ -19,7 +19,7 @@ import {
   Pencil, Plus, Trash2, Wifi, LockKeyhole, LockKeyholeOpen, Timer,
   ChevronDown, Home, Cpu, Cloud, LayoutDashboard, Search, Loader2, Radio,
   ChevronUp, X, ChevronRight, ArrowLeft, Clapperboard, Zap, Monitor, RefreshCw, Check, Bell, Activity,
-  Eye, EyeOff, TrainFront, Palette, Sun, Moon,
+  TrainFront, Palette, Sun, Moon,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePinLockContext } from '@/components/PinLockProvider';
@@ -27,7 +27,7 @@ import { useKiosk } from '@/components/KioskProvider';
 import { useTheme } from '@/components/ThemeToggle';
 import EmojiPicker from '@/components/EmojiPicker';
 import { cn } from '@/lib/utils';
-import { saveDashboardLayout, loadDashboardLayout, createFieldId, fieldSectionId, sectionLabel, type SectionId, type DashboardField, type DashboardLayout } from '@/hooks/useDashboardLayout';
+import { saveDashboardLayout, loadDashboardLayout, createFieldId, createPageId, fieldSectionId, sectionLabel, allAssignableSections, type SectionId, type DashboardField, type DashboardLayout, type DashboardPage } from '@/hooks/useDashboardLayout';
 
 // ─────────────────────────────────────────────────────────────────
 // Typen & Konstanten
@@ -415,8 +415,7 @@ function deviceToForm(d: Device): DeviceForm {
 // ─────────────────────────────────────────────────────────────────
 
 function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms: Room[] }) {
-  const [sectionOrder, setSectionOrder] = useState<SectionId[]>(['weather', 'calendar', 'transit', 'energy', 'spotify', 'scenes', 'rooms']);
-  const [hiddenSections, setHiddenSections] = useState<SectionId[]>([]);
+  const [pages, setPages] = useState<DashboardPage[]>([{ id: 'home', name: 'Home', sectionOrder: ['clock', 'weather', 'calendar', 'transit', 'energy', 'spotify', 'scenes', 'rooms'] }]);
   const [roomOrder, setRoomOrder] = useState<number[]>([]);
   const [fields, setFields] = useState<DashboardField[]>([]);
   const [roomTemperatureDeviceIds, setRoomTemperatureDeviceIds] = useState<Record<string, number>>({});
@@ -430,6 +429,7 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
         if (cancelled) return;
         if (s.dashboard_layout) {
           await saveDashboardLayout({
+            pages: (s.dashboard_layout.pages ?? []) as DashboardPage[],
             roomOrder: s.dashboard_layout.roomOrder ?? [],
             sectionOrder: (s.dashboard_layout.sectionOrder ?? []) as SectionId[],
             hiddenSections: (s.dashboard_layout.hiddenSections ?? []) as SectionId[],
@@ -440,8 +440,7 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
       } catch { /* */ }
       if (cancelled) return;
       const l = loadDashboardLayout();
-      setSectionOrder(l.sectionOrder);
-      setHiddenSections(l.hiddenSections);
+      setPages(l.pages);
       setRoomOrder(l.roomOrder);
       setFields(l.fields);
       setRoomTemperatureDeviceIds(l.roomTemperatureDeviceIds ?? {});
@@ -450,43 +449,65 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
   }, []);
 
   const persist = (patch: Partial<DashboardLayout>) => {
+    const nextPages = patch.pages ?? pages;
     const next: DashboardLayout = {
-      sectionOrder: patch.sectionOrder ?? sectionOrder,
-      hiddenSections: patch.hiddenSections ?? hiddenSections,
+      pages: nextPages,
+      sectionOrder: nextPages.flatMap(p => p.sectionOrder),
+      hiddenSections: [],
       roomOrder: patch.roomOrder ?? roomOrder,
       fields: patch.fields ?? fields,
       roomTemperatureDeviceIds: patch.roomTemperatureDeviceIds ?? roomTemperatureDeviceIds,
     };
-    if (patch.sectionOrder) setSectionOrder(patch.sectionOrder);
-    if (patch.hiddenSections) setHiddenSections(patch.hiddenSections);
+    if (patch.pages) setPages(patch.pages);
     if (patch.roomOrder) setRoomOrder(patch.roomOrder);
     if (patch.fields) setFields(patch.fields);
     if (patch.roomTemperatureDeviceIds) setRoomTemperatureDeviceIds(patch.roomTemperatureDeviceIds);
     void saveDashboardLayout(next);
   };
 
-  const toggleSection = (id: SectionId) => {
-    const next = hiddenSections.includes(id)
-      ? hiddenSections.filter(s => s !== id)
-      : [...hiddenSections, id];
-    setHiddenSections(next);
-    persist({ hiddenSections: next });
+  const updatePage = (pageId: string, patch: Partial<DashboardPage>) => {
+    persist({ pages: pages.map(p => p.id === pageId ? { ...p, ...patch } : p) });
   };
 
-  const moveSectionUp = (i: number) => {
-    if (i === 0) return;
-    const next = [...sectionOrder];
-    [next[i - 1], next[i]] = [next[i], next[i - 1]];
-    setSectionOrder(next);
-    persist({ sectionOrder: next });
+  const addPage = () => {
+    persist({
+      pages: [...pages, { id: createPageId(), name: `Seite ${pages.length + 1}`, sectionOrder: [] }],
+    });
   };
 
-  const moveSectionDown = (i: number) => {
-    if (i >= sectionOrder.length - 1) return;
-    const next = [...sectionOrder];
-    [next[i], next[i + 1]] = [next[i + 1], next[i]];
-    setSectionOrder(next);
-    persist({ sectionOrder: next });
+  const deletePage = (pageId: string) => {
+    if (pages.length <= 1) return;
+    persist({ pages: pages.filter(p => p.id !== pageId) });
+  };
+
+  const movePage = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= pages.length) return;
+    const next = [...pages];
+    [next[i], next[j]] = [next[j], next[i]];
+    persist({ pages: next });
+  };
+
+  const moveSectionInPage = (pageId: string, i: number, dir: -1 | 1) => {
+    const page = pages.find(p => p.id === pageId);
+    if (!page) return;
+    const j = i + dir;
+    if (j < 0 || j >= page.sectionOrder.length) return;
+    const order = [...page.sectionOrder];
+    [order[i], order[j]] = [order[j], order[i]];
+    updatePage(pageId, { sectionOrder: order });
+  };
+
+  const removeSectionFromPage = (pageId: string, id: SectionId) => {
+    const page = pages.find(p => p.id === pageId);
+    if (!page) return;
+    updatePage(pageId, { sectionOrder: page.sectionOrder.filter(s => s !== id) });
+  };
+
+  const addSectionToPage = (pageId: string, id: SectionId) => {
+    const page = pages.find(p => p.id === pageId);
+    if (!page || page.sectionOrder.includes(id)) return;
+    updatePage(pageId, { sectionOrder: [...page.sectionOrder, id] });
   };
 
   const orderedRooms = roomOrder.length === 0
@@ -526,23 +547,24 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
     const id = createFieldId();
     const field: DashboardField = { id, name: `Feld ${fields.length + 1}`, deviceIds: [] };
     const nextFields = [...fields, field];
-    const nextOrder = [...sectionOrder, fieldSectionId(id)];
+    const sid = fieldSectionId(id);
+    const nextPages = pages.map((p, i) =>
+      i === 0 ? { ...p, sectionOrder: [...p.sectionOrder, sid] } : p,
+    );
     setFields(nextFields);
-    setSectionOrder(nextOrder);
+    setPages(nextPages);
     setExpandedField(id);
-    persist({ fields: nextFields, sectionOrder: nextOrder });
+    persist({ fields: nextFields, pages: nextPages });
   };
 
   const deleteField = (id: string) => {
     const sid = fieldSectionId(id);
     const nextFields = fields.filter(f => f.id !== id);
-    const nextOrder = sectionOrder.filter(s => s !== sid);
-    const nextHidden = hiddenSections.filter(s => s !== sid);
+    const nextPages = pages.map(p => ({ ...p, sectionOrder: p.sectionOrder.filter(s => s !== sid) }));
     setFields(nextFields);
-    setSectionOrder(nextOrder);
-    setHiddenSections(nextHidden);
+    setPages(nextPages);
     if (expandedField === id) setExpandedField(null);
-    persist({ fields: nextFields, sectionOrder: nextOrder, hiddenSections: nextHidden });
+    persist({ fields: nextFields, pages: nextPages });
   };
 
   const renameField = (id: string, name: string) => {
@@ -582,7 +604,6 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
     persist({ fields: nextFields });
   };
 
-  // Alle Geräte wählbar (Schaltbare, Thermostate, Sensoren …)
   const selectableDevices = useMemo(
     () => [...devices].sort((a, b) => a.name.localeCompare(b.name, 'de')),
     [devices],
@@ -592,36 +613,89 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
     <div className="space-y-6">
 
       <div>
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Abschnitte</p>
-        <p className="text-xs text-muted-foreground mb-3">Ein-/Ausblenden und Reihenfolge aller Dashboard-Bereiche.</p>
-        <div className="space-y-1">
-          {sectionOrder.map((id, i) => {
-            const isHidden = hiddenSections.includes(id);
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Seiten</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Mehrere Dashboards — auf dem Panel per Wischen nach links oder rechts wechseln.
+            </p>
+          </div>
+          <Button onClick={addPage} size="sm" variant="outline" className="shrink-0">
+            <Plus className="h-3.5 w-3.5 mr-1" /> Neue Seite
+          </Button>
+        </div>
+
+        <div className="space-y-4">
+          {pages.map((page, pi) => {
+            const available = allAssignableSections(fields).filter(s => !page.sectionOrder.includes(s));
             return (
-              <div key={id} className={cn(
-                'flex items-center gap-2 rounded-lg border px-3 py-2 transition-opacity',
-                isHidden ? 'opacity-50' : '',
-              )}>
-                <button onClick={() => toggleSection(id)}
-                  title={isHidden ? 'Einblenden' : 'Ausblenden'}
-                  className={cn(
-                    'cursor-pointer h-7 w-7 rounded flex items-center justify-center shrink-0 transition-colors',
-                    isHidden
-                      ? 'bg-muted text-muted-foreground hover:bg-accent'
-                      : 'bg-primary/15 text-primary hover:bg-primary/25',
-                  )}>
-                  {isHidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                </button>
-                <span className="text-sm flex-1">{sectionLabel(id, fields)}</span>
-                <div className="flex gap-0.5 shrink-0">
-                  <button onClick={() => moveSectionUp(i)} disabled={i === 0}
-                    className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
-                    <ChevronUp className="h-3.5 w-3.5" />
-                  </button>
-                  <button onClick={() => moveSectionDown(i)} disabled={i === sectionOrder.length - 1}
-                    className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </button>
+              <div key={page.id} className="rounded-xl border bg-card overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 border-b">
+                  <input
+                    value={page.name}
+                    onChange={e => updatePage(page.id, { name: e.target.value || page.name })}
+                    className="text-sm font-medium bg-transparent border-none outline-none flex-1 min-w-0"
+                  />
+                  <div className="flex gap-0.5 shrink-0">
+                    <button onClick={() => movePage(pi, -1)} disabled={pi === 0}
+                      className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
+                      <ChevronUp className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => movePage(pi, 1)} disabled={pi === pages.length - 1}
+                      className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => deletePage(page.id)}
+                      disabled={pages.length <= 1}
+                      title="Seite löschen"
+                      className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive disabled:opacity-30"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-3 space-y-1">
+                  {page.sectionOrder.length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center py-2">Noch keine Widgets auf dieser Seite.</p>
+                  )}
+                  {page.sectionOrder.map((id, si) => (
+                    <div key={`${page.id}-${id}`} className="flex items-center gap-2 rounded-lg border px-3 py-2">
+                      <span className="text-sm flex-1 truncate">{sectionLabel(id, fields)}</span>
+                      <div className="flex gap-0.5 shrink-0">
+                        <button onClick={() => moveSectionInPage(page.id, si, -1)} disabled={si === 0}
+                          className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => moveSectionInPage(page.id, si, 1)} disabled={si === page.sectionOrder.length - 1}
+                          className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-accent disabled:opacity-30">
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => removeSectionFromPage(page.id, id)}
+                          className="cursor-pointer h-6 w-6 flex items-center justify-center rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {available.length > 0 && (
+                    <select
+                      defaultValue=""
+                      onChange={e => {
+                        const v = e.target.value as SectionId;
+                        if (v) addSectionToPage(page.id, v);
+                        e.target.value = '';
+                      }}
+                      className="mt-2 h-8 w-full rounded-md border bg-background px-2 text-xs"
+                    >
+                      <option value="">Widget hinzufügen…</option>
+                      {available.map(s => (
+                        <option key={s} value={s}>{sectionLabel(s, fields)}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               </div>
             );
@@ -2370,7 +2444,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     { id: 'rooms',    icon: Home,         color: 'text-violet-500 bg-violet-500/10', label: 'R\u00e4ume',            desc: `${rooms.length} Raum/${rooms.length !== 1 ? 'R\u00e4ume' : ''}` },
     { id: 'scenes',   icon: Clapperboard, color: 'text-amber-500  bg-amber-500/10',  label: 'Szenen',           desc: 'Szenen verwalten',         href: '/scenes' },
     { id: 'automat',  icon: Zap,          color: 'text-green-500  bg-green-500/10',  label: 'Automationen',     desc: 'Regeln & Zeitpl\u00e4ne',        href: '/automations' },
-    { id: 'dashboard',icon: LayoutDashboard, color: 'text-indigo-500 bg-indigo-500/10',label: 'Dashboard',      desc: 'Felder & Anordnung' },
+    { id: 'dashboard',icon: LayoutDashboard, color: 'text-indigo-500 bg-indigo-500/10',label: 'Dashboard',      desc: 'Seiten, Felder & Anordnung' },
     { id: 'widgets',  icon: Cloud,        color: 'text-sky-500    bg-sky-500/10',    label: 'Widgets',         desc: 'Wetter, Kalender, Bahn, Energie & Spotify' },
     { id: 'system',   icon: Activity,     color: 'text-emerald-500 bg-emerald-500/10', label: 'System',         desc: 'CPU-Temp & Status' },
     { id: 'security', icon: LockKeyhole,  color: 'text-orange-500 bg-orange-500/10', label: 'Sicherheit',       desc: 'PIN & Bildschirmsperre' },

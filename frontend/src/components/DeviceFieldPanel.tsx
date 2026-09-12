@@ -217,8 +217,8 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
 
   return (
     <div>
-      <div className={cn('flex items-center justify-between', kioskMode ? 'mb-1.5' : 'mb-3')}>
-        <p className="text-sm font-medium text-muted-foreground">{title}</p>
+      <div className={cn('flex items-center justify-between', kioskMode ? 'mb-1' : 'mb-3')}>
+        <p className={cn('font-medium text-muted-foreground', kioskMode ? 'text-xs' : 'text-sm')}>{title}</p>
         <span className="text-xs text-muted-foreground">{fieldDevices.length} Geräte</span>
       </div>
 
@@ -250,7 +250,7 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
 
             const className = cn(
               'rounded-2xl border flex items-center text-left transition-all w-full',
-              kioskMode ? 'p-2.5 gap-2' : 'p-4 gap-3',
+              kioskMode ? 'p-1.5 gap-1.5' : 'p-4 gap-3',
               interactive && !lockReason && 'cursor-pointer active:scale-95',
               interactive && lockReason && 'cursor-not-allowed opacity-70',
               isOn && connected ? 'bg-amber-500/15 border-amber-400/40 shadow-sm' : 'bg-card border-border',
@@ -261,14 +261,14 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
               <>
                 <div className={cn(
                   'rounded-full flex items-center justify-center shrink-0 transition-colors',
-                  kioskMode ? 'h-9 w-9' : 'h-11 w-11',
+                  kioskMode ? 'h-7 w-7' : 'h-11 w-11',
                   isOn && connected ? 'bg-green-500 text-white' : 'bg-muted text-muted-foreground',
                 )}>
-                  {Icon && <Icon className="h-5 w-5" />}
+                  {Icon && <Icon className={kioskMode ? 'h-4 w-4' : 'h-5 w-5'} />}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{device.name}</p>
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <p className={cn('font-medium truncate', kioskMode ? 'text-xs' : 'text-sm')}>{device.name}</p>
+                  <p className={cn('text-muted-foreground flex items-center gap-1', kioskMode ? 'text-[10px]' : 'text-xs')}>
                     {ble && <Bluetooth className={cn('h-3 w-3 shrink-0', connected ? 'text-blue-500' : '')} />}
                     {ble && !connected ? 'Nicht verbunden' : lockReason ? lockReason : label}
                   </p>
