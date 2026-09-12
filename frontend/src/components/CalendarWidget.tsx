@@ -79,11 +79,11 @@ export default function CalendarWidget({ initial = null }: Props) {
   }
 
   return (
-    <div className={kioskMode ? 'rounded-2xl border bg-card p-2' : 'rounded-2xl border bg-card p-3 sm:p-4'}>
-      <Link href="/calendar" className="flex items-center gap-2 min-w-0 mb-2 hover:opacity-80 transition-opacity">
-        <CalendarDays className="h-5 w-5 text-violet-500 shrink-0" />
-        <p className="font-semibold text-sm">Kalender</p>
-        <span className="text-xs text-muted-foreground capitalize truncate">{monthTitle}</span>
+    <div className={kioskMode ? 'rounded-2xl border bg-card p-1.5' : 'rounded-2xl border bg-card p-2.5 sm:p-3'}>
+      <Link href="/calendar" className="flex items-center gap-1.5 min-w-0 mb-1.5 hover:opacity-80 transition-opacity">
+        <CalendarDays className="h-4 w-4 text-violet-500 shrink-0" />
+        <p className="font-semibold text-xs">Kalender</p>
+        <span className="text-[11px] text-muted-foreground capitalize truncate">{monthTitle}</span>
       </Link>
       <Link href="/calendar" className="block hover:opacity-95 transition-opacity">
         <CalendarMonthGrid
@@ -92,6 +92,7 @@ export default function CalendarWidget({ initial = null }: Props) {
           events={events}
           today={today}
           compact={kioskMode}
+          scale={0.85}
         />
       </Link>
     </div>

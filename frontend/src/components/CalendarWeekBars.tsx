@@ -21,6 +21,7 @@ interface Props {
   today: Date;
   month?: number;
   onSelectDay?: (day: Date) => void;
+  scale?: number;
 }
 
 export default function CalendarWeekBars({
@@ -33,15 +34,17 @@ export default function CalendarWeekBars({
   today,
   month,
   onSelectDay,
+  scale = 1,
 }: Props) {
   const monday = startOfLocalDay(weekStart);
   const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
   const { bars, overflowByDay } = weekSegments(events, monday, slots, maxSlots);
 
-  const headerH = compact ? 26 : 28;
-  const slotH = compact ? 16 : 20;
-  const overflowH = compact ? 14 : 16;
+  const headerH = Math.round((compact ? 26 : 28) * scale);
+  const slotH = Math.round((compact ? 16 : 20) * scale);
+  const overflowH = Math.round((compact ? 14 : 16) * scale);
   const rowMinH = headerH + maxSlots * slotH + overflowH;
+  const dense = scale < 1;
 
   return (
     <div className="relative border-t border-border/50">
@@ -55,7 +58,10 @@ export default function CalendarWeekBars({
             <>
               <span
                 className={cn(
-                  'flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium tabular-nums sm:h-7 sm:w-7 sm:text-sm',
+                  'flex items-center justify-center rounded-full font-medium tabular-nums',
+                  dense
+                    ? 'h-5 w-5 text-[10px] sm:h-6 sm:w-6 sm:text-xs'
+                    : 'h-6 w-6 text-xs sm:h-7 sm:w-7 sm:text-sm',
                   isSelected && 'bg-primary text-primary-foreground',
                   isToday && !isSelected && 'ring-1 ring-primary text-primary',
                   !inMonth && !isSelected && 'text-muted-foreground/40',
@@ -66,6 +72,7 @@ export default function CalendarWeekBars({
               <span className={cn(
                 'mt-auto text-[10px] leading-none text-muted-foreground tabular-nums h-3',
                 compact && 'text-[9px]',
+                dense && 'text-[8px] h-2.5',
               )}>
                 {overflow > 0 ? `+${overflow}` : ''}
               </span>
@@ -111,6 +118,7 @@ export default function CalendarWeekBars({
               className={cn(
                 'absolute overflow-hidden text-white font-semibold leading-4 px-1',
                 compact ? 'text-[9px]' : 'text-[10px] sm:text-[11px]',
+                dense && (compact ? 'text-[8px] leading-3' : 'text-[9px] leading-3'),
                 seg.isStart && 'rounded-l-[4px]',
                 seg.isEnd && 'rounded-r-[4px]',
                 color.bar,

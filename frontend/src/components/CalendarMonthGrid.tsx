@@ -23,6 +23,8 @@ interface Props {
   compact?: boolean;
   maxSlots?: number;
   className?: string;
+  /** 1 = volle Größe (Kalender-Seite), z.B. 0.85 für das Dashboard-Widget. */
+  scale?: number;
 }
 
 export default function CalendarMonthGrid({
@@ -35,6 +37,7 @@ export default function CalendarMonthGrid({
   compact = false,
   maxSlots = MONTH_SLOTS,
   className,
+  scale = 1,
 }: Props) {
   const cells = buildMonthCells(year, month);
   const weeks: Date[][] = [];
@@ -50,6 +53,8 @@ export default function CalendarMonthGrid({
             className={cn(
               'text-center font-medium text-muted-foreground py-1',
               compact ? 'text-[10px]' : 'text-[11px]',
+              scale < 1 && 'py-0.5',
+              scale < 1 && (compact ? 'text-[9px]' : 'text-[10px]'),
             )}
           >
             {d}
@@ -65,6 +70,7 @@ export default function CalendarMonthGrid({
             slots={slots}
             maxSlots={maxSlots}
             compact={compact}
+            scale={scale}
             selected={selected}
             today={today}
             month={month}
