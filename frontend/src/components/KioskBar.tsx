@@ -3,14 +3,14 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Settings, LockKeyhole } from 'lucide-react';
+import { Home, Settings, LockKeyhole, MonitorOff } from 'lucide-react';
 import { api, Room } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { usePinLockContext } from '@/components/PinLockProvider';
 
 export default function KioskBar() {
   const path = usePathname();
-  const { enabled, lock } = usePinLockContext();
+  const { enabled, lock, sleepScreen } = usePinLockContext();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [mounted, setMounted] = useState(false);
 
@@ -43,6 +43,20 @@ export default function KioskBar() {
           </Link>
         ))}
       </div>
+
+      {/* Display aus */}
+      {mounted && (
+        <button
+          type="button"
+          onClick={sleepScreen}
+          className="flex flex-col items-center justify-center gap-1 min-w-[72px] px-3 text-xs font-medium text-muted-foreground transition-colors cursor-pointer"
+        >
+          <div className="h-9 w-9 rounded-xl flex items-center justify-center hover:bg-accent">
+            <MonitorOff className="h-5 w-5" />
+          </div>
+          <span>Display</span>
+        </button>
+      )}
 
       {/* Manuell sperren (nur mit PIN) */}
       {mounted && enabled && (

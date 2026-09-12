@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Services\DisplayPowerService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class SystemController
 {
@@ -19,6 +21,16 @@ class SystemController
         ];
 
         return response()->json($data);
+    }
+
+    public function setDisplay(Request $request, DisplayPowerService $display): JsonResponse
+    {
+        $data = $request->validate([
+            'on' => 'required|boolean',
+        ]);
+        $display->setOn((bool) $data['on']);
+
+        return response()->json(['ok' => true, 'on' => (bool) $data['on']]);
     }
 
     /**

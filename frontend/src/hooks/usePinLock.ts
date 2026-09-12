@@ -7,7 +7,8 @@
  *   smarthome_pin_hash   → SHA-256 des PINs (kein Klartext)
  *   smarthome_pin_enabled → boolean
  *   smarthome_lock_timeout → Sekunden bis Auto-Lock (0 = nie)
- *   smarthome_screen_off_timeout → Sekunden bis "Bildschirm aus" (0 = nie)
+ *   smarthome_screen_off_timeout → Sekunden bis Bildschirm aus (0 = nie)
+ *   smarthome_screen_power_off → true = HDMI/Licht aus, false = nur schwarz
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -18,6 +19,7 @@ const KEYS = {
   enabled:       'smarthome_pin_enabled',
   lockTimeout:   'smarthome_lock_timeout',
   screenTimeout: 'smarthome_screen_off_timeout',
+  screenPowerOff: 'smarthome_screen_power_off',
 } as const;
 
 function persistToServer(patch: {
@@ -25,6 +27,7 @@ function persistToServer(patch: {
   pin_enabled?: boolean;
   lock_timeout?: number;
   screen_timeout?: number;
+  screen_power_off?: boolean;
 }) {
   api.updatePanelSettings(patch).catch(() => {
     /* offline — localStorage bleibt Quelle */
@@ -143,14 +146,17 @@ export interface PinLockState {
   // Status
   locked: boolean;
   screenOff: boolean;
+  displayPoweredOff: boolean;
   enabled: boolean;
   lockTimeout: number;   // Sekunden, 0 = nie
   screenTimeout: number; // Sekunden, 0 = nie
+  screenPowerOff: boolean;
 
   // Aktionen
   unlock: (pin: string) => Promise<boolean>;
   lock: () => void;
   wakeScreen: () => void;
+  sleepScreen: () => void;
   resetTimers: () => void;
 
   // Einstellungen
@@ -158,6 +164,7 @@ export interface PinLockState {
   removePin: () => void;
   setLockTimeout: (seconds: number) => void;
   setScreenTimeout: (seconds: number) => void;
+  setScreenPowerOff: (on: boolean) => void;
   hasPin: boolean;
 }
 
@@ -170,12 +177,17 @@ export function usePinLock(): PinLockState {
   const [screenOff,     setScreenOff]     = useState(false);
   const [lockTimeout,   setLockTimeoutS]  = useState(() => typeof window !== 'undefined' ? load<number>(KEYS.lockTimeout, 30) : 30);
   const [screenTimeout, setScreenTimeoutS] = useState(() => typeof window !== 'undefined' ? load<number>(KEYS.screenTimeout, 60) : 60);
+  const [screenPowerOff, setScreenPowerOffS] = useState(() => typeof window !== 'undefined' ? load<boolean>(KEYS.screenPowerOff, false) : false);
   const [hasPin,        setHasPin]        = useState(() => typeof window !== 'undefined' ? !!localStorage.getItem(KEYS.hash) : false);
+  const [displayPoweredOff, setDisplayPoweredOff] = useState(false);
 
   const lastActivity = useRef<number>(Date.now());
   const intervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   // Server-Settings kommen asynchron — nach erfolgreichem Unlock nicht wieder sperren.
   const unlockedThisSession = useRef(false);
+  const displayOffSent = useRef(false);
+  const screenPowerOffRef = useRef(screenPowerOff);
+  screenPowerOffRef.current = screenPowerOff;
 
   // Server → localStorage (überlebt Reboot / anderen Browser-Origin)
   useEffect(() => {
@@ -193,6 +205,7 @@ export function usePinLock(): PinLockState {
             pin_enabled: load<boolean>(KEYS.enabled, false),
             lock_timeout: load<number>(KEYS.lockTimeout, 30),
             screen_timeout: load<number>(KEYS.screenTimeout, 60),
+            screen_power_off: load<boolean>(KEYS.screenPowerOff, false),
           });
         }
 
@@ -211,6 +224,8 @@ export function usePinLock(): PinLockState {
         setLockTimeoutS(s.lock_timeout);
         save(KEYS.screenTimeout, s.screen_timeout);
         setScreenTimeoutS(s.screen_timeout);
+        save(KEYS.screenPowerOff, !!s.screen_power_off);
+        setScreenPowerOffS(!!s.screen_power_off);
         if (s.pin_enabled && s.pin_hash && !unlockedThisSession.current) {
           setLocked(true);
         }
@@ -223,7 +238,14 @@ export function usePinLock(): PinLockState {
 
   // Aktivitäts-Listener — nur explizites Tippen/Klicken
   useEffect(() => {
-    const onActivity = () => { lastActivity.current = Date.now(); };
+    const onActivity = () => {
+      lastActivity.current = Date.now();
+      if (displayOffSent.current) {
+        displayOffSent.current = false;
+        setDisplayPoweredOff(false);
+        api.setDisplayPower(true).catch(() => {});
+      }
+    };
     window.addEventListener('pointerdown', onActivity);
     window.addEventListener('keydown',     onActivity);
     return () => {
@@ -233,24 +255,31 @@ export function usePinLock(): PinLockState {
   }, []);
 
   // Intervall prüft jede Sekunde ob Timeouts erreicht sind.
-  // Läuft auch im gesperrten Zustand weiter, damit die PIN-Tastatur
-  // nach Bildschirm-Timeout wieder dunkel wird.
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
 
-    if (!enabled) return;
-
     intervalRef.current = setInterval(() => {
       const idle = (Date.now() - lastActivity.current) / 1000;
+      const pinOn = load<boolean>(KEYS.enabled, false);
       const lt = load<number>(KEYS.lockTimeout,   30);
       const st = load<number>(KEYS.screenTimeout, 60);
+      const powerOff = load<boolean>(KEYS.screenPowerOff, false);
 
-      if (lt > 0 && idle >= lt) {
+      if (pinOn && lt > 0 && idle >= lt) {
         setLocked(true);
       }
       if (st > 0 && idle >= st) {
-        setScreenOff(true);
-      } else if (!locked) {
+        if (powerOff) {
+          if (!displayOffSent.current) {
+            displayOffSent.current = true;
+            setDisplayPoweredOff(true);
+            setScreenOff(false);
+            api.setDisplayPower(false).catch(() => {});
+          }
+        } else {
+          setScreenOff(true);
+        }
+      } else if (!locked && !displayOffSent.current) {
         setScreenOff(false);
       }
     }, 1000);
@@ -258,11 +287,16 @@ export function usePinLock(): PinLockState {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [enabled, locked]);
+  }, [locked]);
 
   const resetTimers = useCallback(() => {
     lastActivity.current = Date.now();
     setScreenOff(false);
+    if (displayOffSent.current) {
+      displayOffSent.current = false;
+      setDisplayPoweredOff(false);
+      api.setDisplayPower(true).catch(() => {});
+    }
   }, []);
 
   const clearTimers = useCallback(() => {
@@ -277,6 +311,12 @@ export function usePinLock(): PinLockState {
       unlockedThisSession.current = true;
       setLocked(false);
       setScreenOff(false);
+      if (displayOffSent.current) {
+        displayOffSent.current = false;
+        setDisplayPoweredOff(false);
+        api.setDisplayPower(true).catch(() => {});
+      }
+      lastActivity.current = Date.now();
       return true;
     }
     return false;
@@ -290,6 +330,23 @@ export function usePinLock(): PinLockState {
   const wakeScreen = useCallback(() => {
     lastActivity.current = Date.now();
     setScreenOff(false);
+    if (displayOffSent.current) {
+      displayOffSent.current = false;
+      setDisplayPoweredOff(false);
+      api.setDisplayPower(true).catch(() => {});
+    }
+  }, []);
+
+  const sleepScreen = useCallback(() => {
+    if (screenPowerOffRef.current) {
+      if (displayOffSent.current) return;
+      displayOffSent.current = true;
+      setDisplayPoweredOff(true);
+      setScreenOff(false);
+      api.setDisplayPower(false).catch(() => {});
+      return;
+    }
+    setScreenOff(true);
   }, []);
 
   const setPin = useCallback(
@@ -333,10 +390,16 @@ export function usePinLock(): PinLockState {
     persistToServer({ screen_timeout: seconds });
   }, []);
 
+  const setScreenPowerOff = useCallback((on: boolean) => {
+    save(KEYS.screenPowerOff, on);
+    setScreenPowerOffS(on);
+    persistToServer({ screen_power_off: on });
+  }, []);
+
   return {
-    locked, screenOff, enabled, lockTimeout, screenTimeout,
-    unlock, lock, wakeScreen, resetTimers,
-    setPin, removePin, setLockTimeout, setScreenTimeout,
+    locked, screenOff, displayPoweredOff, enabled, lockTimeout, screenTimeout, screenPowerOff,
+    unlock, lock, wakeScreen, sleepScreen, resetTimers,
+    setPin, removePin, setLockTimeout, setScreenTimeout, setScreenPowerOff,
     hasPin,
   };
 }

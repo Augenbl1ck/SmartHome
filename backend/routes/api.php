@@ -65,6 +65,7 @@ Route::prefix('v1')->group(function () {
 
     // System Status
     Route::get('system/status', [SystemController::class, 'status']);
+    Route::post('system/display', [SystemController::class, 'setDisplay']);
 
     // Panel-Einstellungen (PIN / Kiosk / Kalender) — überleben Reboot & Origin-Wechsel
     Route::get('panel-settings', [PanelSettingsController::class, 'show']);

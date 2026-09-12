@@ -11,6 +11,26 @@ URL="${SMARTHOME_KIOSK_URL:-http://smarthome.local/?kiosk=1#kiosk}"
 
 sleep 2
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DISPLAY_CMD_FILE="/tmp/smarthome-display-cmd"
+echo on > "$DISPLAY_CMD_FILE"
+chmod 666 "$DISPLAY_CMD_FILE" 2>/dev/null || true
+
+# Display ein/aus im Kontext der grafischen Session (labwc / wlr-randr)
+(
+  last=""
+  while :; do
+    cur="$(tr -d '[:space:]' < "$DISPLAY_CMD_FILE" 2>/dev/null || true)"
+    if [ -n "$cur" ] && [ "$cur" != "$last" ]; then
+      last="$cur"
+      bash "$SCRIPT_DIR/display-power.sh" "$cur" >/dev/null 2>&1 || true
+    fi
+    sleep 0.3
+  done
+) &
+DISPLAY_WATCH_PID=$!
+trap 'kill "$DISPLAY_WATCH_PID" 2>/dev/null || true' EXIT
+
 CHROMIUM=""
 for bin in chromium-browser chromium google-chrome; do
   if command -v "$bin" >/dev/null 2>&1; then

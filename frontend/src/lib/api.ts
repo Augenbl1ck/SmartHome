@@ -140,6 +140,11 @@ export const api = {
   // System Status
   getSystemStatus: () =>
     request<SystemStatus>('/system/status'),
+  setDisplayPower: (on: boolean) =>
+    request<{ ok: boolean; on: boolean }>('/system/display', {
+      method: 'POST',
+      body: JSON.stringify({ on }),
+    }),
 
   // Panel-Einstellungen (PIN / Kiosk) — serverseitig, überlebt Reboot
   getPanelSettings: () =>
@@ -215,6 +220,7 @@ export interface PanelSettings {
   pin_enabled: boolean;
   lock_timeout: number;
   screen_timeout: number;
+  screen_power_off?: boolean;
   kiosk_mode: boolean;
   calendar_ical_url?: string | null;
   dashboard_layout?: {

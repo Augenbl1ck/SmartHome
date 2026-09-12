@@ -28,23 +28,40 @@ export default function PinLockProvider({ children }: { children: React.ReactNod
   }, []);
 
   useEffect(() => {
-    if (!state.enabled) return;
-    if (!state.locked && !state.screenOff) return;
+    if (!state.enabled && !state.screenOff && !state.displayPoweredOff) return;
+    if (!state.locked && !state.screenOff && !state.displayPoweredOff) return;
     const active = document.activeElement as HTMLElement | null;
     if (!active) return;
     if (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') {
       active.blur();
     }
-  }, [state.enabled, state.locked, state.screenOff]);
+  }, [state.enabled, state.locked, state.screenOff, state.displayPoweredOff]);
+
+  const showPin = mounted && state.enabled && state.locked;
+  const showBlack = mounted && state.screenOff && !state.displayPoweredOff;
 
   return (
     <PinLockContext.Provider value={state}>
       {children}
-      {mounted && state.enabled && (state.locked || state.screenOff) && (
+      {showPin && (
         <PinLockScreen
           onUnlock={state.unlock}
           onWake={state.wakeScreen}
-          isScreenOff={state.screenOff}
+          isScreenOff={showBlack}
+        />
+      )}
+      {!showPin && showBlack && (
+        <PinLockScreen
+          onUnlock={async () => true}
+          onWake={state.wakeScreen}
+          isScreenOff
+        />
+      )}
+      {mounted && state.displayPoweredOff && (
+        <div
+          className="fixed inset-0 z-[101] bg-transparent"
+          onPointerUp={() => state.wakeScreen()}
+          aria-label="Display aus — tippen zum Einschalten"
         />
       )}
     </PinLockContext.Provider>

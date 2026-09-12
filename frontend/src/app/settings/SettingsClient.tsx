@@ -1914,8 +1914,8 @@ function KioskSection() {
     <div className="rounded-2xl border bg-card px-4 py-3 space-y-3">
         <p className="text-xs text-muted-foreground">
           Vollbild-Modus für Wandbildschirme. Versteckt die Navigationsleiste und
-          zeigt stattdessen eine Room-Schnellleiste unten. Dunkler Bildschirm und
-          Sperre laufen über die PIN-Einstellungen.
+          zeigt stattdessen eine Room-Schnellleiste unten. Display aus und
+          PIN-Sperre stehen unter Sicherheit.
         </p>
         <div className="flex items-center justify-between">
           <div>
@@ -2643,32 +2643,57 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
               <LockKeyholeOpen className="h-4 w-4 text-muted-foreground shrink-0" />
               <div>
                 <p className="text-sm font-medium">Bildschirm ausschalten</p>
-                <p className="text-xs text-muted-foreground">Display schwärzen</p>
+                <p className="text-xs text-muted-foreground">
+                  {pinLock.screenPowerOff
+                    ? 'Nach Inaktivität HDMI/Licht aus'
+                    : 'Nach Inaktivität schwarz überdecken'}
+                </p>
               </div>
             </div>
             <select
-              disabled={!pinLock.hasPin}
               value={pinLock.screenTimeout}
               onChange={e => pinLock.setScreenTimeout(Number(e.target.value))}
-              className="text-sm rounded-md border border-input bg-background px-2 py-1.5 cursor-pointer disabled:opacity-40"
+              className="text-sm rounded-md border border-input bg-background px-2 py-1.5 cursor-pointer"
             >
               <option value={0}>Nie</option>
               <option value={30}>30 Sek.</option>
               <option value={60}>1 Min.</option>
               <option value={120}>2 Min.</option>
               <option value={300}>5 Min.</option>
+              <option value={600}>10 Min.</option>
             </select>
           </div>
 
-          {/* Manuell sperren */}
-          {pinLock.hasPin && (
-            <div className="flex items-center justify-between px-4 py-3">
-              <p className="text-sm font-medium">Jetzt sperren</p>
-              <Button size="sm" variant="outline" onClick={pinLock.lock}>
-                <LockKeyhole className="h-4 w-4 mr-1" /> Sperren
+          <div className="flex items-center justify-between px-4 py-3 gap-3">
+            <div>
+              <p className="text-sm font-medium">Display wirklich aus</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                HDMI bzw. Hintergrundlicht am Pi. Mit Monitor-Knopf oder Tippen
+                wieder an — dann kein schwarzes Overlay.
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={pinLock.screenPowerOff}
+              onChange={e => pinLock.setScreenPowerOff(e.target.checked)}
+              className="h-5 w-5 rounded accent-primary cursor-pointer shrink-0"
+            />
+          </div>
+
+          {/* Manuell sperren / Display */}
+          <div className="flex items-center justify-between px-4 py-3 gap-3">
+            <p className="text-sm font-medium">Jetzt aus</p>
+            <div className="flex gap-2">
+              {pinLock.hasPin && (
+                <Button size="sm" variant="outline" onClick={pinLock.lock}>
+                  <LockKeyhole className="h-4 w-4 mr-1" /> Sperren
+                </Button>
+              )}
+              <Button size="sm" variant="outline" onClick={pinLock.sleepScreen}>
+                Display aus
               </Button>
             </div>
-          )}
+          </div>
         </div>
       )}
 
