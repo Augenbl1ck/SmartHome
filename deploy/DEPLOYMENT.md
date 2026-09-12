@@ -92,6 +92,16 @@ cp ~/SmartHome/deploy/smarthome-kiosk.desktop ~/.config/autostart/
 bash ~/SmartHome/deploy/start-kiosk.sh
 ```
 
+**Display wirklich aus (HDMI-Monitor, z. B. ROADom 10"):** zuerst DDC/CI (Standby-Befehl an den Monitor, HDMI bleibt), dann CEC, sonst HDMI-Ausgang am Pi. Einmalig:
+
+```bash
+bash ~/SmartHome/deploy/install-display-power.sh
+# neu einloggen / Pi neu starten, dann:
+ddcutil detect
+bash ~/SmartHome/deploy/display-power.sh off
+bash ~/SmartHome/deploy/display-power.sh on
+```
+
 ---
 
 ## Mobil-Test (Windows, selbes WLAN)
