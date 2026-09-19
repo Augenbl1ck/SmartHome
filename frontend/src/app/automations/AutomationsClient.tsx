@@ -889,8 +889,6 @@ function TextInput({
     />
   );
 }
-  );
-}
 
 function DeviceSelect({
   value, onChange, devices, rooms, placeholder = 'Geraet waehlen...',
