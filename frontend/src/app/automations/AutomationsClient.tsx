@@ -15,7 +15,7 @@ import {
   Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  Pencil, Plus, Trash2, Clock, Zap, ChevronRight, ArrowLeft,
+  Pencil, Plus, Trash2, Copy, Clock, Zap, ChevronRight, ArrowLeft,
   Thermometer, Droplets, Activity, DoorOpen, Timer, History,
   Waves, Flame, Battery, Gauge, Filter, Clapperboard, Shield,
   List, LayoutGrid,
@@ -295,6 +295,18 @@ function automationToForm(a: Automation): FormState {
     blockDeviceId: ac.device_id != null ? String(ac.device_id) : '',
     blockStatus: (ac.status as FormState['blockStatus']) ?? 'off',
   };
+}
+
+function nextCopyName(name: string, existing: string[]): string {
+  const stripped = name.replace(/\s*\(Kopie(?: \d+)?\)\s*$/i, '').trim() || name;
+  const taken = new Set(existing);
+  let candidate = `${stripped} (Kopie)`;
+  let n = 2;
+  while (taken.has(candidate)) {
+    candidate = `${stripped} (Kopie ${n})`;
+    n += 1;
+  }
+  return candidate;
 }
 
 // ── Aktion / Bedingungen → JSON ───────────────────────────────────────────────
@@ -671,6 +683,7 @@ function AutomationCard({
   isLock = false,
   onToggle,
   onEdit,
+  onDuplicate,
   onDelete,
 }: {
   automation: Automation;
@@ -681,6 +694,7 @@ function AutomationCard({
   isLock?: boolean;
   onToggle: (a: Automation) => void;
   onEdit: (a: Automation) => void;
+  onDuplicate: (a: Automation) => void;
   onDelete: (a: Automation) => void;
 }) {
   const trigger = automation.trigger as Record<string, unknown>;
@@ -706,10 +720,26 @@ function AutomationCard({
         </div>
         <div className="flex items-center gap-1 shrink-0 ml-2">
           <Switch checked={automation.enabled} onCheckedChange={() => onToggle(automation)} />
-          <Button variant="ghost" size="icon" onClick={() => onEdit(automation)}>
+          <Button type="button" variant="ghost" size="icon" aria-label="Bearbeiten" onClick={() => onEdit(automation)}>
             <Pencil className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive"
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Duplizieren"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => onDuplicate(automation)}
+          >
+            <Copy className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="text-destructive hover:text-destructive"
+            aria-label="Löschen"
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={() => onDelete(automation)}>
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -740,6 +770,7 @@ function AutomationList({
   scenes,
   onToggle,
   onEdit,
+  onDuplicate,
   onDelete,
 }: {
   items: Automation[];
@@ -752,6 +783,7 @@ function AutomationList({
   scenes: Scene[];
   onToggle: (a: Automation) => void;
   onEdit: (a: Automation) => void;
+  onDuplicate: (a: Automation) => void;
   onDelete: (a: Automation) => void;
 }) {
   if (items.length === 0) return <>{empty}</>;
@@ -767,6 +799,7 @@ function AutomationList({
       isLock={isLock}
       onToggle={onToggle}
       onEdit={onEdit}
+      onDuplicate={onDuplicate}
       onDelete={onDelete}
     />
   );
@@ -837,21 +870,25 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 }
 
 function TextInput({
-  value, onChange, placeholder, type = 'text',
+  value, onChange, placeholder, type = 'text', inputMode,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   type?: string;
+  inputMode?: 'none' | 'text' | 'decimal' | 'numeric' | 'tel' | 'search' | 'email' | 'url';
 }) {
   return (
     <input
       type={type}
+      inputMode={inputMode}
       className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
     />
+  );
+}
   );
 }
 
@@ -959,6 +996,7 @@ export default function AutomationsClient({ initialAutomations, devices: devices
   const [dialog, setDialog] = useState<{
     open: boolean;
     editing?: Automation;
+    duplicating?: boolean;
     form: FormState;
     saving: boolean;
     error: string;
@@ -968,6 +1006,7 @@ export default function AutomationsClient({ initialAutomations, devices: devices
     open: boolean;
     id: number;
     name: string;
+    error?: string;
   } | null>(null);
 
   const patchForm = (patch: Partial<FormState>) =>
@@ -1007,6 +1046,12 @@ export default function AutomationsClient({ initialAutomations, devices: devices
   const handleToggle = async (automation: Automation) => {
     const updated = await api.updateAutomation(automation.id, { enabled: !automation.enabled });
     setAutomations((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+  };
+
+  const openDuplicate = (a: Automation) => {
+    const form = automationToForm(a);
+    form.name = nextCopyName(a.name, automations.map((x) => x.name));
+    setDialog({ open: true, duplicating: true, form, saving: false, error: '' });
   };
 
   const validate = (f: FormState): string => {
@@ -1144,9 +1189,13 @@ export default function AutomationsClient({ initialAutomations, devices: devices
   };
 
   const deleteAutomation = async (id: number) => {
-    await api.deleteAutomation(id);
-    setAutomations((prev) => prev.filter((a) => a.id !== id));
-    setDeleteConfirm(null);
+    try {
+      await api.deleteAutomation(id);
+      setAutomations((prev) => prev.filter((a) => a.id !== id));
+      setDeleteConfirm(null);
+    } catch {
+      setDeleteConfirm((s) => (s ? { ...s, error: 'Löschen fehlgeschlagen.' } : s));
+    }
   };
 
   const tempSensors = devices.filter((d) => d.type === 'sensor_temperature' || d.type === 'thermostat');
@@ -1334,6 +1383,7 @@ export default function AutomationsClient({ initialAutomations, devices: devices
           scenes={scenes}
           onToggle={handleToggle}
           onEdit={(a) => setDialog({ open: true, editing: a, form: automationToForm(a), saving: false, error: '' })}
+          onDuplicate={openDuplicate}
           onDelete={(a) => setDeleteConfirm({ open: true, id: a.id, name: a.name })}
         />
       )}
@@ -1354,6 +1404,7 @@ export default function AutomationsClient({ initialAutomations, devices: devices
           scenes={scenes}
           onToggle={handleToggle}
           onEdit={(a) => setDialog({ open: true, editing: a, form: automationToForm(a), saving: false, error: '' })}
+          onDuplicate={openDuplicate}
           onDelete={(a) => setDeleteConfirm({ open: true, id: a.id, name: a.name })}
         />
       )}
@@ -1366,8 +1417,8 @@ export default function AutomationsClient({ initialAutomations, devices: devices
           <DialogHeader>
             <DialogTitle>
               {form.kind === 'lock'
-                ? (dialog.editing ? 'Sperre bearbeiten' : 'Neue Sperre')
-                : (dialog.editing ? 'Automation bearbeiten' : 'Neue Automation')}
+                ? (dialog.editing ? 'Sperre bearbeiten' : dialog.duplicating ? 'Sperre duplizieren' : 'Neue Sperre')
+                : (dialog.editing ? 'Automation bearbeiten' : dialog.duplicating ? 'Automation duplizieren' : 'Neue Automation')}
             </DialogTitle>
           </DialogHeader>
 
@@ -1559,9 +1610,12 @@ export default function AutomationsClient({ initialAutomations, devices: devices
                     {cond.type === 'time_at' && (
                       <div className="space-y-1">
                         <FieldLabel>Uhrzeit</FieldLabel>
-                        <input type="time"
-                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                          value={cond.time} onChange={(e) => patchCond({ time: e.target.value })} />
+                        <TextInput
+                          value={cond.time}
+                          onChange={(v) => patchCond({ time: v })}
+                          placeholder="08:00"
+                          inputMode="decimal"
+                        />
                       </div>
                     )}
 
@@ -1601,32 +1655,40 @@ export default function AutomationsClient({ initialAutomations, devices: devices
                           <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1">
                               <FieldLabel>Von Datum</FieldLabel>
-                              <input type="date"
-                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                              <TextInput
                                 value={cond.fromDate}
-                                onChange={(e) => patchCond({ fromDate: e.target.value })} />
+                                onChange={(v) => patchCond({ fromDate: v })}
+                                placeholder="2026-09-19"
+                              />
                             </div>
                             <div className="space-y-1">
                               <FieldLabel>Bis Datum</FieldLabel>
-                              <input type="date"
-                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                              <TextInput
                                 value={cond.toDate}
-                                onChange={(e) => patchCond({ toDate: e.target.value })} />
+                                onChange={(v) => patchCond({ toDate: v })}
+                                placeholder="2026-09-19"
+                              />
                             </div>
                           </div>
                         )}
                         <div className="grid grid-cols-2 gap-3">
                           <div className="space-y-1">
                             <FieldLabel>Von</FieldLabel>
-                            <input type="time"
-                              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                              value={cond.from} onChange={(e) => patchCond({ from: e.target.value })} />
+                            <TextInput
+                              value={cond.from}
+                              onChange={(v) => patchCond({ from: v })}
+                              placeholder="08:00"
+                              inputMode="decimal"
+                            />
                           </div>
                           <div className="space-y-1">
                             <FieldLabel>Bis</FieldLabel>
-                            <input type="time"
-                              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                              value={cond.to} onChange={(e) => patchCond({ to: e.target.value })} />
+                            <TextInput
+                              value={cond.to}
+                              onChange={(v) => patchCond({ to: v })}
+                              placeholder="22:00"
+                              inputMode="decimal"
+                            />
                           </div>
                         </div>
                       </div>
@@ -2215,17 +2277,28 @@ export default function AutomationsClient({ initialAutomations, devices: devices
         </DialogContent>
       </Dialog>
 
-      {/* Loeschen bestaetigen */}
+      {/* Löschen bestätigen */}
       <Dialog open={!!deleteConfirm?.open} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>Automation loeschen?</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Automation löschen?</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground py-2">
-            <span className="font-medium text-foreground">{deleteConfirm?.name}</span> wird dauerhaft geloescht.
+            <span className="font-medium text-foreground">{deleteConfirm?.name}</span> wird dauerhaft gelöscht.
           </p>
+          {deleteConfirm?.error && (
+            <p className="text-sm text-destructive">{deleteConfirm.error}</p>
+          )}
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setDeleteConfirm(null)}>Abbrechen</Button>
-            <Button variant="destructive" onClick={() => deleteConfirm && deleteAutomation(deleteConfirm.id)}>
-              Loeschen
+            <Button type="button" variant="ghost" onClick={() => setDeleteConfirm(null)}>Abbrechen</Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => {
+                const id = deleteConfirm?.id;
+                if (id != null) void deleteAutomation(id);
+              }}
+            >
+              Löschen
             </Button>
           </DialogFooter>
         </DialogContent>

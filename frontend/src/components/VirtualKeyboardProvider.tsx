@@ -206,19 +206,27 @@ export default function VirtualKeyboardProvider({
     inputRef.current = null;
     setOpen(false);
     setShown(false); // startet Slide-Out
-    shellRef.current?.classList.remove('vk-open');
-    document.body.classList.remove('vk-open');
+    // vk-open / pointer-events erst nach der Animation weg — sonst fällt
+    // derselbe Tap (Enter unten) auf die Kiosk-Leiste „Sperren“.
     document.documentElement.style.removeProperty('--vk-h');
 
     // Fallback falls transitionend ausbleibt (reduced-motion etc.)
     window.setTimeout(() => {
-      if (closingRef.current) setPresent(false);
+      if (closingRef.current) {
+        shellRef.current?.classList.remove('vk-open');
+        document.body.classList.remove('vk-open');
+        setPresent(false);
+      }
     }, 320);
   }, []);
 
   const onAnimEnd = useCallback((e: React.TransitionEvent<HTMLDivElement>) => {
     if (e.propertyName !== 'transform') return;
-    if (!open) setPresent(false); // nach Exit unmounten
+    if (!open) {
+      shellRef.current?.classList.remove('vk-open');
+      document.body.classList.remove('vk-open');
+      setPresent(false);
+    }
   }, [open]);
 
   const openFor = useCallback((el: HTMLInputElement | HTMLTextAreaElement) => {
@@ -264,6 +272,8 @@ export default function VirtualKeyboardProvider({
       const el = inputRef.current;
       if (!el) return;
       if (key === '{enter}') {
+        el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        el.blur();
         close();
         return;
       }

@@ -58,17 +58,12 @@ function DialogOverlay({
 /**
  * Radix wertet Taps auf die virtuelle Tastatur als "Outside" —
  * die Tastatur liegt in einem eigenen Portal außerhalb des Dialogs.
- * Solange body.vk-open gesetzt ist ODER der echte Target in der Tastatur
- * liegt, Dialog NICHT schließen.
+ * Nur dann schließen verhindern, wenn der echte Target in der Tastatur
+ * oder einem Select/Popover liegt — nicht pauschal bei body.vk-open.
  */
 function shouldBlockOutsideDismiss(event: unknown): boolean {
-  if (typeof document !== "undefined") {
-    const shell = document.querySelector('[data-slot="vk-app-shell"]')
-    if (shell?.classList.contains("vk-open") || document.body.classList.contains("vk-open")) {
-      return true
-    }
-  }
-  // Radix: e.detail.originalEvent hat den echten DOM-Target
+  // Nur echte Tastatur-/Select-Klicks blockieren — nicht pauschal bei body.vk-open.
+  // Sonst frisst das Overlay (oder ein hängendes vk-open) Dialog-Buttons wie „Löschen“.
   const e = event as {
     target?: EventTarget | null
     detail?: { originalEvent?: Event }

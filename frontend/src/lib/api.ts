@@ -32,8 +32,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     throw new ApiError(message, res.status, blocked);
   }
 
-  if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
+  if (res.status === 204 || res.status === 205) return undefined as T;
+  const body = await res.text();
+  if (!body) return undefined as T;
+  return JSON.parse(body) as T;
 }
 
 export const api = {
