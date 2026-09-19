@@ -6,6 +6,17 @@ set -e
 
 INSTALL_DIR="/home/pi/SmartHome"
 
+# +x ist für systemd (bash script.sh) nicht nötig. chmod darf das Update nicht killen
+# (root-Owner, immutable, merkwürdiges FS).
+ensure_exec() {
+  local f="$1"
+  [ -f "$f" ] || return 0
+  chmod +x "$f" 2>/dev/null && return 0
+  sudo chmod +x "$f" 2>/dev/null && return 0
+  sudo chattr -i "$f" 2>/dev/null || true
+  sudo chmod +x "$f" 2>/dev/null || true
+}
+
 echo "=== SmartHome Update ==="
 
 cd "$INSTALL_DIR"
@@ -23,8 +34,8 @@ php8.4 artisan config:cache
 php8.4 artisan route:cache
 
 echo "[3/7] php-fpm + API-Nginx..."
-chmod +x "$INSTALL_DIR/deploy/run-backend.sh"
-[ -f "$INSTALL_DIR/deploy/fix-api-502.sh" ] && chmod +x "$INSTALL_DIR/deploy/fix-api-502.sh"
+ensure_exec "$INSTALL_DIR/deploy/run-backend.sh"
+ensure_exec "$INSTALL_DIR/deploy/fix-api-502.sh"
 # artisan serve stoppen — niemals fuser -k 8000 (das killt Nginx, der :8000 hält).
 sudo systemctl stop smarthome-backend 2>/dev/null || true
 sudo pkill -f 'artisan serve --host' 2>/dev/null || true
@@ -62,7 +73,7 @@ npm install
 npm run build
 
 echo "[5/7] Autostart aktualisieren..."
-chmod +x "$INSTALL_DIR/deploy/start-kiosk.sh"
+ensure_exec "$INSTALL_DIR/deploy/start-kiosk.sh"
 mkdir -p ~/.config/autostart
 cp "$INSTALL_DIR/deploy/smarthome-kiosk.desktop" ~/.config/autostart/smarthome-kiosk.desktop
 echo "  autostart    ✓"

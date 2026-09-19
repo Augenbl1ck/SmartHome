@@ -41,7 +41,9 @@ fi
 sleep 1
 
 echo "[4] Backend-Unit..."
-chmod +x "$INSTALL_DIR/deploy/run-backend.sh"
+chmod +x "$INSTALL_DIR/deploy/run-backend.sh" 2>/dev/null \
+  || sudo chmod +x "$INSTALL_DIR/deploy/run-backend.sh" 2>/dev/null \
+  || true
 sudo cp "$INSTALL_DIR/deploy/smarthome-backend.service" /etc/systemd/system/smarthome-backend.service
 sudo systemctl daemon-reload
 sudo systemctl start smarthome-backend
