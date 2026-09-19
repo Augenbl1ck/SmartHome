@@ -62,8 +62,13 @@ function DialogOverlay({
  * oder einem Select/Popover liegt — nicht pauschal bei body.vk-open.
  */
 function shouldBlockOutsideDismiss(event: unknown): boolean {
-  // Nur echte Tastatur-/Select-Klicks blockieren — nicht pauschal bei body.vk-open.
-  // Sonst frisst das Overlay (oder ein hängendes vk-open) Dialog-Buttons wie „Löschen“.
+  // Select-Dropdown liegt im Portal außerhalb des Dialogs. Solange es offen ist
+  // oder der Tap in Tastatur/Select landet, Dialog nicht schließen.
+  if (typeof document !== "undefined") {
+    if (document.querySelector('[data-slot="select-content"][data-state="open"], [data-radix-select-content][data-state="open"]')) {
+      return true
+    }
+  }
   const e = event as {
     target?: EventTarget | null
     detail?: { originalEvent?: Event }
@@ -73,11 +78,10 @@ function shouldBlockOutsideDismiss(event: unknown): boolean {
     if (originalTarget.closest("[data-vk-root]")) {
       return true
     }
-    // Select/Popover hängen im Portal außerhalb des Dialogs — Klick darauf
-    // darf den Dialog nicht schließen (sonst Formular weg, alles nochmal eingeben).
     if (
       originalTarget.closest("[data-slot='select-content']") ||
       originalTarget.closest("[data-slot='select-item']") ||
+      originalTarget.closest("[data-slot='select-trigger']") ||
       originalTarget.closest("[data-radix-select-content]") ||
       originalTarget.closest("[data-radix-popper-content-wrapper]")
     ) {

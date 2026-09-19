@@ -219,6 +219,14 @@ body.vk-open [data-slot="page-dots"] {
   width: min(28rem, calc(100% - 2rem));
 }
 
+/* Select/Popover-Portal hängt am body — muss über Dialog-Stack (z-index 80) liegen */
+[data-radix-popper-content-wrapper],
+[data-radix-select-content],
+[data-slot="select-content"] {
+  z-index: 120 !important;
+  pointer-events: auto !important;
+}
+
 .vk-dialog-vk-slot {
   flex: 0 0 auto;
   z-index: 2;
