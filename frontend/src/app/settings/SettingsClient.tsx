@@ -2985,7 +2985,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
                     value={deviceDialog.form.shelly_ip}
                     onChange={v => patchDevice({ shelly_ip: v })}
                     placeholder="192.168.1.xx"
-                    hint="IP aus der Shelly-App. Wird für direkten Zugriff auf LED-Ring und Konfiguration benötigt."
+                    hint="Leer lassen: wird automatisch über das LAN ermittelt. Nur eintragen, wenn der Zugriff fehlschlägt."
                     inputMode="numeric" autoComplete="off" />
                 </>
               );

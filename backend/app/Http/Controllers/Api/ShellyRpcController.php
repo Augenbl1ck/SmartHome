@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Device;
+use App\Services\ShellyLanHost;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -15,56 +16,48 @@ class ShellyRpcController extends Controller
      * POST /api/v1/devices/{device}/shelly-rpc
      *
      * Sendet einen RPC-Befehl direkt per HTTP an eine Shelly Gen3.
-     * Host: attributes.shelly_ip → IPv4 im mqtt_topic → sonst {topic}.local
+     * Host: gespeicherte IPv4, sonst mDNS/ARP aus der Geräte-ID.
      */
-    public function rpc(Request $request, Device $device): JsonResponse
+    public function rpc(Request $request, Device $device, ShellyLanHost $lan): JsonResponse
     {
         $data = $request->validate([
             'method' => 'required|string|max:100',
             'params' => 'nullable|array',
         ]);
 
-        $host = $this->resolveHost($device);
         $method = $data['method'];
         $params = $data['params'] ?? [];
+        $host = $lan->resolve($device);
 
         try {
-            $response = Http::timeout(2)->connectTimeout(2)->post("http://{$host}/rpc/{$method}", $params);
-
-            if ($response->failed()) {
-                return response()->json(['error' => 'Shelly HTTP Fehler: ' . $response->status()], 502);
-            }
-
-            return response()->json(['result' => $response->json()]);
+            return $this->call($host, $method, $params);
         } catch (\Exception $e) {
+            $retryHost = $lan->resolve($device, refresh: true);
+            if ($retryHost !== $host) {
+                try {
+                    return $this->call($retryHost, $method, $params);
+                } catch (\Exception $retry) {
+                    $e = $retry;
+                    $host = $retryHost;
+                }
+            }
             Log::warning('[Shelly RPC] ' . $device->name . ' @ ' . $host . ': ' . $e->getMessage());
+
             return response()->json(['error' => 'Shelly nicht erreichbar (' . $host . ')'], 503);
         }
     }
 
-    private function resolveHost(Device $device): string
+    /**
+     * @param  array<string, mixed>  $params
+     */
+    private function call(string $host, string $method, array $params): JsonResponse
     {
-        $attrs = $device->attributes ?? [];
-        $ip = trim((string) ($attrs['shelly_ip'] ?? ''));
-        $ip = preg_replace('#^https?://#i', '', $ip) ?? $ip;
-        $ip = rtrim($ip, '/');
-        if ($ip !== '') {
-            return $ip;
+        $response = Http::timeout(4)->connectTimeout(3)->post("http://{$host}/rpc/{$method}", $params);
+
+        if ($response->failed()) {
+            return response()->json(['error' => 'Shelly HTTP Fehler: ' . $response->status()], 502);
         }
 
-        $topic = trim((string) ($device->mqtt_topic ?? ''), '/');
-        $topic = preg_replace('#^https?://#i', '', $topic) ?? $topic;
-        if ($topic === '') {
-            return '127.0.0.1';
-        }
-        $hostOnly = explode('/', $topic)[0];
-        if (filter_var($hostOnly, FILTER_VALIDATE_IP)) {
-            return $hostOnly;
-        }
-        if (str_ends_with(strtolower($hostOnly), '.local')) {
-            return $hostOnly;
-        }
-
-        return $hostOnly . '.local';
+        return response()->json(['result' => $response->json()]);
     }
 }

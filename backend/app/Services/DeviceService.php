@@ -24,7 +24,10 @@ use PhpMqtt\Client\MqttClient;
  */
 class DeviceService
 {
-    public function __construct(private readonly WakeOnLanService $wakeOnLan) {}
+    public function __construct(
+        private readonly WakeOnLanService $wakeOnLan,
+        private readonly ShellyLanHost $shellyLan,
+    ) {}
 
     public function setStatus(Device $device, string $status): void
     {
@@ -86,29 +89,32 @@ class DeviceService
 
     private function sendHttp(Device $device, string $status): void
     {
-        $attrs = $device->attributes ?? [];
-        $host = trim((string) ($attrs['shelly_ip'] ?? ''));
-        if ($host === '') {
-            $host = rtrim($device->mqtt_topic ?? '', '/');
-        }
-        $host = preg_replace('#^https?://#i', '', $host) ?? $host;
-        $host = explode('/', $host)[0];
-
+        $host = $this->shellyLan->resolve($device);
         $url = "http://{$host}/rpc/Switch.Set";
+        $body = ['id' => 0, 'on' => $status === 'on'];
 
         try {
-            $response = Http::timeout(2)->connectTimeout(2)->post($url, [
-                'id' => 0,
-                'on' => $status === 'on',
-            ]);
-
-            if (!$response->successful()) {
+            $response = Http::timeout(4)->connectTimeout(3)->post($url, $body);
+            if (! $response->successful()) {
                 throw new \RuntimeException("HTTP {$response->status()} bei {$device->name}");
             }
         } catch (\RuntimeException $e) {
             throw $e;
-        } catch (\Exception $e) {
-            throw new \RuntimeException("HTTP nicht erreichbar {$device->name}: " . $e->getMessage(), 0, $e);
+        } catch (\Exception $first) {
+            $retryHost = $this->shellyLan->resolve($device, refresh: true);
+            if ($retryHost === $host) {
+                throw new \RuntimeException("HTTP nicht erreichbar {$device->name}: " . $first->getMessage(), 0, $first);
+            }
+            try {
+                $response = Http::timeout(4)->connectTimeout(3)->post("http://{$retryHost}/rpc/Switch.Set", $body);
+                if (! $response->successful()) {
+                    throw new \RuntimeException("HTTP {$response->status()} bei {$device->name}");
+                }
+            } catch (\RuntimeException $e) {
+                throw $e;
+            } catch (\Exception $e) {
+                throw new \RuntimeException("HTTP nicht erreichbar {$device->name}: " . $e->getMessage(), 0, $e);
+            }
         }
     }
 
