@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, Device, Room } from '@/lib/api';
 import { shellyBle, BleState } from '@/lib/bluetooth';
-import { deviceIcons, isSensor, isToggleable, isComputer, countsAsActive, getDeviceColors, getDeviceEmoji, commandBlocked, nextCommandBlocked, numericAttr, isRoomTempSensor, temperatureSourceDeviceId, thermostatDisplayTemp } from '@/lib/devices';
+import { deviceIcons, isSensor, isToggleable, isComputer, countsAsActive, getDeviceColors, getDeviceEmoji, commandBlocked, nextCommandBlocked, numericAttr, isRoomTempSensor, temperatureSourceDeviceId, thermostatDisplayTemp, mergeDeviceLists } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
 import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, ChevronUp, ChevronDown, Square, Minus, Plus, PowerOff, Loader2, Power, Lock, Unlock, Wind, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -830,16 +830,19 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                 {isTherm && (
                   <div className="mt-4 space-y-2">
                     {(() => {
-                      const catalog = storeDevices.length ? storeDevices : devices;
+                      const catalog = mergeDeviceLists(storeDevices, devices);
                       const shown = thermostatDisplayTemp(device, catalog);
-                      if (shown.temp == null) return null;
+                      if (shown.temp == null && !shown.fromRoomSensor) return null;
                       return (
                       <p className="text-sm text-muted-foreground">
                         Aktuell:{' '}
                         <span className="font-semibold text-foreground">
-                          {shown.temp.toFixed(1)}°C
+                          {shown.temp != null ? `${shown.temp.toFixed(1)}°C` : '—'}
                         </span>
-                        {shown.fromRoomSensor && (
+                        {shown.sourceName && (
+                          <span className="ml-1.5 text-xs">{shown.sourceName}</span>
+                        )}
+                        {!shown.sourceName && shown.fromRoomSensor && (
                           <span className="ml-1.5 text-xs">Raumfühler</span>
                         )}
                         {getRunningStateLabel(device.attributes) && (
@@ -991,23 +994,31 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="internal">Ventil (intern)</SelectItem>
-                                {(storeDevices.length ? storeDevices : devices)
-                                  .filter(isRoomTempSensor)
-                                  .slice()
-                                  .sort((a, b) => {
-                                    const ar = a.room_id === roomId ? 0 : 1;
-                                    const br = b.room_id === roomId ? 0 : 1;
-                                    if (ar !== br) return ar - br;
-                                    return a.name.localeCompare(b.name, 'de');
-                                  })
-                                  .map((s) => {
+                                {(() => {
+                                  const catalog = mergeDeviceLists(storeDevices, devices);
+                                  const selectedId = temperatureSourceDeviceId(device);
+                                  const sources = catalog
+                                    .filter(isRoomTempSensor)
+                                    .slice()
+                                    .sort((a, b) => {
+                                      const ar = a.room_id === roomId ? 0 : 1;
+                                      const br = b.room_id === roomId ? 0 : 1;
+                                      if (ar !== br) return ar - br;
+                                      return a.name.localeCompare(b.name, 'de');
+                                    });
+                                  if (selectedId && !sources.some((s) => s.id === selectedId)) {
+                                    const extra = catalog.find((s) => s.id === selectedId);
+                                    if (extra) sources.unshift(extra);
+                                  }
+                                  return sources.map((s) => {
                                     const roomName = storeRooms.find(r => r.id === s.room_id)?.name;
                                     return (
                                       <SelectItem key={s.id} value={String(s.id)}>
                                         {roomName && s.room_id !== roomId ? `${roomName} · ${s.name}` : s.name}
                                       </SelectItem>
                                     );
-                                  })}
+                                  });
+                                })()}
                               </SelectContent>
                             </Select>
                             <p className="text-[11px] text-muted-foreground leading-snug">

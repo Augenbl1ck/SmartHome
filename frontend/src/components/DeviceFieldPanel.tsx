@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { api, Device, DeviceType } from '@/lib/api';
-import { deviceIcons, isSensor, isComputer, commandBlocked, nextCommandBlocked } from '@/lib/devices';
+import { deviceIcons, isSensor, isComputer, commandBlocked, nextCommandBlocked, thermostatDisplayTemp, mergeDeviceLists } from '@/lib/devices';
 import { Bluetooth, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { shellyBle } from '@/lib/bluetooth';
@@ -30,21 +30,17 @@ function isWakeable(type: DeviceType): boolean {
   return isComputer(type);
 }
 
-function statusLabel(device: Device): string {
+function statusLabel(device: Device, catalog: Device[]): string {
   const type = device.type as DeviceType;
   const attrs = device.attributes ?? {};
 
   if (type === 'thermostat') {
-    const local = attrs.local_temperature;
+    const shown = thermostatDisplayTemp(device, catalog);
     const set = attrs.setpoint;
     const parts: string[] = [];
-    if (typeof local === 'number' || (typeof local === 'string' && local !== '')) {
-      const n = Number(local);
-      if (Number.isFinite(n)) parts.push(`${n.toFixed(1)}°C`);
-    } else if (typeof attrs.temperature === 'number' || (typeof attrs.temperature === 'string' && attrs.temperature !== '')) {
-      const n = Number(attrs.temperature);
-      if (Number.isFinite(n)) parts.push(`${n.toFixed(1)}°C`);
-    }
+    if (shown.temp != null) parts.push(`${shown.temp.toFixed(1)}°C`);
+    if (shown.sourceName) parts.push(shown.sourceName);
+    else if (shown.fromRoomSensor) parts.push('Raumfühler');
     if (typeof set === 'number' || (typeof set === 'string' && set !== '')) {
       parts.push(`Soll ${Number(set).toFixed(1)}°C`);
     }
@@ -100,6 +96,7 @@ interface Props {
 export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: Props) {
   const { kioskMode } = useKiosk();
   const patchDevice = useSmartHomeStore(s => s.patchDevice);
+  const storeDevices = useSmartHomeStore(s => s.devices);
   const [devices, setDevices] = useState(initialDevices);
   const [toggling, setToggling] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -218,6 +215,11 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
     }
   };
 
+  const catalog = useMemo(
+    () => mergeDeviceLists(storeDevices, devices, initialDevices),
+    [storeDevices, devices, initialDevices],
+  );
+
   if (deviceIds.length === 0) return null;
 
   return (
@@ -251,7 +253,7 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
             const hasMac = !!(device.attributes?.ble_address as string | undefined)?.trim();
             const connected = !ble || hasMac || shellyBle.isConnected(device.id);
             const Icon = deviceIcons[type];
-            const label = statusLabel(device);
+            const label = statusLabel(device, catalog);
 
             const className = cn(
               'rounded-2xl border p-4 gap-3 flex items-center text-left transition-all w-full',

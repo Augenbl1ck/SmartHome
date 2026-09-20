@@ -197,13 +197,26 @@ export function numericAttr(attrs: Record<string, unknown> | undefined | null, .
 
 /** Aktuelle Temperatur eines Sensors oder Thermostats. */
 export function deviceTemperature(device: Device): number | null {
-  const fromAttr = numericAttr(device.attributes, 'temperature', 'local_temperature');
+  const fromAttr = numericAttr(
+    device.attributes,
+    'temperature',
+    'local_temperature',
+    'external_temperature_input',
+  );
   if (fromAttr != null) return fromAttr;
   if (device.type === 'sensor_temperature') {
     const n = Number(device.status);
-    if (Number.isFinite(n)) return n;
+    if (Number.isFinite(n) && n >= -40 && n <= 80) return n;
   }
   return null;
+}
+
+export function mergeDeviceLists(...lists: Device[][]): Device[] {
+  const byId = new Map<number, Device>();
+  for (const list of lists) {
+    for (const d of list) byId.set(d.id, d);
+  }
+  return [...byId.values()];
 }
 
 export function isTemperatureSource(device: Device): boolean {
@@ -225,16 +238,25 @@ export function isRoomTempSensor(device: Device): boolean {
 export function thermostatDisplayTemp(
   thermostat: Device,
   allDevices: Device[],
-): { temp: number | null; fromRoomSensor: boolean } {
+): { temp: number | null; fromRoomSensor: boolean; sourceName: string | null } {
+  const valveTemp = numericAttr(
+    thermostat.attributes,
+    'local_temperature',
+    'temperature',
+    'external_temperature_input',
+  );
   const sid = temperatureSourceDeviceId(thermostat);
-  if (sid != null) {
-    const src = allDevices.find((d) => d.id === sid);
-    if (src) {
-      const t = deviceTemperature(src);
-      if (t != null) return { temp: t, fromRoomSensor: true };
-    }
+  if (sid == null) {
+    return { temp: valveTemp, fromRoomSensor: false, sourceName: null };
   }
-  return { temp: deviceTemperature(thermostat), fromRoomSensor: false };
+  const src = allDevices.find((d) => d.id === sid) ?? null;
+  const sensorTemp = src ? deviceTemperature(src) : null;
+  const ext = numericAttr(thermostat.attributes, 'external_temperature_input');
+  return {
+    temp: sensorTemp ?? ext ?? valveTemp,
+    fromRoomSensor: true,
+    sourceName: src?.name ?? null,
+  };
 }
 
 function localDateString(d = new Date()): string {
