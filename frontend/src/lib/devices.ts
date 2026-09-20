@@ -234,28 +234,30 @@ export function isRoomTempSensor(device: Device): boolean {
   return device.type === 'sensor_temperature' || device.type === 'sensor_humidity';
 }
 
-/** Ist-Temperatur: Raumfühler wenn verknüpft, sonst Ventil. */
+/** Ist-Temperatur: Ventil immer, plus Raumfühler wenn verknüpft. */
 export function thermostatDisplayTemp(
   thermostat: Device,
   allDevices: Device[],
-): { temp: number | null; fromRoomSensor: boolean; sourceName: string | null } {
-  const valveTemp = numericAttr(
-    thermostat.attributes,
-    'local_temperature',
-    'temperature',
-    'external_temperature_input',
-  );
+): {
+  temp: number | null;
+  valveTemp: number | null;
+  sensorTemp: number | null;
+  fromRoomSensor: boolean;
+  sourceName: string | null;
+} {
+  const valveTemp = numericAttr(thermostat.attributes, 'local_temperature', 'temperature');
   const sid = temperatureSourceDeviceId(thermostat);
   if (sid == null) {
-    return { temp: valveTemp, fromRoomSensor: false, sourceName: null };
+    return { temp: valveTemp, valveTemp, sensorTemp: null, fromRoomSensor: false, sourceName: null };
   }
   const src = allDevices.find((d) => d.id === sid) ?? null;
-  const sensorTemp = src ? deviceTemperature(src) : null;
-  const ext = numericAttr(thermostat.attributes, 'external_temperature_input');
+  const sensorTemp = src ? deviceTemperature(src) : numericAttr(thermostat.attributes, 'external_temperature_input');
   return {
-    temp: sensorTemp ?? ext ?? valveTemp,
+    temp: sensorTemp ?? valveTemp,
+    valveTemp,
+    sensorTemp,
     fromRoomSensor: true,
-    sourceName: src?.name ?? null,
+    sourceName: src?.name ?? 'Raumfühler',
   };
 }
 

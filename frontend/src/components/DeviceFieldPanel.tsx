@@ -38,9 +38,12 @@ function statusLabel(device: Device, catalog: Device[]): string {
     const shown = thermostatDisplayTemp(device, catalog);
     const set = attrs.setpoint;
     const parts: string[] = [];
-    if (shown.temp != null) parts.push(`${shown.temp.toFixed(1)}°C`);
-    if (shown.sourceName) parts.push(shown.sourceName);
-    else if (shown.fromRoomSensor) parts.push('Raumfühler');
+    if (shown.valveTemp != null) parts.push(`Ventil ${shown.valveTemp.toFixed(1)}°C`);
+    if (shown.fromRoomSensor && shown.sensorTemp != null) {
+      parts.push(`${shown.sourceName ?? 'Raum'} ${shown.sensorTemp.toFixed(1)}°C`);
+    } else if (shown.fromRoomSensor && shown.sourceName) {
+      parts.push(shown.sourceName);
+    }
     if (typeof set === 'number' || (typeof set === 'string' && set !== '')) {
       parts.push(`Soll ${Number(set).toFixed(1)}°C`);
     }

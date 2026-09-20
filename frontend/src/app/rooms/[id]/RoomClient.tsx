@@ -832,25 +832,29 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                     {(() => {
                       const catalog = mergeDeviceLists(storeDevices, devices);
                       const shown = thermostatDisplayTemp(device, catalog);
-                      if (shown.temp == null && !shown.fromRoomSensor) return null;
+                      if (shown.valveTemp == null && shown.sensorTemp == null && !shown.fromRoomSensor) return null;
                       return (
-                      <p className="text-sm text-muted-foreground">
-                        Aktuell:{' '}
-                        <span className="font-semibold text-foreground">
-                          {shown.temp != null ? `${shown.temp.toFixed(1)}°C` : '—'}
-                        </span>
-                        {shown.sourceName && (
-                          <span className="ml-1.5 text-xs">{shown.sourceName}</span>
-                        )}
-                        {!shown.sourceName && shown.fromRoomSensor && (
-                          <span className="ml-1.5 text-xs">Raumfühler</span>
-                        )}
-                        {getRunningStateLabel(device.attributes) && (
-                          <span className="ml-2 text-xs">
-                            ({getRunningStateLabel(device.attributes)})
+                      <div className="text-sm text-muted-foreground space-y-0.5">
+                        <p>
+                          Ventil:{' '}
+                          <span className="font-semibold text-foreground">
+                            {shown.valveTemp != null ? `${shown.valveTemp.toFixed(1)}°C` : '—'}
                           </span>
+                          {getRunningStateLabel(device.attributes) && (
+                            <span className="ml-2 text-xs">
+                              ({getRunningStateLabel(device.attributes)})
+                            </span>
+                          )}
+                        </p>
+                        {shown.fromRoomSensor && (
+                          <p>
+                            {shown.sourceName ?? 'Raumfühler'}:{' '}
+                            <span className="font-semibold text-foreground">
+                              {shown.sensorTemp != null ? `${shown.sensorTemp.toFixed(1)}°C` : '—'}
+                            </span>
+                          </p>
                         )}
-                      </p>
+                      </div>
                       );
                     })()}
 
