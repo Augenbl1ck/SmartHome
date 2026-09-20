@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Automation;
+use App\Services\AutomationEngine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -25,7 +26,12 @@ class AutomationController extends Controller
             'retry_if_blocked' => 'sometimes|boolean',
         ]);
 
-        return response()->json(Automation::create($data), 201);
+        $automation = Automation::create($data);
+        if ($automation->enabled) {
+            app(AutomationEngine::class)->fireIfCurrentlyDue($automation);
+        }
+
+        return response()->json($automation->fresh(), 201);
     }
 
     public function show(Automation $automation): JsonResponse
@@ -51,13 +57,23 @@ class AutomationController extends Controller
             $data['blocked_retry_started_at'] = null;
         }
 
+        $wasEnabled = (bool) $automation->enabled;
         $automation->update($data);
+        $automation->refresh();
+
+        $engine = app(AutomationEngine::class);
+        if ($wasEnabled && ! $automation->enabled) {
+            $engine->forgetConditionEdge($automation);
+        } elseif (! $wasEnabled && $automation->enabled) {
+            $engine->fireIfCurrentlyDue($automation);
+        }
 
         return response()->json($automation);
     }
 
     public function destroy(Automation $automation): JsonResponse
     {
+        app(AutomationEngine::class)->forgetConditionEdge($automation);
         $automation->delete();
 
         return response()->json(null, 204);

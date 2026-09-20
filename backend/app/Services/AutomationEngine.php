@@ -151,7 +151,7 @@ class AutomationEngine
                 continue;
             }
 
-            $cacheKey = "automation:{$automation->id}:cond_met";
+            $cacheKey = $this->conditionEdgeKey($automation);
             $pass     = $this->conditionsPass($automation->conditions);
 
             if (!$pass) {
@@ -167,6 +167,43 @@ class AutomationEngine
             Log::info("[AutomationEngine] Conditions-Automation '{$automation->name}' ausgelöst");
             $this->executeAction($automation);
         }
+    }
+
+    /**
+     * Sofort ausführen, wenn die Bedingungen jetzt schon gelten
+     * (neue Automation oder wieder eingeschaltet).
+     */
+    public function fireIfCurrentlyDue(Automation $automation): void
+    {
+        if (!$automation->enabled || $this->isInterlock($automation) || !$this->isConditionsOnly($automation)) {
+            return;
+        }
+        if (!$this->hasConditionItems($automation)) {
+            return;
+        }
+        if (!$this->conditionsPass($automation->conditions)) {
+            $this->forgetConditionEdge($automation);
+            return;
+        }
+
+        $this->markConditionEdge($automation);
+        Log::info("[AutomationEngine] Automation '{$automation->name}' sofort ausgeführt (Bedingungen aktuell erfüllt)");
+        $this->executeAction($automation);
+    }
+
+    public function forgetConditionEdge(Automation $automation): void
+    {
+        Cache::forget($this->conditionEdgeKey($automation));
+    }
+
+    private function markConditionEdge(Automation $automation): void
+    {
+        Cache::put($this->conditionEdgeKey($automation), true, now()->addDays(7));
+    }
+
+    private function conditionEdgeKey(Automation $automation): string
+    {
+        return "automation:{$automation->id}:cond_met";
     }
 
     private function isConditionsOnly(Automation $automation): bool
