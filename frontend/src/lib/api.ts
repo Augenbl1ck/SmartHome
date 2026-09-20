@@ -615,6 +615,8 @@ export interface Automation {
     logic: 'and' | 'or';
     items: Record<string, unknown>[];
   } | null;
+  retry_if_blocked?: boolean;
+  blocked_retry_at?: string | null;
   enabled: boolean;
 }
 

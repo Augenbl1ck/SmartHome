@@ -45,7 +45,7 @@ class AutomationEngine
                 continue;
             }
             Log::info("[AutomationEngine] Automation '{$automation->name}' ausgelöst (Gerät: {$device->name})");
-            $this->executeAction($automation->action, $automation->name);
+            $this->executeAction($automation);
         }
     }
 
@@ -75,7 +75,7 @@ class AutomationEngine
                 }
                 Cache::put($cacheKey, true, now()->addMinutes(1));
                 Log::info("[AutomationEngine] Zeit-Automation '{$automation->name}' um {$time}");
-                $this->executeAction($automation->action, $automation->name);
+                $this->executeAction($automation);
             }
 
             if ($type === 'weekday_time'
@@ -91,9 +91,11 @@ class AutomationEngine
                 }
                 Cache::put($cacheKey, true, now()->addMinutes(1));
                 Log::info("[AutomationEngine] Wochentag-Automation '{$automation->name}' um {$time}");
-                $this->executeAction($automation->action, $automation->name);
+                $this->executeAction($automation);
             }
         }
+
+        $this->retryBlockedAutomations();
     }
 
     public function checkOnDurationTriggers(): void
@@ -134,7 +136,7 @@ class AutomationEngine
                 $attrs['on_duration_fired'] = true;
                 $device->update(['attributes' => $attrs]);
                 Log::info("[AutomationEngine] Dauertrigger '{$automation->name}': {$device->name} seit {$elapsed} Min. an");
-                $this->executeAction($automation->action, $automation->name);
+                $this->executeAction($automation);
             }
         }
     }
@@ -163,7 +165,7 @@ class AutomationEngine
 
             Cache::put($cacheKey, true, now()->addDays(7));
             Log::info("[AutomationEngine] Conditions-Automation '{$automation->name}' ausgelöst");
-            $this->executeAction($automation->action, $automation->name);
+            $this->executeAction($automation);
         }
     }
 
@@ -431,52 +433,133 @@ class AutomationEngine
     // Aktionsausführung
     // ─────────────────────────────────────────────────────────────────────────
 
-    private function executeAction(array $action, string $automationName = ''): void
-    {
-        $type = $action['type'] ?? '';
+    private const BLOCKED_RETRY_MINUTES = 5;
+    private const BLOCKED_RETRY_MAX_HOURS = 24;
 
-        // Multi-Action: Teilaktionen nacheinander, ein Log-Eintrag
-        if ($type === 'multi') {
-            $items = $action['actions'] ?? [];
-            if (!is_array($items)) {
-                return;
-            }
-            $summaries = [];
-            foreach ($items as $item) {
-                if (!is_array($item)) {
-                    continue;
-                }
-                $this->executeSingleAction($item);
-                $summaries[] = $this->describeAction($item);
-            }
-            if ($automationName !== '') {
-                $summary = implode(' + ', array_filter($summaries));
-                AutomationLog::create([
-                    'automation_name' => $automationName,
-                    'action_summary'  => $summary !== '' ? $summary : 'Mehrfachaktion',
-                    'fired_at'        => now(),
-                ]);
-                AutomationFired::dispatch($automationName, $summary !== '' ? $summary : 'Mehrfachaktion');
+    /**
+     * Führt die Automation aus. Bei Sperre optional alle 5 Minuten erneut versuchen.
+     * Retries prüfen die Wenn-Bedingungen nicht erneut (z.B. 22:00 bleibt gültig).
+     */
+    private function executeAction(Automation $automation, bool $isRetry = false): void
+    {
+        $action = $automation->action ?? [];
+        if (!is_array($action) || $action === []) {
+            return;
+        }
+
+        $ok = $this->runActionPayload($action);
+        $summary = $this->describeAction($action);
+
+        if ($ok) {
+            $this->clearBlockedRetry($automation);
+            $this->recordAutomationFired(
+                $automation,
+                $isRetry ? $summary . ' (nach Sperre ausgeführt)' : $summary,
+            );
+            if ($isRetry) {
+                Log::info("[AutomationEngine] Automation '{$automation->name}' nach Sperre erfolgreich ausgeführt");
             }
             return;
         }
 
-        $summary = $this->describeAction($action);
-        $this->executeSingleAction($action);
+        if ($automation->retry_if_blocked) {
+            $this->scheduleBlockedRetry($automation);
+            if (!$isRetry) {
+                Log::info("[AutomationEngine] Automation '{$automation->name}' durch Sperre blockiert, Wiederholung alle 5 Min.");
+                $this->recordAutomationFired($automation, $summary . ' (blockiert, Wiederholung alle 5 Min.)');
+            }
+            return;
+        }
 
-        if ($automationName) {
-            AutomationLog::create([
-                'automation_name' => $automationName,
-                'action_summary'  => $summary,
-                'fired_at'        => now(),
-            ]);
-            AutomationFired::dispatch($automationName, $summary);
+        if (!$isRetry) {
+            Log::info("[AutomationEngine] Automation '{$automation->name}' durch Sperre übersprungen");
+            $this->recordAutomationFired($automation, $summary . ' (durch Sperre blockiert)');
         }
     }
 
-    private function executeSingleAction(array $action): void
+    /**
+     * @param  array<string, mixed>  $action
+     */
+    private function runActionPayload(array $action): bool
     {
-        $this->actionExecutor->execute($action, allowActivateScene: true);
+        $type = $action['type'] ?? '';
+        if ($type === 'multi') {
+            $items = $action['actions'] ?? [];
+            if (!is_array($items)) {
+                return true;
+            }
+            $ok = true;
+            foreach ($items as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                if (!$this->actionExecutor->execute($item, allowActivateScene: true)) {
+                    $ok = false;
+                }
+            }
+
+            return $ok;
+        }
+
+        return $this->actionExecutor->execute($action, allowActivateScene: true);
+    }
+
+    private function retryBlockedAutomations(): void
+    {
+        $due = Automation::query()
+            ->where('enabled', true)
+            ->where('retry_if_blocked', true)
+            ->whereNotNull('blocked_retry_at')
+            ->where('blocked_retry_at', '<=', now())
+            ->get();
+
+        foreach ($due as $automation) {
+            if ($this->isInterlock($automation)) {
+                $this->clearBlockedRetry($automation);
+                continue;
+            }
+
+            $started = $automation->blocked_retry_started_at;
+            if ($started && $started->lt(now()->subHours(self::BLOCKED_RETRY_MAX_HOURS))) {
+                Log::info("[AutomationEngine] Automation '{$automation->name}': Wiederholung nach Sperre nach 24h aufgegeben");
+                $this->recordAutomationFired($automation, 'Wiederholung nach Sperre nach 24h aufgegeben');
+                $this->clearBlockedRetry($automation);
+                continue;
+            }
+
+            Log::info("[AutomationEngine] Automation '{$automation->name}': erneuter Versuch nach Sperre");
+            $this->executeAction($automation, isRetry: true);
+        }
+    }
+
+    private function scheduleBlockedRetry(Automation $automation): void
+    {
+        $automation->update([
+            'blocked_retry_at' => now()->addMinutes(self::BLOCKED_RETRY_MINUTES),
+            'blocked_retry_started_at' => $automation->blocked_retry_started_at ?? now(),
+        ]);
+    }
+
+    private function clearBlockedRetry(Automation $automation): void
+    {
+        if ($automation->blocked_retry_at === null && $automation->blocked_retry_started_at === null) {
+            return;
+        }
+        $automation->update([
+            'blocked_retry_at' => null,
+            'blocked_retry_started_at' => null,
+        ]);
+    }
+
+    private function recordAutomationFired(Automation $automation, string $summary): void
+    {
+        AutomationLog::create([
+            'automation_id'   => $automation->id,
+            'automation_name' => $automation->name,
+            'action_summary'  => $summary,
+            'fired_at'        => now(),
+        ]);
+        AutomationFired::dispatch($automation->name, $summary);
     }
 
     private function describeAction(array $action): string

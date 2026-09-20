@@ -155,6 +155,7 @@ interface FormState {
   actions: ActionFormItem[];
   blockDeviceId: string;
   blockStatus: ActionDeviceStatus | 'heat';
+  retryIfBlocked: boolean;
 }
 
 const emptyForm = (): FormState => ({
@@ -165,6 +166,7 @@ const emptyForm = (): FormState => ({
   actions: [newAction()],
   blockDeviceId: '',
   blockStatus: 'off',
+  retryIfBlocked: false,
 });
 
 function conditionFromJson(item: Record<string, unknown>): ConditionFormItem {
@@ -294,6 +296,7 @@ function automationToForm(a: Automation): FormState {
     actions: mappedActions.length > 0 ? mappedActions : [newAction()],
     blockDeviceId: ac.device_id != null ? String(ac.device_id) : '',
     blockStatus: (ac.status as FormState['blockStatus']) ?? 'off',
+    retryIfBlocked: Boolean(a.retry_if_blocked),
   };
 }
 
@@ -711,6 +714,9 @@ function AutomationCard({
           <CardTitle className="text-base truncate">{automation.name}</CardTitle>
           {!automation.enabled && (
             <Badge variant="secondary" className="text-xs shrink-0">Deaktiviert</Badge>
+          )}
+          {automation.retry_if_blocked && !isLock && (
+            <Badge variant="outline" className="text-xs shrink-0">Bei Sperre alle 5 Min.</Badge>
           )}
           {extraBadge && (
             <Badge variant="outline" className="text-xs shrink-0 max-w-[14rem] truncate" title={extraBadge}>
@@ -1172,6 +1178,7 @@ export default function AutomationsClient({ initialAutomations, devices: devices
             trigger: { type: 'conditions' },
             action: buildAction(form),
             conditions: buildConditions(form),
+            retry_if_blocked: form.retryIfBlocked,
           };
       if (editing) {
         const updated = await api.updateAutomation(editing.id, payload);
@@ -2260,6 +2267,21 @@ export default function AutomationsClient({ initialAutomations, devices: devices
                 </div>
               );
             })()}
+
+            {form.kind === 'automation' && (
+              <div className="flex items-start justify-between gap-3 rounded-lg border p-4">
+                <div className="space-y-0.5 pr-2">
+                  <p className="text-sm font-medium">Bei Sperre erneut versuchen</p>
+                  <p className="text-xs text-muted-foreground">
+                    Wenn eine Sperre die Aktion verhindert, alle 5 Minuten neu versuchen, bis sie durchgeht (höchstens 24 Stunden).
+                  </p>
+                </div>
+                <Switch
+                  checked={form.retryIfBlocked}
+                  onCheckedChange={(v) => patchForm({ retryIfBlocked: v })}
+                />
+              </div>
+            )}
 
             {dialog.error && <p className="text-sm text-destructive">{dialog.error}</p>}
           </div>

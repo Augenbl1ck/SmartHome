@@ -22,6 +22,7 @@ class AutomationController extends Controller
             'action'     => 'required|array',
             'conditions' => 'nullable|array',
             'enabled'    => 'sometimes|boolean',
+            'retry_if_blocked' => 'sometimes|boolean',
         ]);
 
         return response()->json(Automation::create($data), 201);
@@ -40,7 +41,15 @@ class AutomationController extends Controller
             'action'     => 'sometimes|array',
             'conditions' => 'nullable|array',
             'enabled'    => 'sometimes|boolean',
+            'retry_if_blocked' => 'sometimes|boolean',
         ]);
+
+        if ((array_key_exists('enabled', $data) && $data['enabled'] === false)
+            || (array_key_exists('retry_if_blocked', $data) && $data['retry_if_blocked'] === false)
+        ) {
+            $data['blocked_retry_at'] = null;
+            $data['blocked_retry_started_at'] = null;
+        }
 
         $automation->update($data);
 
