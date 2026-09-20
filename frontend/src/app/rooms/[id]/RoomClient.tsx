@@ -6,14 +6,13 @@ import { api, Device, Room } from '@/lib/api';
 import { shellyBle, BleState } from '@/lib/bluetooth';
 import { deviceIcons, isSensor, isToggleable, isComputer, countsAsActive, getDeviceColors, getDeviceEmoji, commandBlocked, nextCommandBlocked, numericAttr, isRoomTempSensor, temperatureSourceDeviceId, thermostatDisplayTemp } from '@/lib/devices';
 import { DeviceType } from '@/lib/api';
-import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, Star, ChevronUp, ChevronDown, Square, Minus, Plus, PowerOff, Loader2, Power, Lock, Unlock, Wind, Settings } from 'lucide-react';
+import { ArrowLeft, Bluetooth, BluetoothConnected, BluetoothOff, ChevronUp, ChevronDown, Square, Minus, Plus, PowerOff, Loader2, Power, Lock, Unlock, Wind, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import DeviceHistory from '@/components/DeviceHistory';
 import SensorDayStats from '@/components/SensorDayStats';
 import ShellyPlugPanel from '@/components/ShellyPlugPanel';
 import ZigbeePlugPanel from '@/components/ZigbeePlugPanel';
 import ThermostatAdvancedPanel from '@/components/ThermostatAdvancedPanel';
-import { loadFavoritesLocal, saveFavorites, syncFavoritesFromServer } from '@/lib/favorites';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { holdDeviceStatus, clearDeviceStatusHold, reconcileRemoteDevice, reconcileRemoteStatus } from '@/lib/device-status-hold';
 import { getEcho } from '@/lib/echo';
@@ -89,13 +88,6 @@ function hasMac(device: Device): boolean {
   return !!(device.attributes?.ble_address as string | undefined)?.trim();
 }
 
-function loadFavs(): number[] {
-  return loadFavoritesLocal();
-}
-function saveFavs(ids: number[]) {
-  void saveFavorites(ids);
-}
-
 export default function RoomClient({ roomId, room: roomProp, initialDevices }: Props) {
   const router = useRouter();
   const storeRoom = useSmartHomeStore(s => s.rooms.find(r => r.id === roomId) ?? null);
@@ -109,7 +101,6 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
   const [pending, setPending]     = useState<Set<number>>(new Set());
   const [bleStates, setBleStates] = useState<Map<number, BleState>>(new Map());
   const [bleError, setBleError]   = useState<string | null>(null);
-  const [favorites, setFavorites] = useState<number[]>([]);
   const [scanDevice, setScanDevice] = useState<Device | null>(null);
   const [turningOff, setTurningOff] = useState(false);
   const [wakeHint, setWakeHint] = useState<number | null>(null);
@@ -194,11 +185,6 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
     return () => window.clearTimeout(t);
   }, [room]);
 
-  useEffect(() => {
-    setFavorites(loadFavs());
-    void syncFavoritesFromServer().then(setFavorites);
-  }, []);
-
   // Gerätezustand-Updates von anderen Komponenten empfangen (lokale Events bei Klick)
   useEffect(() => {
     const handler = (e: Event) => {
@@ -250,14 +236,6 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId]);
-
-  const toggleFav = (id: number) => {
-    setFavorites(prev => {
-      const next = prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id];
-      saveFavs(next);
-      return next;
-    });
-  };
 
   // BLE-State-Listener registrieren + Auto-Connect beim Laden
   useEffect(() => {
@@ -619,7 +597,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                 isPending && 'opacity-60',
               )}
             >
-              {/* ── Icon + Name + Power-Button + Favoriten-Stern ── */}
+              {/* ── Icon + Name + Power-Button ── */}
               <div className="flex items-start gap-3">
                 <div className={cn(
                   'h-12 w-12 rounded-xl flex items-center justify-center shrink-0 transition-all duration-300 ease-in-out',
@@ -687,15 +665,6 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                     <Power className="h-5 w-5" />
                   </button>
                 )}
-
-                {/* Favoriten-Stern */}
-                <button
-                  onClick={e => { e.stopPropagation(); toggleFav(device.id); }}
-                  className="cursor-pointer h-9 w-9 flex items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0"
-                  aria-label="Favorit"
-                >
-                  <Star className={cn('h-4 w-4', favorites.includes(device.id) ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground/30')} />
-                </button>
               </div>
 
               {/* ── Controls (event isolation, flex-1) ──────────────── */}
