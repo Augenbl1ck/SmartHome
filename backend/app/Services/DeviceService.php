@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Events\DeviceStatusUpdated;
 use App\Exceptions\DeviceCommandBlockedException;
 use App\Models\Device;
 use App\Models\DeviceLog;
@@ -36,7 +37,7 @@ class DeviceService
             throw new DeviceCommandBlockedException($device, $status, $reason);
         }
 
-        $protocol = $device->attributes['protocol'] ?? 'simple';
+        $protocol = $device->extra()['protocol'] ?? 'simple';
 
         if ($protocol === 'wake_on_lan' || $device->type === 'computer') {
             $this->sendWakeOnLan($device, $status);
@@ -50,11 +51,16 @@ class DeviceService
             return;
         }
 
-        match (true) {
-            $protocol === 'shelly_gen3_http'      => $this->sendHttp($device, $status),
-            $protocol === 'bluetooth_shelly_gen3' => $this->sendBleBridge($device, $status),
-            default                               => $this->sendMqtt($device, $status),
-        };
+        $mode = strtolower($status);
+        if ($device->type === 'thermostat' && in_array($mode, ['off', 'heat', 'auto', 'on'], true)) {
+            $this->sendThermostatSystemMode($device, $mode === 'on' ? 'heat' : $mode);
+        } else {
+            match (true) {
+                $protocol === 'shelly_gen3_http'      => $this->sendHttp($device, $status),
+                $protocol === 'bluetooth_shelly_gen3' => $this->sendBleBridge($device, $status),
+                default                               => $this->sendMqtt($device, $status),
+            };
+        }
 
         DeviceLog::create([
             'device_id'   => $device->id,
@@ -63,8 +69,8 @@ class DeviceService
         ]);
 
         $normalized = strtolower($status);
-        if (in_array($normalized, ['on', 'off'], true)) {
-            $device->markCommandedStatus($normalized);
+        if (in_array($normalized, ['on', 'off', 'heat', 'auto'], true)) {
+            $device->markCommandedStatus($normalized === 'on' ? 'heat' : $normalized, 20);
         }
     }
 
@@ -81,6 +87,28 @@ class DeviceService
         }
 
         $this->wakeOnLan->wakeDevice($device);
+    }
+
+    /**
+     * TRVZB ignoriert system_mode oft, solange Boost/Timer läuft.
+     * Beim Aus: zuerst Dauer 0, dann off — in einem Payload, Reihenfolge zählt.
+     */
+    private function sendThermostatSystemMode(Device $device, string $mode): void
+    {
+        $payload = ['system_mode' => $mode];
+        if ($mode === 'off') {
+            $payload = [
+                'temporary_mode_duration' => 0,
+                'system_mode' => 'off',
+            ];
+            $attrs = $device->extra();
+            $attrs['temporary_mode_duration'] = 0;
+            $attrs['temporary_mode_select'] = '';
+            $attrs['temporary_mode_until'] = null;
+            $attrs['running_state'] = 'idle';
+            $device->update(['attributes' => $attrs]);
+        }
+        $this->publishMqttJson($device, $payload);
     }
 
     // -------------------------------------------------------------------------
@@ -153,7 +181,7 @@ class DeviceService
             throw new \RuntimeException("Kein MQTT-Topic für {$device->name}");
         }
 
-        $protocol = $device->attributes['protocol'] ?? 'simple';
+        $protocol = $device->extra()['protocol'] ?? 'simple';
         [$topic, $payload] = $this->buildMqttCommand($device, $protocol, $status);
 
         try {
@@ -163,7 +191,8 @@ class DeviceService
                 'laravel-ds-' . uniqid()
             );
             $mqtt->connect(MqttHelper::settings(3), true);
-            $mqtt->publish($topic, $payload, 0);
+            $qos = $protocol === 'zigbee2mqtt' ? 1 : 0;
+            $mqtt->publish($topic, $payload, $qos);
             $mqtt->disconnect();
         } catch (\Exception $e) {
             throw new \RuntimeException("[DeviceService] MQTT nicht verfügbar: " . $e->getMessage(), 0, $e);
@@ -183,52 +212,45 @@ class DeviceService
         }
 
         $type = (string) ($command['command'] ?? '');
-        $payload = [];
         $attrsPatch = [];
 
         switch ($type) {
             case 'boost':
-                $duration = max(0, min(180, (int) ($command['duration'] ?? 30)));
-                $payload = [
+                $duration = max(1, min(180, (int) ($command['duration'] ?? 30)));
+                $restore = $this->captureBoostRestore($device);
+                // TRVZB: Dauer VOR dem Modus schreiben, sonst startet Boost ohne Timer.
+                $this->publishMqttJson($device, ['temporary_mode_duration' => $duration]);
+                $this->publishMqttJson($device, ['temporary_mode_select' => 'boost']);
+                $attrsPatch = array_merge($restore, [
                     'temporary_mode_select'   => 'boost',
                     'temporary_mode_duration' => $duration,
-                ];
-                $attrsPatch = [
-                    'temporary_mode_select'   => 'boost',
-                    'temporary_mode_duration' => $duration,
-                ];
+                    'temporary_mode_until'    => now()->addMinutes($duration)->toIso8601String(),
+                ]);
                 break;
 
             case 'timer':
-                $duration = max(0, min(1440, (int) ($command['duration'] ?? 60)));
+                $duration = max(1, min(1440, (int) ($command['duration'] ?? 60)));
                 $temp = round((float) ($command['temperature'] ?? 21), 1);
                 $temp = max(4.0, min(35.0, $temp));
-                $payload = [
+                $restore = $this->captureBoostRestore($device);
+                $this->publishMqttJson($device, ['temporary_mode_duration' => $duration]);
+                $this->publishMqttJson($device, ['timer_mode_target_temp' => $temp]);
+                $this->publishMqttJson($device, ['temporary_mode_select' => 'timer']);
+                $attrsPatch = array_merge($restore, [
                     'temporary_mode_select'   => 'timer',
                     'temporary_mode_duration' => $duration,
+                    'temporary_mode_until'    => now()->addMinutes($duration)->toIso8601String(),
                     'timer_mode_target_temp'  => $temp,
-                ];
-                $attrsPatch = [
-                    'temporary_mode_select'   => 'timer',
-                    'temporary_mode_duration' => $duration,
-                    'timer_mode_target_temp'  => $temp,
-                ];
+                ]);
                 break;
 
             case 'clear_boost':
-                $payload = [
-                    'temporary_mode_duration' => 0,
-                ];
-                $attrsPatch = [
-                    'temporary_mode_duration' => 0,
-                ];
+                $attrsPatch = $this->clearTemporaryMode($device);
                 break;
 
             default:
                 throw new \InvalidArgumentException('Unbekannter Thermostat-Befehl');
         }
-
-        $this->publishMqttJson($device, $payload);
 
         DeviceLog::create([
             'device_id'   => $device->id,
@@ -237,6 +259,118 @@ class DeviceService
         ]);
 
         return $attrsPatch;
+    }
+
+    /**
+     * Boost/Timer beenden: Dauer 0 + alte Solltemperatur (sonst bleibt 35 °C).
+     *
+     * @return array<string, mixed>
+     */
+    public function clearTemporaryMode(Device $device): array
+    {
+        $attrs = $device->extra();
+        $setpoint = $this->restoreSetpointFrom($attrs);
+        $mode = $this->restoreSystemModeFrom($attrs);
+
+        $this->publishMqttJson($device, ['temporary_mode_duration' => 0]);
+        $this->publishMqttJson($device, [
+            'occupied_heating_setpoint' => $setpoint,
+            'system_mode' => $mode,
+        ]);
+
+        return [
+            'temporary_mode_duration' => 0,
+            'temporary_mode_select'   => '',
+            'temporary_mode_until'    => null,
+            'setpoint'                => $setpoint,
+        ];
+    }
+
+    public function expireTemporaryModes(): int
+    {
+        $n = 0;
+        Device::query()
+            ->where('type', 'thermostat')
+            ->where('active', true)
+            ->get()
+            ->each(function (Device $device) use (&$n) {
+                $until = $device->extra()['temporary_mode_until'] ?? null;
+                if (! is_string($until) || $until === '') {
+                    return;
+                }
+                $ts = strtotime($until);
+                if ($ts === false || $ts > time()) {
+                    return;
+                }
+                try {
+                    $patch = $this->clearTemporaryMode($device);
+                } catch (\Throwable $e) {
+                    Log::warning('[Thermostat] Boost-Ende '.$device->name.': '.$e->getMessage());
+
+                    return;
+                }
+                $device->update(['attributes' => array_merge($device->extra(), $patch)]);
+                $fresh = $device->fresh();
+                if ($fresh) {
+                    DeviceStatusUpdated::dispatch($fresh);
+                }
+                $n++;
+            });
+
+        return $n;
+    }
+
+    /**
+     * @return array{boost_restore_setpoint: float, boost_restore_system_mode: string}
+     */
+    private function captureBoostRestore(Device $device): array
+    {
+        $attrs = $device->extra();
+        $alreadyOn = (int) ($attrs['temporary_mode_duration'] ?? 0) > 0
+            && ! empty($attrs['temporary_mode_until']);
+        if ($alreadyOn && isset($attrs['boost_restore_setpoint'])) {
+            return [
+                'boost_restore_setpoint' => (float) $attrs['boost_restore_setpoint'],
+                'boost_restore_system_mode' => $this->restoreSystemModeFrom($attrs),
+            ];
+        }
+        $setpoint = (float) ($attrs['setpoint'] ?? 20);
+        if ($setpoint < 4 || $setpoint > 33) {
+            $setpoint = 20.0;
+        }
+        $mode = strtolower((string) ($attrs['system_mode'] ?? $device->status ?? 'heat'));
+        if (! in_array($mode, ['off', 'auto', 'heat'], true)) {
+            $mode = 'heat';
+        }
+
+        return [
+            'boost_restore_setpoint' => $setpoint,
+            'boost_restore_system_mode' => $mode,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $attrs
+     */
+    private function restoreSetpointFrom(array $attrs): float
+    {
+        $sp = $attrs['boost_restore_setpoint'] ?? $attrs['setpoint'] ?? 20;
+        $sp = is_numeric($sp) ? (float) $sp : 20.0;
+        if ($sp < 4 || $sp > 33) {
+            return 20.0;
+        }
+
+        return round($sp, 1);
+    }
+
+    /**
+     * @param  array<string, mixed>  $attrs
+     */
+    private function restoreSystemModeFrom(array $attrs): string
+    {
+        $mode = strtolower((string) ($attrs['boost_restore_system_mode'] ?? $attrs['system_mode'] ?? 'heat'));
+
+        return in_array($mode, ['off', 'auto', 'heat'], true) ? $mode : 'heat';
     }
 
     public function sensorTemperature(Device $device): ?float
@@ -358,7 +492,7 @@ class DeviceService
                 'laravel-ds-json-' . uniqid()
             );
             $mqtt->connect(MqttHelper::settings(3), true);
-            $mqtt->publish($topic, $json, 0);
+            $mqtt->publish($topic, $json, 1);
             $mqtt->disconnect();
         } catch (\Exception $e) {
             throw new \RuntimeException("[DeviceService] MQTT nicht verfügbar: " . $e->getMessage(), 0, $e);

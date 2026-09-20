@@ -131,6 +131,8 @@ class DeviceController extends Controller
             return response()->json(['error' => $e->getMessage()], 503);
         }
 
+        $device->refresh();
+
         // Wake-on-LAN: Status kommt vom Ping, nicht vom Magic Packet
         if ($device->isWakeOnLan()) {
             $device->update(['last_seen' => now()]);
@@ -140,7 +142,7 @@ class DeviceController extends Controller
 
         // Thermostat: Solltemperatur → attributes.setpoint; Caps → attributes; Mode → status
         if ($device->type === 'thermostat') {
-            $attrs = $device->attributes ?? [];
+            $attrs = $device->extra();
 
             if (is_numeric($status)) {
                 $attrs['setpoint'] = (float) $status;
@@ -178,10 +180,18 @@ class DeviceController extends Controller
                     'attributes' => $attrs,
                     'last_seen'  => now(),
                 ]);
-            } elseif (in_array(strtolower($status), ['off', 'auto', 'heat'], true)) {
+            } elseif (in_array(strtolower($status), ['off', 'auto', 'heat', 'on'], true)) {
+                $mode = strtolower($status) === 'on' ? 'heat' : strtolower($status);
+                if ($mode === 'off') {
+                    $attrs['temporary_mode_duration'] = 0;
+                    $attrs['temporary_mode_select'] = '';
+                    $attrs['temporary_mode_until'] = null;
+                    $attrs['running_state'] = 'idle';
+                }
                 $device->update([
-                    'status'    => strtolower($status),
-                    'last_seen' => now(),
+                    'status'     => $mode,
+                    'attributes' => $attrs,
+                    'last_seen'  => now(),
                 ]);
             } else {
                 $device->update(['last_seen' => now()]);
@@ -221,7 +231,7 @@ class DeviceController extends Controller
             return response()->json(['error' => $e->getMessage()], 503);
         }
 
-        $attrs = array_merge($device->attributes ?? [], $patch);
+        $attrs = array_merge($device->extra(), $patch);
         $device->update([
             'attributes' => $attrs,
             'last_seen'  => now(),

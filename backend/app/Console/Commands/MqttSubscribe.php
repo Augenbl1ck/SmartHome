@@ -304,6 +304,9 @@ class MqttSubscribe extends Command
         }
         if (isset($data['temporary_mode_duration']) && is_numeric($data['temporary_mode_duration'])) {
             $attrs['temporary_mode_duration'] = (int) $data['temporary_mode_duration'];
+            if ($attrs['temporary_mode_duration'] <= 0) {
+                $attrs['temporary_mode_until'] = null;
+            }
         }
         if (isset($data['timer_mode_target_temp']) && is_numeric($data['timer_mode_target_temp'])) {
             $attrs['timer_mode_target_temp'] = round((float) $data['timer_mode_target_temp'], 1);

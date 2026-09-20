@@ -92,7 +92,7 @@ class Device extends Model
 
     public function shouldIgnoreReportedStatus(string $reported): bool
     {
-        if (! in_array($reported, ['on', 'off'], true)) {
+        if (! in_array($reported, ['on', 'off', 'heat', 'auto'], true)) {
             return false;
         }
         $attrs = $this->extra();

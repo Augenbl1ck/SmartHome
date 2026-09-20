@@ -82,7 +82,9 @@ function isActiveLook(device: Device): boolean {
   const type = device.type as DeviceType;
   if (isOnOffToggle(type)) return device.status === 'on';
   if (isCoverLike(type)) return device.status === 'open';
-  if (type === 'thermostat') return device.status === 'heat' || String(device.attributes?.running_state).toLowerCase() === 'heat';
+  if (type === 'thermostat') {
+    return ['auto', 'heat', 'on'].includes(device.status);
+  }
   if (type === 'computer') return device.status === 'on';
   if (type === 'sensor_motion') return device.status === 'on';
   if (type === 'sensor_door') return device.status === 'open';

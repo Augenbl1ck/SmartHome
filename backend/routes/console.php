@@ -22,3 +22,4 @@ Schedule::command('dashboard:refresh-cache --only=transit')->everyMinute();
 Schedule::command('dashboard:refresh-cache --only=energy')->everyMinute();
 Schedule::command('dashboard:refresh-cache --only=weather')->everyTenMinutes();
 Schedule::command('thermostats:sync-external-temp')->everyThirtyMinutes();
+Schedule::command('thermostats:expire-temporary-mode')->everyMinute();

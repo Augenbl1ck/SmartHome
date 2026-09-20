@@ -42,6 +42,13 @@ export function getRunningStateLabel(attrs?: Record<string, unknown> | null): st
 }
 
 export function getBoostRemainingMinutes(attrs?: Record<string, unknown> | null): number {
+  const until = attrs?.temporary_mode_until;
+  if (typeof until === 'string' && until) {
+    const ms = Date.parse(until) - Date.now();
+    if (Number.isFinite(ms)) {
+      return Math.max(0, Math.ceil(ms / 60_000));
+    }
+  }
   const n = Number(attrs?.temporary_mode_duration);
   return Number.isFinite(n) && n > 0 ? n : 0;
 }

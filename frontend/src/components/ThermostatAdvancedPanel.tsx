@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, Device } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { getBoostRemainingMinutes } from '@/lib/thermostat-capabilities';
 import { Loader2, Flame, Timer } from 'lucide-react';
 
 const BOOST_DURATIONS = [15, 30, 60, 90, 180] as const;
@@ -16,10 +17,17 @@ interface Props {
 
 export default function ThermostatAdvancedPanel({ device, disabled, onUpdated }: Props) {
   const attrs = device.attributes ?? {};
-  const tempActive = Number(attrs.temporary_mode_duration ?? 0) > 0;
+  const [, setTick] = useState(0);
+  const tempMins = getBoostRemainingMinutes(attrs);
+  const tempActive = tempMins > 0;
   const tempMode = String(attrs.temporary_mode_select ?? '');
-  const tempMins = Number(attrs.temporary_mode_duration ?? 0);
   const timerTarget = Number(attrs.timer_mode_target_temp ?? 21);
+
+  useEffect(() => {
+    if (!tempActive) return;
+    const id = window.setInterval(() => setTick((n) => n + 1), 15_000);
+    return () => window.clearInterval(id);
+  }, [tempActive]);
 
   const [boostDuration, setBoostDuration] = useState(30);
   const [timerDuration, setTimerDuration] = useState(60);
