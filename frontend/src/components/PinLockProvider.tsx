@@ -6,7 +6,7 @@
  * Exportiert usePinLockContext für Komponenten die lock/unlock aufrufen wollen.
  */
 
-import { createContext, useContext, useEffect, useLayoutEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { usePinLock, PinLockState } from '@/hooks/usePinLock';
 import PinLockScreen from '@/components/PinLockScreen';
 
@@ -36,6 +36,29 @@ export default function PinLockProvider({ children }: { children: React.ReactNod
       active.blur();
     }
   }, [state.enabled, state.locked, state.screenOff, state.displayPoweredOff]);
+
+  // Letzte PIN-Ziffer: Overlay ist weg, der gleiche Touch trifft sonst z.B. einen Raum.
+  const wasLocked = useRef(state.locked);
+  useEffect(() => {
+    const justUnlocked = wasLocked.current && !state.locked;
+    wasLocked.current = state.locked;
+    if (!justUnlocked) return;
+    const swallow = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    window.addEventListener('click', swallow, true);
+    window.addEventListener('pointerup', swallow, true);
+    const t = window.setTimeout(() => {
+      window.removeEventListener('click', swallow, true);
+      window.removeEventListener('pointerup', swallow, true);
+    }, 400);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener('click', swallow, true);
+      window.removeEventListener('pointerup', swallow, true);
+    };
+  }, [state.locked]);
 
   const showPin = mounted && state.enabled && state.locked;
   const showBlack = mounted && state.screenOff && !state.displayPoweredOff;

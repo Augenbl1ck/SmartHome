@@ -20,7 +20,27 @@ const KEYS = {
   lockTimeout:   'smarthome_lock_timeout',
   screenTimeout: 'smarthome_screen_off_timeout',
   screenPowerOff: 'smarthome_screen_power_off',
+  sessionUnlocked: 'smarthome_pin_unlocked',
 } as const;
+
+function isSessionUnlocked(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return sessionStorage.getItem(KEYS.sessionUnlocked) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function setSessionUnlocked(on: boolean) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (on) sessionStorage.setItem(KEYS.sessionUnlocked, '1');
+    else sessionStorage.removeItem(KEYS.sessionUnlocked);
+  } catch {
+    /* private mode */
+  }
+}
 
 function persistToServer(patch: {
   pin_hash?: string | null;
@@ -172,6 +192,9 @@ export function usePinLock(): PinLockState {
   const [enabled,       setEnabled]       = useState(() => typeof window !== 'undefined' ? load<boolean>(KEYS.enabled, false) : false);
   const [locked,        setLocked]        = useState(() => {
     if (typeof window === 'undefined') return false;
+    // Tab-Session: nach Unlock nicht wieder sperren, wenn React/Next den Baum neu aufhängt
+    // (erster Klick nach dem Laden, z.B. auf einen Raum).
+    if (isSessionUnlocked()) return false;
     return load<boolean>(KEYS.enabled, false) && !!localStorage.getItem(KEYS.hash);
   });
   const [screenOff,     setScreenOff]     = useState(false);
@@ -184,7 +207,7 @@ export function usePinLock(): PinLockState {
   const lastActivity = useRef<number>(Date.now());
   const intervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   // Server-Settings kommen asynchron — nach erfolgreichem Unlock nicht wieder sperren.
-  const unlockedThisSession = useRef(false);
+  const unlockedThisSession = useRef(isSessionUnlocked());
   const displayOffSent = useRef(false);
   const screenPowerOffRef = useRef(screenPowerOff);
   screenPowerOffRef.current = screenPowerOff;
@@ -226,8 +249,11 @@ export function usePinLock(): PinLockState {
         setScreenTimeoutS(s.screen_timeout);
         save(KEYS.screenPowerOff, !!s.screen_power_off);
         setScreenPowerOffS(!!s.screen_power_off);
-        if (s.pin_enabled && s.pin_hash && !unlockedThisSession.current) {
+        if (s.pin_enabled && s.pin_hash && !unlockedThisSession.current && !isSessionUnlocked()) {
           setLocked(true);
+        } else if (isSessionUnlocked()) {
+          unlockedThisSession.current = true;
+          setLocked(false);
         }
       } catch {
         /* API down — weiter mit localStorage */
@@ -266,6 +292,8 @@ export function usePinLock(): PinLockState {
       const powerOff = load<boolean>(KEYS.screenPowerOff, false);
 
       if (pinOn && lt > 0 && idle >= lt) {
+        unlockedThisSession.current = false;
+        setSessionUnlocked(false);
         setLocked(true);
       }
       if (st > 0 && idle >= st) {
@@ -309,6 +337,7 @@ export function usePinLock(): PinLockState {
     const hash = await sha256(pin);
     if (hash === stored) {
       unlockedThisSession.current = true;
+      setSessionUnlocked(true);
       setLocked(false);
       setScreenOff(false);
       if (displayOffSent.current) {
@@ -324,6 +353,8 @@ export function usePinLock(): PinLockState {
 
   const lock = useCallback(() => {
     clearTimers();
+    unlockedThisSession.current = false;
+    setSessionUnlocked(false);
     setLocked(true);
   }, [clearTimers]);
 
@@ -374,6 +405,8 @@ export function usePinLock(): PinLockState {
     setHasPin(false);
     setEnabled(false);
     setLocked(false);
+    unlockedThisSession.current = false;
+    setSessionUnlocked(false);
     clearTimers();
     persistToServer({ pin_hash: null, pin_enabled: false });
   }, [clearTimers]);

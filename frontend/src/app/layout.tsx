@@ -49,7 +49,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             try {
               var en  = JSON.parse(localStorage.getItem('smarthome_pin_enabled') || 'false');
               var has = !!localStorage.getItem('smarthome_pin_hash');
-              if (en && has) {
+              var unlocked = false;
+              try { unlocked = sessionStorage.getItem('smarthome_pin_unlocked') === '1'; } catch (e) {}
+              if (en && has && !unlocked) {
                 var d = document.createElement('div');
                 d.id = 'pin-blocker';
                 d.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#09090b';
