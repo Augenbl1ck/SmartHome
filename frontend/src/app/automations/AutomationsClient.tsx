@@ -54,6 +54,8 @@ type ConditionType =
   | 'temperature_below'
   | 'humidity_above'
   | 'humidity_below'
+  | 'power_above'
+  | 'power_below'
   | 'door_open'
   | 'door_closed'
   | 'motion'
@@ -370,6 +372,8 @@ function buildConditions(f: FormState): { logic: ConditionLogic; items: Record<s
       case 'temperature_below':
       case 'humidity_above':
       case 'humidity_below':
+      case 'power_above':
+      case 'power_below':
         return { type: c.type, device_id: Number(c.deviceId), threshold: Number(c.threshold) };
       case 'door_open':
       case 'door_closed':
@@ -433,6 +437,10 @@ function describeConditionItem(item: Record<string, unknown>, devices: Device[])
       return `Feuchte (${dev(item.device_id)}) > ${item.threshold}%`;
     case 'humidity_below':
       return `Feuchte (${dev(item.device_id)}) < ${item.threshold}%`;
+    case 'power_above':
+      return `Leistung (${dev(item.device_id)}) > ${item.threshold} W`;
+    case 'power_below':
+      return `Leistung (${dev(item.device_id)}) < ${item.threshold} W`;
     case 'door_open':
       return `"${dev(item.device_id)}" ist offen`;
     case 'door_closed':
@@ -840,6 +848,7 @@ function getTriggerIcon(type: string) {
   if (type === 'time' || type === 'weekday_time' || type === 'time_at' || type === 'sunrise' || type === 'sunset') return Clock;
   if (type === 'temperature_above' || type === 'temperature_below') return Thermometer;
   if (type === 'humidity_above' || type === 'humidity_below') return Droplets;
+  if (type === 'power_above' || type === 'power_below') return Gauge;
   if (type === 'motion') return Activity;
   if (type === 'door_open' || type === 'door_closed') return DoorOpen;
   if (type === 'device_on_duration') return Timer;
@@ -1073,7 +1082,7 @@ export default function AutomationsClient({ initialAutomations, devices: devices
       const label = `Bedingung ${i + 1}`;
       const needsCondDevice: ConditionType[] = [
         'device_status', 'temperature_above', 'temperature_below',
-        'humidity_above', 'humidity_below', 'door_open', 'door_closed', 'motion',
+        'humidity_above', 'humidity_below', 'power_above', 'power_below', 'door_open', 'door_closed', 'motion',
         'child_lock', 'open_window',
       ];
       if (needsCondDevice.includes(c.type) && !c.deviceId)
@@ -1099,6 +1108,8 @@ export default function AutomationsClient({ initialAutomations, devices: devices
         if (!Number.isFinite(off) || off < -120 || off > 120)
           return `${label}: Offset muss zwischen -120 und +120 Minuten liegen.`;
       }
+      if ((c.type === 'power_above' || c.type === 'power_below') && !Number.isFinite(Number(c.threshold)))
+        return `${label}: bitte eine Leistung in Watt angeben.`;
       if ((c.type === 'child_lock' || c.type === 'open_window') && !c.value)
         return `${label}: bitte einen Wert waehlen.`;
     }
@@ -1210,6 +1221,9 @@ export default function AutomationsClient({ initialAutomations, devices: devices
   const motionSensors = devices.filter((d) => d.type === 'sensor_motion');
   const doorSensors = devices.filter((d) => d.type === 'sensor_door');
   const thermostats = devices.filter((d) => d.type === 'thermostat');
+  const powerDevices = devices.filter((d) =>
+    d.type === 'plug' || d.type === 'switch' || d.type === 'energy_meter' || d.attributes?.power_w != null
+  );
   const switchableDevices = devices.filter((d) => SWITCHABLE_TYPES.includes(d.type));
 
   const regularAutomations = automations.filter((a) => !isInterlockAutomation(a));
@@ -1478,12 +1492,15 @@ export default function AutomationsClient({ initialAutomations, devices: devices
 
                 const condNeedsTemp = cond.type === 'temperature_above' || cond.type === 'temperature_below';
                 const condNeedsHum = cond.type === 'humidity_above' || cond.type === 'humidity_below';
+                const condNeedsPower = cond.type === 'power_above' || cond.type === 'power_below';
                 const condNeedsDoor = cond.type === 'door_open' || cond.type === 'door_closed';
                 const condNeedsThermo = cond.type === 'child_lock' || cond.type === 'open_window';
                 const condDeviceList = condNeedsTemp
                   ? tempSensors
                   : condNeedsHum
                     ? humiditySensors
+                    : condNeedsPower
+                      ? powerDevices
                     : condNeedsDoor
                       ? doorSensors
                       : cond.type === 'motion'
@@ -1524,6 +1541,8 @@ export default function AutomationsClient({ initialAutomations, devices: devices
                           const patch: Partial<ConditionFormItem> = { type, deviceId: '' };
                           if (type === 'temperature_above' || type === 'temperature_below') patch.threshold = '22';
                           if (type === 'humidity_above' || type === 'humidity_below') patch.threshold = '70';
+                          if (type === 'power_above') patch.threshold = '20';
+                          if (type === 'power_below') patch.threshold = '5';
                           if (type === 'time_at') patch.time = '08:00';
                           if (type === 'sunrise' || type === 'sunset') patch.offsetMinutes = '0';
                           if (type === 'child_lock') patch.value = 'LOCK';
@@ -1548,6 +1567,8 @@ export default function AutomationsClient({ initialAutomations, devices: devices
                             <SelectItem value="temperature_below">Temperatur unter</SelectItem>
                             <SelectItem value="humidity_above">Feuchte ueber</SelectItem>
                             <SelectItem value="humidity_below">Feuchte unter</SelectItem>
+                            <SelectItem value="power_above">Leistung über</SelectItem>
+                            <SelectItem value="power_below">Leistung unter</SelectItem>
                             <SelectItem value="door_open">Tuer/Fenster ist offen</SelectItem>
                             <SelectItem value="door_closed">Tuer/Fenster ist geschlossen</SelectItem>
                             <SelectItem value="motion">Bewegung aktiv</SelectItem>
@@ -1581,22 +1602,29 @@ export default function AutomationsClient({ initialAutomations, devices: devices
                       </div>
                     )}
 
-                    {(condNeedsTemp || condNeedsHum) && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <FieldLabel>Geraet</FieldLabel>
-                          {condDeviceList.length > 0 ? (
-                            <DeviceSelect value={cond.deviceId} onChange={(v) => patchCond({ deviceId: v })}
-                              devices={condDeviceList} rooms={rooms} />
-                          ) : (
-                            <p className="text-xs text-muted-foreground py-2">Keine passenden Geraete.</p>
-                          )}
+                    {(condNeedsTemp || condNeedsHum || condNeedsPower) && (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <FieldLabel>Geraet</FieldLabel>
+                            {condDeviceList.length > 0 ? (
+                              <DeviceSelect value={cond.deviceId} onChange={(v) => patchCond({ deviceId: v })}
+                                devices={condDeviceList} rooms={rooms} />
+                            ) : (
+                              <p className="text-xs text-muted-foreground py-2">Keine passenden Geraete.</p>
+                            )}
+                          </div>
+                          <div className="space-y-1">
+                            <FieldLabel>{condNeedsPower ? 'Watt' : 'Schwellwert'}</FieldLabel>
+                            <TextInput type="number" value={cond.threshold}
+                              onChange={(v) => patchCond({ threshold: v })} />
+                          </div>
                         </div>
-                        <div className="space-y-1">
-                          <FieldLabel>Schwellwert</FieldLabel>
-                          <TextInput type="number" value={cond.threshold}
-                            onChange={(v) => patchCond({ threshold: v })} />
-                        </div>
+                        {condNeedsPower && (
+                          <p className="text-xs text-muted-foreground">
+                            Steckdose oder Zähler. Zum Beispiel über 20 W, solange die Waschmaschine läuft, unter 5 W wenn sie fertig ist.
+                          </p>
+                        )}
                       </div>
                     )}
 

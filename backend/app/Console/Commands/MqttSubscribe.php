@@ -569,6 +569,40 @@ class MqttSubscribe extends Command
 
             return true;
         }
+        if (abs($powerW - $prev) >= 1 && $this->powerThresholdCrossed($device->id, $prev, $powerW)) {
+            $this->lastAutomationPower[$device->id] = $powerW;
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /** Schwelle einer Leistungs-Bedingung über- oder unterschritten, auch bei kleiner Änderung. */
+    private function powerThresholdCrossed(int $deviceId, float $prev, float $now): bool
+    {
+        foreach (\App\Models\Automation::where('enabled', true)->get() as $automation) {
+            $items = $automation->conditions['items'] ?? [];
+            if (! is_array($items)) {
+                continue;
+            }
+            foreach ($items as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+                $type = $item['type'] ?? '';
+                if ($type !== 'power_above' && $type !== 'power_below') {
+                    continue;
+                }
+                if ((int) ($item['device_id'] ?? 0) !== $deviceId) {
+                    continue;
+                }
+                $threshold = (float) ($item['threshold'] ?? 0);
+                if (($prev > $threshold) !== ($now > $threshold)) {
+                    return true;
+                }
+            }
+        }
 
         return false;
     }

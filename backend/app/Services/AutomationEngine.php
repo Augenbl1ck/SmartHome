@@ -263,6 +263,7 @@ class AutomationEngine
             'device_status' => $this->conditionDeviceStatus($condition),
             'temperature_above', 'temperature_below' => $this->conditionTemperature($condition, $type === 'temperature_above'),
             'humidity_above', 'humidity_below' => $this->conditionHumidity($condition, $type === 'humidity_above'),
+            'power_above', 'power_below' => $this->conditionPower($condition, $type === 'power_above'),
             'door_open' => $this->conditionDeviceEquals($condition, 'open'),
             'door_closed' => $this->conditionDeviceEquals($condition, 'closed'),
             'motion' => $this->conditionDeviceEquals($condition, 'on'),
@@ -342,6 +343,18 @@ class AutomationEngine
         }
         $value = (float) $device->attributes['humidity'];
         $threshold = (float) ($condition['threshold'] ?? 0);
+        return $above ? $value > $threshold : $value < $threshold;
+    }
+
+    private function conditionPower(array $condition, bool $above): bool
+    {
+        $device = Device::find($condition['device_id'] ?? null);
+        if (!$device || !isset($device->attributes['power_w']) || !is_numeric($device->attributes['power_w'])) {
+            return false;
+        }
+        $value = (float) $device->attributes['power_w'];
+        $threshold = (float) ($condition['threshold'] ?? 0);
+
         return $above ? $value > $threshold : $value < $threshold;
     }
 
