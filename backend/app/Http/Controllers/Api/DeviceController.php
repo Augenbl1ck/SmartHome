@@ -146,6 +146,7 @@ class DeviceController extends Controller
 
             if (is_numeric($status)) {
                 $attrs['setpoint'] = (float) $status;
+                $attrs['comfort_setpoint'] = (float) $status;
                 $device->update([
                     'attributes' => $attrs,
                     'last_seen'  => now(),

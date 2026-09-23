@@ -160,6 +160,7 @@ class ActionExecutor
         }
         $attrs = $device->attributes ?? [];
         $attrs['setpoint'] = $setpoint;
+        $attrs['comfort_setpoint'] = $setpoint;
         $this->persist($device, ['attributes' => $attrs, 'last_seen' => now()]);
 
         return true;

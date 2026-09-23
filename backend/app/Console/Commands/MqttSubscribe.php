@@ -265,10 +265,17 @@ class MqttSubscribe extends Command
             $updates['status'] = $mode;
             $logStatus = $mode;
         }
-        if (isset($data['occupied_heating_setpoint'])) {
-            $attrs['setpoint'] = (float) $data['occupied_heating_setpoint'];
-        } elseif (isset($data['current_heating_setpoint'])) {
-            $attrs['setpoint'] = (float) $data['current_heating_setpoint'];
+        $setpointMode = isset($updates['status']) && is_string($updates['status'])
+            ? strtolower($updates['status'])
+            : strtolower((string) ($device->status ?? ''));
+        $occupied = isset($data['occupied_heating_setpoint']) && is_numeric($data['occupied_heating_setpoint'])
+            ? (float) $data['occupied_heating_setpoint']
+            : null;
+        $current = isset($data['current_heating_setpoint']) && is_numeric($data['current_heating_setpoint'])
+            ? (float) $data['current_heating_setpoint']
+            : null;
+        if ($occupied !== null || $current !== null) {
+            $attrs = app(\App\Services\DeviceService::class)->applyReportedSetpoint($attrs, $setpointMode, $occupied, $current);
         }
         if (isset($data['temperature_sensor_select']) && is_string($data['temperature_sensor_select'])) {
             $attrs['temperature_sensor_select'] = strtolower($data['temperature_sensor_select']);

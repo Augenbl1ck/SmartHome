@@ -92,23 +92,111 @@ class DeviceService
     /**
      * TRVZB ignoriert system_mode oft, solange Boost/Timer läuft.
      * Beim Aus: zuerst Dauer 0, dann off — in einem Payload, Reihenfolge zählt.
+     * Wunsch-Sollwert bleibt erhalten: im Aus-Modus meldet das Ventil sonst Frostschutz (4–7 °C).
      */
     private function sendThermostatSystemMode(Device $device, string $mode): void
     {
-        $payload = ['system_mode' => $mode];
+        $attrs = $device->extra();
         if ($mode === 'off') {
-            $payload = [
-                'temporary_mode_duration' => 0,
-                'system_mode' => 'off',
-            ];
-            $attrs = $device->extra();
+            $this->rememberComfortSetpoint($attrs);
             $attrs['temporary_mode_duration'] = 0;
             $attrs['temporary_mode_select'] = '';
             $attrs['temporary_mode_until'] = null;
             $attrs['running_state'] = 'idle';
             $device->update(['attributes' => $attrs]);
+            $this->publishMqttJson($device, [
+                'temporary_mode_duration' => 0,
+                'system_mode' => 'off',
+            ]);
+
+            return;
         }
-        $this->publishMqttJson($device, $payload);
+
+        $this->publishMqttJson($device, ['system_mode' => $mode]);
+        $comfort = $this->comfortSetpoint($attrs);
+        if ($comfort !== null) {
+            $this->publishMqttJson($device, ['occupied_heating_setpoint' => $comfort]);
+            $attrs['setpoint'] = $comfort;
+            $attrs['comfort_setpoint'] = $comfort;
+            $device->update(['attributes' => $attrs]);
+        }
+    }
+
+    /**
+     * MQTT-Sollwert übernehmen, ohne den Frostschutz im Aus-Modus als Wunschtemperatur zu speichern.
+     *
+     * @param  array<string, mixed>  $attrs
+     * @return array<string, mixed>
+     */
+    public function applyReportedSetpoint(array $attrs, ?string $mode, ?float $occupied, ?float $current): array
+    {
+        if ($current !== null) {
+            $attrs['current_heating_setpoint'] = round($current, 1);
+        }
+        if ($occupied === null) {
+            return $attrs;
+        }
+
+        $occupied = round($occupied, 1);
+        $attrs['reported_occupied_setpoint'] = $occupied;
+        $off = strtolower((string) $mode) === 'off';
+        if ($this->isFrostSetpoint($attrs, $occupied)) {
+            $comfort = isset($attrs['comfort_setpoint']) && is_numeric($attrs['comfort_setpoint'])
+                ? (float) $attrs['comfort_setpoint']
+                : null;
+            if ($off || ($comfort !== null && $comfort > $occupied + 0.6)) {
+                return $attrs;
+            }
+        }
+
+        $attrs['setpoint'] = $occupied;
+        $attrs['comfort_setpoint'] = $occupied;
+
+        return $attrs;
+    }
+
+    /**
+     * @param  array<string, mixed>  $attrs
+     */
+    private function rememberComfortSetpoint(array &$attrs): void
+    {
+        if (! isset($attrs['setpoint']) || ! is_numeric($attrs['setpoint'])) {
+            return;
+        }
+        $setpoint = round((float) $attrs['setpoint'], 1);
+        if ($this->isFrostSetpoint($attrs, $setpoint)) {
+            return;
+        }
+        $attrs['comfort_setpoint'] = $setpoint;
+    }
+
+    /**
+     * @param  array<string, mixed>  $attrs
+     */
+    private function comfortSetpoint(array $attrs): ?float
+    {
+        foreach (['comfort_setpoint', 'setpoint'] as $key) {
+            if (! isset($attrs[$key]) || ! is_numeric($attrs[$key])) {
+                continue;
+            }
+            $value = round((float) $attrs[$key], 1);
+            if (! $this->isFrostSetpoint($attrs, $value)) {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $attrs
+     */
+    private function isFrostSetpoint(array $attrs, float $value): bool
+    {
+        $frost = $attrs['frost_protection_temperature'] ?? null;
+        $limit = is_numeric($frost) ? (float) $frost : 7.0;
+
+        return $value <= $limit + 0.6;
     }
 
     // -------------------------------------------------------------------------
