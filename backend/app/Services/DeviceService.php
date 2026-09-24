@@ -112,14 +112,71 @@ class DeviceService
             return;
         }
 
-        $this->publishMqttJson($device, ['system_mode' => $mode]);
         $comfort = $this->comfortSetpoint($attrs);
+        if ($mode === 'auto' && $comfort !== null) {
+            $schedule = $this->pinComfortOnTodaySchedule($attrs, $comfort);
+            if ($schedule !== null) {
+                $this->publishMqttJson($device, $schedule);
+            }
+        }
+        $this->publishMqttJson($device, ['system_mode' => $mode]);
         if ($comfort !== null) {
             $this->publishMqttJson($device, ['occupied_heating_setpoint' => $comfort]);
             $attrs['setpoint'] = $comfort;
             $attrs['comfort_setpoint'] = $comfort;
             $device->update(['attributes' => $attrs]);
         }
+    }
+
+    /**
+     * Auto folgt dem Wochenplan. Ohne Anpassung springt der TRVZB auf den Plan (oft 19 °C).
+     *
+     * @param  array<string, mixed>  $attrs
+     * @return array<string, string>|null
+     */
+    private function pinComfortOnTodaySchedule(array &$attrs, float $comfort): ?array
+    {
+        $day = strtolower(now()->format('l'));
+        $key = 'weekly_schedule_'.$day;
+        $temp = number_format($comfort, 1, '.', '');
+        $raw = isset($attrs[$key]) && is_string($attrs[$key]) ? trim($attrs[$key]) : '';
+        if ($raw === '') {
+            $next = '00:00/'.$temp;
+            $attrs[$key] = $next;
+
+            return [$key => $next];
+        }
+
+        $parts = preg_split('/\s+/', $raw) ?: [];
+        $slots = [];
+        foreach ($parts as $part) {
+            if (! preg_match('/^(\d{1,2}:\d{2})\/(-?\d+(?:\.\d+)?)$/', $part, $m)) {
+                continue;
+            }
+            $slots[] = [$m[1], (float) $m[2]];
+        }
+        if ($slots === []) {
+            $next = '00:00/'.$temp;
+            $attrs[$key] = $next;
+
+            return [$key => $next];
+        }
+
+        $now = now()->format('H:i');
+        $active = 0;
+        foreach ($slots as $i => [$time]) {
+            if ($time <= $now) {
+                $active = $i;
+            }
+        }
+        $slots[$active][1] = $comfort;
+        $next = implode(' ', array_map(
+            fn (array $slot) => $slot[0].'/'.number_format($slot[1], 1, '.', ''),
+            $slots,
+        ));
+        $attrs[$key] = $next;
+
+        return [$key => $next];
     }
 
     /**
@@ -150,7 +207,9 @@ class DeviceService
         }
 
         $attrs['setpoint'] = $occupied;
-        $attrs['comfort_setpoint'] = $occupied;
+        if (strtolower((string) $mode) !== 'auto') {
+            $attrs['comfort_setpoint'] = $occupied;
+        }
 
         return $attrs;
     }
