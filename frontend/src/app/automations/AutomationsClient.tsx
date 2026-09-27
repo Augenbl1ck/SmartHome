@@ -208,7 +208,7 @@ function actionFromJson(ac: Record<string, unknown>): ActionFormItem {
     delayMinutes: ac.minutes != null ? String(ac.minutes) : '10',
     notifyMessage: (ac.message as string) ?? '',
     setpoint: ac.setpoint != null ? String(ac.setpoint) : '21',
-    thermostatMode: (ac.mode as ThermostatMode) ?? 'heat',
+    thermostatMode: ac.mode === 'off' ? 'off' : 'heat',
     sceneId: ac.scene_id != null ? String(ac.scene_id) : '',
     childLock: ac.locked != null ? Boolean(ac.locked) : true,
     openWindow: ac.enabled != null ? Boolean(ac.enabled) : true,
@@ -561,7 +561,7 @@ function describeActionItem(
       return `"${dev(action.device_id)}" Sollwert ${action.setpoint}°C`;
     case 'set_thermostat_mode': {
       const modeLabel =
-        action.mode === 'heat' ? 'Heizen' : action.mode === 'off' ? 'Aus' : action.mode === 'auto' ? 'Auto' : String(action.mode);
+        action.mode === 'off' ? 'Aus' : 'An';
       return `"${dev(action.device_id)}" Modus ${modeLabel}`;
     }
     case 'set_thermostat_child_lock':
@@ -1724,6 +1724,9 @@ export default function AutomationsClient({ initialAutomations, devices: devices
                             />
                           </div>
                         </div>
+                        <p className="text-xs text-muted-foreground">
+                          Thermostat auf An gilt nur hier. Danach wieder Aus. Davor bleibt der Zustand, wie er war.
+                        </p>
                       </div>
                     )}
 
@@ -2062,9 +2065,8 @@ export default function AutomationsClient({ initialAutomations, devices: devices
                           <Select value={action.thermostatMode} onValueChange={(v) => patchAction(action.id, { thermostatMode: v as ThermostatMode })}>
                             <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="heat">Heizen</SelectItem>
+                              <SelectItem value="heat">An</SelectItem>
                               <SelectItem value="off">Aus</SelectItem>
-                              <SelectItem value="auto">Auto</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
