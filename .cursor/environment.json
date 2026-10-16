@@ -1,0 +1,47 @@
+{
+  "name": "SmartHome",
+  "user": "ubuntu",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "terminals": [
+    {
+      "name": "backend",
+      "command": "cd backend && php artisan serve --host=0.0.0.0 --port=8000",
+      "description": "Laravel REST API on http://localhost:8000"
+    },
+    {
+      "name": "reverb",
+      "command": "cd backend && php artisan reverb:start --host=0.0.0.0 --port=8080",
+      "description": "Laravel Reverb WebSocket server for live device updates (ws://localhost:8080)"
+    },
+    {
+      "name": "mqtt-subscriber",
+      "command": "cd backend && php artisan mqtt:subscribe",
+      "description": "Listens on all MQTT topics and writes device status updates to the database"
+    },
+    {
+      "name": "queue",
+      "command": "cd backend && php artisan queue:work --sleep=3 --tries=3",
+      "description": "Queue worker for delayed automation actions (delayed_on/delayed_off)"
+    },
+    {
+      "name": "scheduler",
+      "command": "cd backend && php artisan schedule:work",
+      "description": "Runs time-based automations and scheduled tasks every minute"
+    },
+    {
+      "name": "frontend",
+      "command": "cd frontend && npm run dev",
+      "description": "Next.js dev server (dashboard) on http://localhost:3000"
+    }
+  ],
+  "ports": [
+    { "name": "frontend", "port": 3000 },
+    { "name": "backend-api", "port": 8000 },
+    { "name": "reverb-ws", "port": 8080 },
+    { "name": "mqtt", "port": 1883 }
+  ]
+}
