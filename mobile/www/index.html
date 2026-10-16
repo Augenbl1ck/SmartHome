@@ -8,34 +8,102 @@
     body { margin: 0; min-height: 100vh; font-family: sans-serif; background: #e8edf5; color: #18181b; }
     main { max-width: 28rem; margin: 0 auto; padding: 1.5rem; }
     h1 { font-size: 1.25rem; margin: 0 0 0.75rem; }
-    label { display: block; font-size: 0.875rem; margin-bottom: 0.5rem; }
+    label { display: block; font-size: 0.875rem; margin: 0.75rem 0 0.5rem; }
     input, button { font: inherit; min-height: 2.75rem; border-radius: 0.75rem; }
     input { width: 100%; box-sizing: border-box; padding: 0 0.75rem; border: 1px solid #d4d4d8; }
     button { margin-top: 0.75rem; border: 0; padding: 0 1rem; background: #2563eb; color: white; }
     .card { background: white; border-radius: 1rem; padding: 1.25rem; }
+    #status { font-size: 0.875rem; margin: 0.75rem 0 0; }
   </style>
 </head>
 <body>
   <main>
     <form class="card" id="form">
       <h1>Adresse</h1>
-      <label for="url">Adresse der SmartHome-Seite</label>
-      <input id="url" name="url" type="url" inputmode="url" autocomplete="off" required />
+      <label for="home">Zu Hause, im WLAN</label>
+      <input id="home" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+      <label for="away">Unterwegs, über Tailscale</label>
+      <input id="away" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+      <p id="status"></p>
       <button type="submit">Öffnen</button>
     </form>
   </main>
   <script>
-    var KEY = 'smarthome_server';
-    var input = document.getElementById('url');
-    var saved = localStorage.getItem(KEY);
-    if (saved) location.replace(saved);
+    var HOME = 'smarthome_home';
+    var AWAY = 'smarthome_away';
+    var OLD = 'smarthome_server';
+    var homeInput = document.getElementById('home');
+    var awayInput = document.getElementById('away');
+    var statusNode = document.getElementById('status');
+
+    if (!localStorage.getItem(HOME) && localStorage.getItem(OLD)) {
+      localStorage.setItem(HOME, localStorage.getItem(OLD));
+    }
+
+    function normalize(value) {
+      value = (value || '').trim().replace(/\/$/, '');
+      if (!value) return '';
+      if (!/^https?:\/\//i.test(value)) value = 'http://' + value;
+      return value;
+    }
+
+    function reachable(url) {
+      return new Promise(function (resolve) {
+        var done = false;
+        var timer = setTimeout(function () { finish(false); }, 4000);
+        function finish(ok) {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          resolve(ok);
+        }
+        try {
+          fetch(url, { mode: 'no-cors', cache: 'no-store' })
+            .then(function () { finish(true); })
+            .catch(function () { finish(false); });
+        } catch (e) {
+          finish(false);
+        }
+      });
+    }
+
+    function openUrl(url) {
+      location.replace(url);
+    }
+
+    async function choose(home, away) {
+      statusNode.textContent = 'Verbinden…';
+      if (home && await reachable(home)) {
+        openUrl(home);
+        return;
+      }
+      if (away && await reachable(away)) {
+        openUrl(away);
+        return;
+      }
+      statusNode.textContent = 'Keine der Adressen ist erreichbar.';
+    }
+
+    homeInput.value = (localStorage.getItem(HOME) || '').replace(/^https?:\/\//i, '');
+    awayInput.value = (localStorage.getItem(AWAY) || '').replace(/^https?:\/\//i, '');
+
+    var savedHome = localStorage.getItem(HOME) || '';
+    var savedAway = localStorage.getItem(AWAY) || '';
+    if (savedHome || savedAway) {
+      choose(savedHome, savedAway);
+    }
+
     document.getElementById('form').addEventListener('submit', function (event) {
       event.preventDefault();
-      var value = input.value.trim().replace(/\/$/, '');
-      if (!value) return;
-      if (!/^https?:\/\//i.test(value)) value = 'http://' + value;
-      localStorage.setItem(KEY, value);
-      location.replace(value);
+      var home = normalize(homeInput.value);
+      var away = normalize(awayInput.value);
+      if (!home && !away) {
+        statusNode.textContent = 'Mindestens eine Adresse eintragen.';
+        return;
+      }
+      if (home) localStorage.setItem(HOME, home); else localStorage.removeItem(HOME);
+      if (away) localStorage.setItem(AWAY, away); else localStorage.removeItem(AWAY);
+      choose(home, away);
     });
   </script>
 </body>
