@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import { ensurePersonalProfile, isAndroidApp, rememberPersonal } from '@/lib/app-personal';
 
 const KEYS = {
   hash:          'smarthome_pin_hash',
@@ -49,6 +50,16 @@ function persistToServer(patch: {
   screen_timeout?: number;
   screen_power_off?: boolean;
 }) {
+  if (isAndroidApp()) {
+    rememberPersonal();
+    const screen: { screen_timeout?: number; screen_power_off?: boolean } = {};
+    if (patch.screen_timeout !== undefined) screen.screen_timeout = patch.screen_timeout;
+    if (patch.screen_power_off !== undefined) screen.screen_power_off = patch.screen_power_off;
+    if (Object.keys(screen).length > 0) {
+      api.updatePanelSettings(screen).catch(() => {});
+    }
+    return;
+  }
   api.updatePanelSettings(patch).catch(() => {
     /* offline — localStorage bleibt Quelle */
   });
@@ -217,6 +228,31 @@ export function usePinLock(): PinLockState {
     let cancelled = false;
     (async () => {
       try {
+        const personal = await ensurePersonalProfile();
+        if (cancelled) return;
+        if (personal) {
+          setHasPin(!!localStorage.getItem(KEYS.hash));
+          setEnabled(load<boolean>(KEYS.enabled, false));
+          setLockTimeoutS(load<number>(KEYS.lockTimeout, 30));
+          try {
+            const screen = await api.getPanelSettings();
+            if (!cancelled) {
+              save(KEYS.screenTimeout, screen.screen_timeout);
+              setScreenTimeoutS(screen.screen_timeout);
+              save(KEYS.screenPowerOff, !!screen.screen_power_off);
+              setScreenPowerOffS(!!screen.screen_power_off);
+            }
+          } catch { /* Bildschirm bleibt lokal */ }
+          const pinOn = load<boolean>(KEYS.enabled, false) && !!localStorage.getItem(KEYS.hash);
+          if (pinOn && !unlockedThisSession.current && !isSessionUnlocked()) {
+            setLocked(true);
+          } else if (isSessionUnlocked()) {
+            unlockedThisSession.current = true;
+            setLocked(false);
+          }
+          return;
+        }
+
         const s = await api.getPanelSettings();
         if (cancelled) return;
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Moon, Sun } from 'lucide-react';
 import { api } from '@/lib/api';
+import { ensurePersonalProfile, isAndroidApp, rememberPersonal } from '@/lib/app-personal';
 
 type Theme = 'light' | 'dark' | 'system';
 
@@ -26,6 +27,14 @@ export function useTheme() {
 
     let cancelled = false;
     (async () => {
+      const personal = await ensurePersonalProfile();
+      if (cancelled) return;
+      if (personal) {
+        const own = (localStorage.getItem('smarthome_theme') as Theme) || 'system';
+        setThemeState(own);
+        applyTheme(own);
+        return;
+      }
       try {
         const s = await api.getPanelSettings();
         if (cancelled) return;
@@ -55,6 +64,10 @@ export function useTheme() {
   const setTheme = (t: Theme) => {
     setThemeState(t);
     applyTheme(t);
+    if (isAndroidApp()) {
+      rememberPersonal({ theme: t });
+      return;
+    }
     void api.updatePanelSettings({ theme: t }).catch(() => {});
   };
 

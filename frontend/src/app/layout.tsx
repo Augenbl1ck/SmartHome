@@ -8,6 +8,7 @@ import KioskProvider from "@/components/KioskProvider";
 import VirtualKeyboardProvider from "@/components/VirtualKeyboardProvider";
 import SmartHomeProvider from "@/components/SmartHomeProvider";
 import { Toaster } from "@/components/ui/sonner";
+import { hydratePersonalScript } from "@/lib/app-personal";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -38,6 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="de" className="h-full antialiased" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: hydratePersonalScript() }} />
         {/* Theme: verhindert Flash beim Laden */}
         <script dangerouslySetInnerHTML={{ __html: `
           (function(){

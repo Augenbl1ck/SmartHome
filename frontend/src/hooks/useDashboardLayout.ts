@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '@/lib/api';
+import { ensurePersonalProfile, isAndroidApp, rememberPersonal } from '@/lib/app-personal';
 
 export const DASHBOARD_LAYOUT_KEY = 'smarthome_dashboard_layout';
 const FAVORITES_KEY = 'smarthome_favorites';
@@ -258,6 +259,13 @@ export function useDashboardLayout(): DashboardLayout {
     };
 
     (async () => {
+      const personal = await ensurePersonalProfile();
+      if (cancelled) return;
+      if (personal) {
+        apply(loadLocal());
+        return;
+      }
+
       const local = loadLocal();
       setLayout(local);
 
@@ -295,6 +303,10 @@ export function useDashboardLayout(): DashboardLayout {
 export async function saveDashboardLayout(layout: DashboardLayout): Promise<void> {
   const normalized = migrateLegacy(layout);
   cacheLocal(normalized);
+  if (isAndroidApp()) {
+    rememberPersonal({ dashboard_layout: normalized });
+    return;
+  }
   try {
     await api.updatePanelSettings({ dashboard_layout: normalized });
   } catch {

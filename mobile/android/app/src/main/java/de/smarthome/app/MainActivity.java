@@ -68,6 +68,16 @@ public class MainActivity extends BridgeActivity {
             write("smarthome_away", value);
         }
 
+        @JavascriptInterface
+        public String getPersonal() {
+            return read("smarthome_personal");
+        }
+
+        @JavascriptInterface
+        public void setPersonal(String value) {
+            write("smarthome_personal", value);
+        }
+
         private SharedPreferences prefs() {
             return context.getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE);
         }
