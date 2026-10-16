@@ -23,7 +23,7 @@ cd "$INSTALL_DIR"
 
 echo "[1/7] Code aktualisieren..."
 # Lokale Deploy-Skript-Änderungen verwerfen (Autostart-Edits auf dem Pi)
-git checkout -- deploy/start-kiosk.sh deploy/update.sh deploy/smarthome-kiosk.desktop deploy/run-backend.sh 2>/dev/null || true
+git checkout -- deploy 2>/dev/null || true
 
 BRANCH_FILE="$HOME/.config/smarthome/branch"
 mkdir -p "$HOME/.config/smarthome"
@@ -41,7 +41,8 @@ echo "  Branch: $BRANCH"
 git fetch origin "$BRANCH"
 if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "Lokale Änderungen blockieren das Update:"
-  git status --short
+  git diff --name-only
+  git diff --cached --name-only
   exit 1
 fi
 git checkout "$BRANCH"

@@ -36,10 +36,11 @@ echo "Pi lädt ab jetzt: $BRANCH"
 
 cd "$INSTALL_DIR"
 git fetch origin "$BRANCH"
-git checkout -- deploy/start-kiosk.sh deploy/update.sh deploy/smarthome-kiosk.desktop deploy/run-backend.sh 2>/dev/null || true
+git checkout -- deploy 2>/dev/null || true
 if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "Lokale Änderungen blockieren den Wechsel:"
-  git status --short
+  git diff --name-only
+  git diff --cached --name-only
   exit 1
 fi
 git checkout "$BRANCH"
