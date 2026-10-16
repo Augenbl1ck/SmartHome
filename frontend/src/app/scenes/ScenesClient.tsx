@@ -1,6 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useReducer, useState } from 'react';
+import { ActionFormItem, ActionType, actionFromJson, actionOfType, buildActionItem } from '@/lib/automation-form';
+import ActionCard from '@/components/automation/ActionCard';
+import BlockPicker, { choicesFor } from '@/components/automation/BlockPicker';
 import { useRouter } from 'next/navigation';
 import { api, Device, Scene, DeviceType } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -52,7 +55,7 @@ interface SceneActionForm {
 }
 
 interface Props { initialScenes: Scene[]; devices: Device[] }
-interface SceneForm { name: string; icon: string; actions: SceneActionForm[] }
+interface SceneForm { name: string; icon: string; actions: ActionFormItem[] }
 
 const emptyForm = (): SceneForm => ({ name: '', icon: '🎬', actions: [] });
 
@@ -234,6 +237,7 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
     open: boolean; editing?: Scene; form: SceneForm; saving: boolean; error: string;
   }>({ open: false, form: emptyForm(), saving: false, error: '' });
   const [deleteId, setDeleteId]       = useState<number | null>(null);
+  const [pickAction, setPickAction]   = useState(false);
 
   useEffect(() => {
     if (devices.length === 0 && storeDevices.length) setDevices(storeDevices);
@@ -264,7 +268,7 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
     return () => window.removeEventListener(DEVICE_UPDATE_EVENT, handler);
   }, []);
 
-  const patchAction = (id: string, patch: Partial<SceneActionForm>) => {
+  const patchAction = (id: string, patch: Partial<ActionFormItem>) => {
     setDialog((s) => ({
       ...s,
       form: {
@@ -437,7 +441,7 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
       const payload = {
         name: form.name.trim(),
         icon: form.icon,
-        actions: form.actions.map(buildStoredAction),
+        actions: form.actions.map(buildActionItem),
         active: true,
       };
       if (editing) {
@@ -470,7 +474,13 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
       form: {
         name: scene.name,
         icon: scene.icon,
-        actions: (scene.actions ?? []).map((a) => actionFromStored(a)),
+        actions: (scene.actions ?? []).map((a) => {
+          if (!a.type) {
+            const legacy = actionFromStored(a);
+            return { ...actionOfType(legacy.type), ...legacy };
+          }
+          return actionFromJson(a);
+        }),
       },
       saving: false,
       error: '',
@@ -514,7 +524,7 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
         {scenes.map((scene) => {
           const isRunning   = running.has(scene.id);
           const isResetting = resetting.has(scene.id);
@@ -591,7 +601,7 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
       </div>
 
       <Dialog open={dialog.open} onOpenChange={(open) => !open && setDialog({ open: false, form: emptyForm(), saving: false, error: '' })}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{dialog.editing ? 'Szene bearbeiten' : 'Neue Szene'}</DialogTitle>
           </DialogHeader>
@@ -618,247 +628,50 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
               </div>
             </div>
 
-            <div className="space-y-2">
+                        <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium">Aktionen</label>
-                <Button size="sm" variant="outline" type="button"
-                  onClick={() => setDialog((s) => ({
-                    ...s,
-                    form: { ...s.form, actions: [...s.form.actions, newAction(devices)] },
-                  }))}>
+                <Button size="sm" variant="outline" type="button" onClick={() => setPickAction((v) => !v)}>
                   <Plus className="h-3 w-3 mr-1" /> Aktion
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Reihenfolge = Ausführungsreihenfolge. Bei Sperren zuerst das Gerät, das die Sperre auslöst.
+                Reihenfolge = Ausführungsreihenfolge. Tippe auf Aktion und wähle den Baustein.
               </p>
-
-              {dialog.form.actions.map((action, idx) => {
-                const target = switchableDevices.find((d) => String(d.id) === action.deviceId)
-                  ?? thermostats.find((d) => String(d.id) === action.deviceId);
-                const isCover = target?.type === 'cover';
-                const isComputer = target?.type === 'computer';
-                const needsThermostat = action.type.startsWith('set_thermostat_');
-                const deviceList = needsThermostat
-                  ? thermostats
-                  : action.type === 'toggle_device'
-                    ? switchableDevices.filter((d) => d.type !== 'computer')
-                    : switchableDevices;
-
-                return (
-                  <div key={action.id} className="rounded-md border bg-muted/30 p-3 space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                        Aktion {idx + 1}
-                      </p>
-                      <div className="flex items-center gap-0.5">
-                        <button
-                          type="button"
-                          onClick={() => moveAction(action.id, -1)}
-                          disabled={idx === 0}
-                          className="cursor-pointer h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground disabled:opacity-30 disabled:cursor-not-allowed"
-                          aria-label="Nach oben"
-                        >
-                          <ChevronUp className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => moveAction(action.id, 1)}
-                          disabled={idx === dialog.form.actions.length - 1}
-                          className="cursor-pointer h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground disabled:opacity-30 disabled:cursor-not-allowed"
-                          aria-label="Nach unten"
-                        >
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDialog((s) => ({
-                            ...s,
-                            form: { ...s.form, actions: s.form.actions.filter((a) => a.id !== action.id) },
-                          }))}
-                          className="cursor-pointer h-7 w-7 flex items-center justify-center rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <Select
-                      value={action.type}
-                      onValueChange={(v) => {
-                        const type = v as SceneActionType;
-                        const patch: Partial<SceneActionForm> = { type };
-                        if (type.startsWith('set_thermostat_') && thermostats[0]) {
-                          patch.deviceId = String(thermostats[0].id);
-                        } else if (!type.startsWith('set_thermostat_') && switchableDevices[0]) {
-                          const cur = devices.find((d) => String(d.id) === action.deviceId);
-                          if (!cur || cur.type === 'thermostat') {
-                            patch.deviceId = String(switchableDevices[0].id);
-                          }
-                        }
-                        patchAction(action.id, patch);
-                      }}
-                    >
-                      <SelectTrigger className="w-full h-8 text-xs"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectLabel>Gerät</SelectLabel>
-                          <SelectItem value="set_device_status">Ein-/Ausschalten / Cover</SelectItem>
-                          <SelectItem value="toggle_device">Umschalten</SelectItem>
-                        </SelectGroup>
-                        <SelectGroup>
-                          <SelectLabel>Thermostat</SelectLabel>
-                          <SelectItem value="set_thermostat_setpoint">Sollwert</SelectItem>
-                          <SelectItem value="set_thermostat_mode">Modus</SelectItem>
-                          <SelectItem value="set_thermostat_child_lock">Kindersicherung</SelectItem>
-                          <SelectItem value="set_thermostat_open_window">Offenes Fenster</SelectItem>
-                          <SelectItem value="set_thermostat_calibration">Kalibrierung</SelectItem>
-                          <SelectItem value="set_thermostat_frost_protection">Frostschutz</SelectItem>
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-
-                    <Select
-                      value={action.deviceId}
-                      onValueChange={(v) => {
-                        const next = devices.find((d) => String(d.id) === v);
-                        const patch: Partial<SceneActionForm> = { deviceId: v };
-                        if (next?.type === 'cover' && !['open', 'close', 'stop'].includes(action.deviceStatus)) {
-                          patch.deviceStatus = 'open';
-                        } else if (next?.type === 'computer') {
-                          patch.deviceStatus = 'on';
-                          if (action.type === 'toggle_device') patch.type = 'set_device_status';
-                        } else if (next && next.type !== 'cover' && ['open', 'close', 'stop'].includes(action.deviceStatus)) {
-                          patch.deviceStatus = 'on';
-                        }
-                        patchAction(action.id, patch);
-                      }}
-                    >
-                      <SelectTrigger className="w-full h-8 text-xs"><SelectValue placeholder="Gerät…" /></SelectTrigger>
-                      <SelectContent>
-                        {deviceList.length === 0 ? (
-                          <SelectItem value="_" disabled>Keine Geräte</SelectItem>
-                        ) : (
-                          deviceList.map((d) => (
-                            <SelectItem key={d.id} value={String(d.id)}>
-                              {d.name}{' '}
-                              <span className="text-muted-foreground">
-                                ({deviceLabels[d.type as DeviceType] ?? d.type})
-                              </span>
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-
-                    {action.type === 'set_device_status' && (
-                      <Select
-                        value={action.deviceStatus}
-                        onValueChange={(v) => patchAction(action.id, { deviceStatus: v as ActionDeviceStatus })}
-                      >
-                        <SelectTrigger className="w-full h-8 text-xs"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {isCover ? (
-                            <>
-                              <SelectItem value="open">Öffnen</SelectItem>
-                              <SelectItem value="close">Schließen</SelectItem>
-                              <SelectItem value="stop">Stopp</SelectItem>
-                            </>
-                          ) : isComputer ? (
-                            <SelectItem value="on">Starten</SelectItem>
-                          ) : (
-                            <>
-                              <SelectItem value="on">Einschalten</SelectItem>
-                              <SelectItem value="off">Ausschalten</SelectItem>
-                            </>
-                          )}
-                        </SelectContent>
-                      </Select>
-                    )}
-
-                    {action.type === 'set_thermostat_setpoint' && (
-                      <input
-                        type="number"
-                        step={0.5}
-                        min={4}
-                        max={35}
-                        className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
-                        value={action.setpoint}
-                        onChange={(e) => patchAction(action.id, { setpoint: e.target.value })}
-                        placeholder="Sollwert °C"
-                      />
-                    )}
-
-                    {action.type === 'set_thermostat_mode' && (
-                      <Select
-                        value={action.thermostatMode}
-                        onValueChange={(v) => patchAction(action.id, { thermostatMode: v as ThermostatMode })}
-                      >
-                        <SelectTrigger className="w-full h-8 text-xs"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="heat">An</SelectItem>
-                          <SelectItem value="off">Aus</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-
-                    {action.type === 'set_thermostat_child_lock' && (
-                      <Select
-                        value={action.childLock ? 'true' : 'false'}
-                        onValueChange={(v) => patchAction(action.id, { childLock: v === 'true' })}
-                      >
-                        <SelectTrigger className="w-full h-8 text-xs"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="true">an (LOCK)</SelectItem>
-                          <SelectItem value="false">aus (UNLOCK)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-
-                    {action.type === 'set_thermostat_open_window' && (
-                      <Select
-                        value={action.openWindow ? 'true' : 'false'}
-                        onValueChange={(v) => patchAction(action.id, { openWindow: v === 'true' })}
-                      >
-                        <SelectTrigger className="w-full h-8 text-xs"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="true">an (ON)</SelectItem>
-                          <SelectItem value="false">aus (OFF)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-
-                    {action.type === 'set_thermostat_calibration' && (
-                      <input
-                        type="number"
-                        step={0.2}
-                        min={-12.7}
-                        max={12.7}
-                        className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
-                        value={action.calibration}
-                        onChange={(e) => patchAction(action.id, { calibration: e.target.value })}
-                        placeholder="Kalibrierung °C"
-                      />
-                    )}
-
-                    {action.type === 'set_thermostat_frost_protection' && (
-                      <input
-                        type="number"
-                        step={0.5}
-                        min={4}
-                        max={35}
-                        className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
-                        value={action.frostProtection}
-                        onChange={(e) => patchAction(action.id, { frostProtection: e.target.value })}
-                        placeholder="Frostschutz °C"
-                      />
-                    )}
-                  </div>
-                );
-              })}
-
+              {pickAction && (
+                <BlockPicker
+                  title="Aktion hinzufügen"
+                  choices={choicesFor('action', true)}
+                  onClose={() => setPickAction(false)}
+                  onPick={(type) => {
+                    setDialog((s) => ({
+                      ...s,
+                      form: { ...s.form, actions: [...s.form.actions, actionOfType(type as ActionType)] },
+                    }));
+                    setPickAction(false);
+                  }}
+                />
+              )}
+              {dialog.form.actions.map((action, idx) => (
+                <ActionCard
+                  key={action.id}
+                  action={action}
+                  canRemove
+                  canMoveUp={idx > 0}
+                  canMoveDown={idx < dialog.form.actions.length - 1}
+                  devices={devices}
+                  rooms={[]}
+                  scenes={[]}
+                  onChange={(patch) => patchAction(action.id, patch)}
+                  onRemove={() => setDialog((s) => ({
+                    ...s,
+                    form: { ...s.form, actions: s.form.actions.filter((a) => a.id !== action.id) },
+                  }))}
+                  onMove={(dir) => moveAction(action.id, dir)}
+                />
+              ))}
               {dialog.form.actions.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center py-2">Noch keine Aktionen. Klicke auf &ldquo;+ Aktion&rdquo;.</p>
+                <p className="text-xs text-muted-foreground text-center py-2">Noch keine Aktionen.</p>
               )}
             </div>
             {dialog.error && <p className="text-sm text-destructive">{dialog.error}</p>}

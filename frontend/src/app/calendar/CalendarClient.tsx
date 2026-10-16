@@ -72,7 +72,7 @@ export default function CalendarClient({ initialYear, initialMonth, initial }: P
   });
 
   return (
-    <div className="max-w-3xl mx-auto flex flex-col gap-4">
+    <div className="max-w-3xl xl:max-w-6xl mx-auto flex flex-col gap-4">
       <div className="sticky top-0 z-30 -mx-4 md:-mx-6 px-4 md:px-6 py-2 flex items-center gap-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <button
           type="button"
@@ -88,6 +88,8 @@ export default function CalendarClient({ initialYear, initialMonth, initial }: P
         </div>
       </div>
 
+      <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1.15fr)_minmax(18rem,0.85fr)] xl:items-start">
+      <div className="flex flex-col gap-4 min-w-0">
       <div className="flex items-center gap-2">
         <Button variant="outline" size="icon" onClick={() => goMonth(-1)} aria-label="Vorheriger Monat">
           <ChevronLeft className="h-5 w-5" />
@@ -121,6 +123,7 @@ export default function CalendarClient({ initialYear, initialMonth, initial }: P
         />
       </div>
 
+      </div>
       <div className="rounded-2xl border bg-card p-4 sm:p-5">
         <p className="text-sm font-semibold mb-3">
           {selected.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}
@@ -145,6 +148,7 @@ export default function CalendarClient({ initialYear, initialMonth, initial }: P
             ))}
           </ul>
         )}
+      </div>
       </div>
     </div>
   );

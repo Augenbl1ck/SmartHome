@@ -412,12 +412,12 @@ export default function VirtualKeyboardProvider({
     <div
       ref={shellRef}
       data-slot="vk-app-shell"
-      className="min-h-full flex flex-col bg-background text-foreground"
+      className="h-full min-h-0 flex flex-col bg-background text-foreground"
     >
       {children}
       <div
         data-slot="page-vk-slot"
-        className="vk-page-vk-slot shrink-0 w-full max-w-6xl mx-auto px-4 md:px-6"
+        className="vk-page-vk-slot shrink-0 w-full"
       />
       {kb}
     </div>

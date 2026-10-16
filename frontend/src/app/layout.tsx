@@ -3,6 +3,7 @@ import AutomationRunnerProvider from "@/components/AutomationRunnerProvider";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 import PinLockProvider from "@/components/PinLockProvider";
 import AutomationNotifications from "@/components/AutomationNotifications";
+import AppShell from "@/components/AppShell";
 import KioskProvider from "@/components/KioskProvider";
 import VirtualKeyboardProvider from "@/components/VirtualKeyboardProvider";
 import SmartHomeProvider from "@/components/SmartHomeProvider";
@@ -73,14 +74,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             } catch(e) {}
           })();
         `}} /></head>
-      <body className="min-h-full font-sans">
+      <body className="h-full overflow-hidden font-sans">
         <PinLockProvider>
           <VirtualKeyboardProvider>
             <KioskProvider>
               <SmartHomeProvider>
-              <main className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6 max-w-6xl mx-auto w-full pb-24 md:pb-8">
+              <AppShell>
                 {children}
-              </main>
+              </AppShell>
               <AutomationRunnerProvider />
               <AutomationNotifications />
               <ServiceWorkerRegistrar />

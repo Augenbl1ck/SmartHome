@@ -305,7 +305,7 @@ export default function DashboardLive({
     ) : null;
 
     if (sectionId === 'rooms') return (
-      <div key={key} className={cn('grid grid-cols-2 sm:grid-cols-3', kioskMode ? 'gap-2' : 'gap-4')}>
+      <div key={key} className={cn('grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5', kioskMode ? 'gap-3' : 'gap-4')}>
         {orderedRooms.map(room => {
           const roomDevices = list.filter(d => d.room_id === room.id);
           const active      = roomDevices.filter(d => d.status === 'on' && countsAsActive(d.type as DeviceType)).length;
@@ -316,7 +316,7 @@ export default function DashboardLive({
             <Link key={room.id} href={`/rooms/${room.id}`} prefetch>
               <div className={cn(
                 'rounded-2xl border flex flex-col cursor-pointer',
-                kioskMode ? 'p-3 gap-2 min-h-[112px]' : 'p-5 gap-3 min-h-[165px]',
+                kioskMode ? 'p-3 gap-2 min-h-[120px]' : 'p-5 gap-3 min-h-[165px]',
                 'transition-all duration-300 ease-in-out active:scale-[0.97]',
                 active > 0
                   ? 'bg-amber-500/15 border-amber-400/40 shadow-sm'
@@ -325,7 +325,7 @@ export default function DashboardLive({
                 <div className="flex items-start justify-between gap-2">
                   <div className={cn(
                     'rounded-xl flex items-center justify-center select-none',
-                    kioskMode ? 'w-10 h-10 text-2xl' : 'w-14 h-14 text-3xl',
+                    kioskMode ? 'w-12 h-12 text-2xl' : 'w-14 h-14 text-3xl',
                     active > 0 ? 'bg-amber-500/20' : 'bg-muted'
                   )}>
                     {room.icon ?? '🏠'}
@@ -396,11 +396,19 @@ export default function DashboardLive({
           <section
             key={page.id}
             className={cn(
-              kioskMode ? 'flex flex-col gap-2' : 'flex flex-col gap-4',
+              'dash-sections',
+              kioskMode ? 'gap-2' : 'gap-4',
               multiPage && 'w-full min-w-full shrink-0 snap-start',
             )}
           >
-            {page.sectionOrder.map(id => renderSection(id, page.id))}
+            {page.sectionOrder.map(id => {
+              const node = renderSection(id, page.id);
+              if (!node) return null;
+              const span = id === 'clock' || id === 'rooms' || id === 'scenes';
+              return span
+                ? <div key={`${page.id}:${id}:span`} className="dash-span">{node}</div>
+                : node;
+            })}
           </section>
         ))}
       </div>
@@ -409,8 +417,7 @@ export default function DashboardLive({
         <div
           data-slot="page-dots"
           className={cn(
-            'fixed inset-x-0 z-40 flex justify-center pointer-events-none',
-            kioskMode ? 'bottom-24' : 'bottom-20 md:bottom-6',
+            'fixed inset-x-0 bottom-4 z-40 flex justify-center pointer-events-none',
           )}
         >
           <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-background/85 backdrop-blur-md border px-3 py-1.5 shadow-sm">

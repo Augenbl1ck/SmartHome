@@ -2436,7 +2436,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
   const viewLabel = CATEGORIES.find(c => c.id === view)?.label ?? view;
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-2xl xl:max-w-5xl mx-auto">
 
       {/* ── Header ────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 mb-5">
@@ -2451,7 +2451,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
 
       {/* ── Kategorien-Übersicht ──────────────────────────────────── */}
       {!view && (
-        <div key="main" className="grid grid-cols-2 gap-3 sm:grid-cols-4 animate-page-in">
+        <div key="main" className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4 animate-page-in">
           {CATEGORIES.map(cat => {
             const Icon = cat.icon;
             const [textCls, bgCls] = cat.color.trim().split(/\s+/);

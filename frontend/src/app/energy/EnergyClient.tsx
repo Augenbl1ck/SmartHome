@@ -200,7 +200,7 @@ export default function EnergyClient({ initial, initialHistory }: Props) {
   );
 
   return (
-    <div className="max-w-3xl mx-auto flex flex-col gap-4 animate-page-in">
+    <div className="max-w-3xl xl:max-w-5xl mx-auto flex flex-col gap-4 animate-page-in">
       <div className="sticky top-0 z-30 -mx-4 md:-mx-6 px-4 md:px-6 py-2 flex items-center gap-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <button
           type="button"
