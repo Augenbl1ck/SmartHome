@@ -2448,7 +2448,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     { id: 'zigbee',   icon: Radio,        color: 'text-cyan-500   bg-cyan-500/10',   label: 'Zigbee',           desc: 'Geräte anlernen & verwalten' },
     { id: 'notifs',   icon: Bell,         color: 'text-rose-500   bg-rose-500/10',   label: 'Benachrichtigungen', desc: 'Push-Nachrichten' },
     { id: 'help',     icon: BookOpen,     color: 'text-primary    bg-primary/10',    label: 'Hilfe',            desc: 'Bedienungsanleitung', href: '/hilfe' },
-    { id: 'app',      icon: Smartphone,   color: 'text-primary    bg-primary/10',    label: 'App',              desc: 'Android-Datei, iPhone über Safari', href: '/app' },
+    { id: 'app',      icon: Smartphone,   color: 'text-primary    bg-primary/10',    label: 'App',              desc: 'Android-Datei, iPhone über Safari', href: '/handy' },
   ];
   const viewLabel = CATEGORIES.find(c => c.id === view)?.label ?? view;
 
