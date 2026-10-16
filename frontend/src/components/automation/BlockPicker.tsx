@@ -5,7 +5,7 @@ import {
   Activity, Bell, Clock, DoorOpen, Droplets, Gauge, Home, Power,
   Shield, Sun, Thermometer, Timer, Clapperboard, ToggleLeft,
 } from 'lucide-react';
-import { ActionType, ConditionType, SCENE_ACTION_TYPES } from '@/lib/automation-form';
+import { ActionType, ConditionType, FormState, SCENE_ACTION_TYPES } from '@/lib/automation-form';
 
 export interface BlockChoice<T extends string> {
   type: T;
@@ -52,6 +52,14 @@ export const ACTION_CHOICES: BlockChoice<ActionType>[] = [
   { type: 'thermostat_boost', label: 'Boost', hint: 'kurz stark heizen', icon: Thermometer, group: 'Klima' },
   { type: 'thermostat_timer', label: 'Timer', hint: 'Zieltemperatur für eine Dauer', icon: Timer, group: 'Klima' },
   { type: 'thermostat_clear_boost', label: 'Boost beenden', hint: 'Boost oder Timer stoppen', icon: Timer, group: 'Klima' },
+];
+
+export const LOCK_CHOICES: BlockChoice<FormState['blockStatus']>[] = [
+  { type: 'on', label: 'Einschalten', hint: 'dieser Befehl ist verboten', icon: Power, group: 'Befehl' },
+  { type: 'off', label: 'Ausschalten', hint: 'dieser Befehl ist verboten', icon: Power, group: 'Befehl' },
+  { type: 'heat', label: 'Heizen', hint: 'Thermostat darf nicht heizen', icon: Thermometer, group: 'Befehl' },
+  { type: 'open', label: 'Öffnen', hint: 'Rollladen oder Ventil', icon: DoorOpen, group: 'Befehl' },
+  { type: 'close', label: 'Schließen', hint: 'Rollladen oder Ventil', icon: DoorOpen, group: 'Befehl' },
 ];
 
 export function choicesFor(kind: 'condition' | 'action', scene?: boolean) {

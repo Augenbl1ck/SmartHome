@@ -489,6 +489,7 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
 
   return (
     <div className="space-y-5">
+      {!dialog.open && (<>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
           <button
@@ -548,7 +549,7 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">{scene.actions.length} Aktion{scene.actions.length !== 1 ? 'en' : ''}</p>
-              <ul className="text-[10px] text-muted-foreground space-y-0.5 line-clamp-3">
+              <ul className="text-xs text-muted-foreground space-y-0.5 line-clamp-3">
                 {scene.actions.slice(0, 3).map((a, i) => (
                   <li key={i} className="truncate">{describeStoredAction(a, devices)}</li>
                 ))}
@@ -599,13 +600,18 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
           );
         })}
       </div>
+      </>)}
 
-      <Dialog open={dialog.open} onOpenChange={(open) => !open && setDialog({ open: false, form: emptyForm(), saving: false, error: '' })}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{dialog.editing ? 'Szene bearbeiten' : 'Neue Szene'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
+      {dialog.open && (
+        <div className="space-y-5 max-w-3xl">
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="text-2xl font-bold">{dialog.editing ? 'Szene bearbeiten' : 'Neue Szene'}</h1>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setDialog({ open: false, form: emptyForm(), saving: false, error: '' })}>Abbrechen</Button>
+              <Button onClick={save} disabled={dialog.saving}>{dialog.saving ? 'Speichern…' : 'Speichern'}</Button>
+            </div>
+          </div>
+          <div className="rounded-2xl border bg-card p-4 space-y-4">
             <div className="space-y-1">
               <label className="text-sm font-medium">Name</label>
               <input
@@ -676,12 +682,8 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
             </div>
             {dialog.error && <p className="text-sm text-destructive">{dialog.error}</p>}
           </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setDialog({ open: false, form: emptyForm(), saving: false, error: '' })}>Abbrechen</Button>
-            <Button onClick={save} disabled={dialog.saving}>{dialog.saving ? 'Speichern…' : 'Speichern'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
 
       <Dialog open={deleteId !== null} onOpenChange={(open) => !open && setDeleteId(null)}>
         <DialogContent className="sm:max-w-sm">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { api, Device, DeviceType, Room, Scene, type CalendarEventsResponse, type EnergyOverview, type TransitBoardResponse, type WeatherResponse } from '@/lib/api';
 import { countsAsActive, deviceTemperature } from '@/lib/devices';
@@ -102,8 +102,6 @@ export default function DashboardLive({
   const [transitInit, setTransitInit] = useState(initialTransit);
   const [energyInit, setEnergyInit] = useState(initialEnergy);
   const [calendarInit, setCalendarInit] = useState(initialCalendar);
-  const [pageIndex, setPageIndex] = useState(0);
-  const scrollerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const snap = loadBootstrapSnapshot();
@@ -179,25 +177,6 @@ export default function DashboardLive({
     ? layout.pages
     : [{ id: 'home', name: 'Home', sectionOrder: layout.sectionOrder }];
 
-  useEffect(() => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      const w = el.clientWidth || 1;
-      const i = Math.round(el.scrollLeft / w);
-      setPageIndex(Math.min(pages.length - 1, Math.max(0, i)));
-    };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
-  }, [pages.length]);
-
-  const goToPage = useCallback((i: number) => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' });
-    setPageIndex(i);
-  }, []);
-
   const orderedRooms = useMemo(() => {
     const { roomOrder } = layout;
     if (roomOrder.length === 0) return displayRooms;
@@ -272,7 +251,7 @@ export default function DashboardLive({
     );
 
     if (sectionId === 'scenes') return displayScenes.length > 0 ? (
-      <div key={key} className={cn('flex overflow-x-auto pb-1 -mb-1 scrollbar-none', kioskMode ? 'gap-2' : 'gap-3')}>
+      <div key={key} className={cn('grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6', kioskMode ? 'gap-2' : 'gap-3')}>
         {displayScenes.map(scene => {
           const isRunning = running.has(scene.id);
           const isDone    = done.has(scene.id);
@@ -283,8 +262,8 @@ export default function DashboardLive({
               onClick={() => activateScene(scene)}
               disabled={isRunning}
               className={cn(
-                'flex flex-col items-center gap-2 rounded-2xl border flex-shrink-0',
-                kioskMode ? 'p-2 min-w-[88px]' : 'p-4 min-w-[110px]',
+                'flex flex-col items-center gap-2 rounded-2xl border min-w-0',
+                kioskMode ? 'p-2' : 'p-4',
                 'transition-all duration-200 active:scale-[0.95] cursor-pointer',
                 isDone
                   ? 'bg-green-500/15 border-green-400/40 text-green-600 dark:text-green-400'
@@ -385,59 +364,28 @@ export default function DashboardLive({
   const multiPage = pages.length > 1;
 
   return (
-    <div className={cn(multiPage && 'pb-10')}>
-      <div
-        ref={scrollerRef}
-        className={cn(
-          multiPage && 'flex overflow-x-auto snap-x snap-mandatory scrollbar-none overscroll-x-contain',
-        )}
-      >
-        {pages.map(page => (
-          <section
-            key={page.id}
-            className={cn(
-              'dash-sections',
-              kioskMode ? 'gap-2' : 'gap-4',
-              multiPage && 'w-full min-w-full shrink-0 snap-start',
-            )}
-          >
-            {page.sectionOrder.map(id => {
-              const node = renderSection(id, page.id);
-              if (!node) return null;
-              const span = id === 'clock' || id === 'rooms' || id === 'scenes';
-              return span
-                ? <div key={`${page.id}:${id}:span`} className="dash-span">{node}</div>
-                : node;
-            })}
-          </section>
-        ))}
-      </div>
-
-      {multiPage && (
-        <div
-          data-slot="page-dots"
+    <div className="flex flex-col gap-8 min-w-0">
+      {pages.map(page => (
+        <section
+          key={page.id}
           className={cn(
-            'fixed inset-x-0 bottom-4 z-40 flex justify-center pointer-events-none',
+            'dash-sections min-w-0',
+            kioskMode ? 'gap-2' : 'gap-4',
           )}
         >
-          <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-background/85 backdrop-blur-md border px-3 py-1.5 shadow-sm">
-            {pages.map((page, i) => (
-              <button
-                key={page.id}
-                type="button"
-                onClick={() => goToPage(i)}
-                aria-label={page.name}
-                className={cn(
-                  'rounded-full transition-all cursor-pointer',
-                  i === pageIndex
-                    ? 'h-2.5 w-6 bg-primary'
-                    : 'h-2.5 w-2.5 bg-muted-foreground/40 hover:bg-muted-foreground/70',
-                )}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+          {multiPage && (
+            <h2 className="dash-span text-sm font-semibold text-muted-foreground">{page.name}</h2>
+          )}
+          {page.sectionOrder.map(id => {
+            const node = renderSection(id, page.id);
+            if (!node) return null;
+            const span = id === 'clock' || id === 'rooms' || id === 'scenes';
+            return span
+              ? <div key={`${page.id}:${id}:span`} className="dash-span min-w-0">{node}</div>
+              : node;
+          })}
+        </section>
+      ))}
     </div>
   );
 }

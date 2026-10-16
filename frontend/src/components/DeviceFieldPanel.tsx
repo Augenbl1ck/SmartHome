@@ -277,7 +277,7 @@ export default function DeviceFieldPanel({ title, deviceIds, initialDevices }: P
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className={cn('font-medium truncate', kioskMode ? 'text-xs' : 'text-sm')}>{device.name}</p>
-                  <p className={cn('text-muted-foreground flex items-center gap-1', kioskMode ? 'text-[10px]' : 'text-xs')}>
+                  <p className={cn('text-muted-foreground flex items-center gap-1', 'text-xs')}>
                     {ble && <Bluetooth className={cn('h-3 w-3 shrink-0', connected ? 'text-blue-500' : '')} />}
                     {ble && !connected ? 'Nicht verbunden' : lockReason ? lockReason : label}
                   </p>

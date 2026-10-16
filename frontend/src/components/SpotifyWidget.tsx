@@ -25,6 +25,7 @@ import { createPanelPlayer, type SpotifyWebPlayer } from '@/lib/spotify-player';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useKiosk } from '@/components/KioskProvider';
+import { friendlyError } from '@/lib/friendly-error';
 
 function formatMs(ms: number): string {
   const s = Math.floor(ms / 1000);
@@ -43,6 +44,7 @@ export default function SpotifyWidget() {
   const [searching, setSearching] = useState(false);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<'now' | 'search' | 'queue'>('now');
+  const [details, setDetails] = useState(false);
   const [panelDeviceId, setPanelDeviceId] = useState<string | null>(null);
   const [sdkError, setSdkError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -72,9 +74,11 @@ export default function SpotifyWidget() {
 
   useEffect(() => {
     void refresh();
-    const t = setInterval(() => void refresh(), 5_000);
+    const playing = Boolean(player?.is_playing || player?.active);
+    const ms = playing || details ? 5_000 : 60_000;
+    const t = setInterval(() => void refresh(), ms);
     return () => clearInterval(t);
-  }, [refresh]);
+  }, [refresh, player?.is_playing, player?.active, details]);
 
   useEffect(() => {
     return () => {
@@ -240,26 +244,18 @@ export default function SpotifyWidget() {
           <Music2 className="h-3.5 w-3.5" />
           Spotify
         </p>
-        <div className="flex gap-1">
-          {(['now', 'search', 'queue'] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className={cn(
-                'text-[10px] px-2 py-1 rounded-md font-medium',
-                tab === t ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
-              )}
-            >
-              {t === 'now' ? 'Jetzt' : t === 'search' ? 'Suche' : 'Queue'}
-            </button>
-          ))}
-        </div>
+        <button
+          type="button"
+          onClick={() => setDetails((v) => !v)}
+          className="text-xs font-medium px-3 py-1.5 rounded-md bg-muted text-muted-foreground min-h-11"
+        >
+          {details ? 'Weniger' : 'Mehr'}
+        </button>
       </div>
 
       {(sdkError || actionError) && (
         <div className="space-y-1">
-          <p className="text-xs text-destructive">{actionError ?? sdkError}</p>
+          <p className="text-sm text-destructive">{friendlyError('spotify', actionError ?? sdkError)}</p>
           {(sdkError ?? actionError ?? '').toLowerCase().includes('scope') && (
             <p className="text-xs text-muted-foreground">
               Unter{' '}
@@ -289,7 +285,7 @@ export default function SpotifyWidget() {
                 {item?.artists?.join(', ') ?? '—'}
               </p>
               {item && (
-                <p className="text-[10px] text-muted-foreground mt-0.5">
+                <p className="text-xs text-muted-foreground mt-0.5">
                   {formatMs(player.progress_ms ?? 0)} / {formatMs(item.duration_ms)}
                 </p>
               )}
@@ -328,6 +324,8 @@ export default function SpotifyWidget() {
             </Button>
           </div>
 
+          {details && (
+          <>
           <div className="flex items-center gap-2">
             <Volume2 className="h-4 w-4 text-muted-foreground shrink-0" />
             <input
@@ -340,7 +338,7 @@ export default function SpotifyWidget() {
               className="flex-1 accent-primary"
               aria-label="Lautstärke"
             />
-            <span className="text-[10px] text-muted-foreground w-7 tabular-nums">{vol}%</span>
+            <span className="text-xs text-muted-foreground w-8 tabular-nums">{vol}%</span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -373,10 +371,30 @@ export default function SpotifyWidget() {
               Hier
             </Button>
           </div>
+          </>
+          )}
         </>
       )}
 
-      {tab === 'search' && (
+      {details && (
+        <div className="flex gap-1">
+          {(['now', 'search', 'queue'] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTab(t)}
+              className={cn(
+                'text-xs px-3 py-1.5 rounded-md font-medium min-h-11',
+                tab === t ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+              )}
+            >
+              {t === 'now' ? 'Jetzt' : t === 'search' ? 'Suche' : 'Queue'}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {details && tab === 'search' && (
         <div className="space-y-2">
           <div className="flex gap-2">
             <input
@@ -404,7 +422,7 @@ export default function SpotifyWidget() {
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium truncate">{t.name}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{t.artists.join(', ')}</p>
+                  <p className="text-xs text-muted-foreground truncate">{t.artists.join(', ')}</p>
                 </div>
                 <Button
                   type="button"
@@ -438,7 +456,7 @@ export default function SpotifyWidget() {
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium truncate">{pl.name}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{pl.owner}</p>
+                  <p className="text-xs text-muted-foreground truncate">{pl.owner}</p>
                 </div>
                 <Button
                   type="button"
@@ -459,7 +477,7 @@ export default function SpotifyWidget() {
         </div>
       )}
 
-      {tab === 'queue' && (
+      {details && tab === 'queue' && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted-foreground">Als Nächstes</p>
@@ -476,10 +494,10 @@ export default function SpotifyWidget() {
           <div className="max-h-48 overflow-y-auto space-y-1">
             {queue.slice(0, 20).map((t, i) => (
               <div key={`${t.id}-${i}`} className="flex items-center gap-2 rounded-lg px-2 py-1.5">
-                <span className="text-[10px] text-muted-foreground w-4 tabular-nums">{i + 1}</span>
+                <span className="text-xs text-muted-foreground w-4 tabular-nums">{i + 1}</span>
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium truncate">{t.name}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{t.artists.join(', ')}</p>
+                  <p className="text-xs text-muted-foreground truncate">{t.artists.join(', ')}</p>
                 </div>
               </div>
             ))}

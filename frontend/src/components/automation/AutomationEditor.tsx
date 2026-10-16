@@ -5,7 +5,7 @@ import { ChevronRight, Filter, Plus, Shield } from 'lucide-react';
 import { Device, Room, Scene } from '@/lib/api';
 import {
   ActionFormItem, ActionType, ConditionFormItem, ConditionLogic, ConditionType, FormState,
-  SWITCHABLE_TYPES, actionIsComplete, actionOfType, buildAction, buildConditions,
+  actionIsComplete, actionOfType, buildAction, buildConditions,
   conditionOfType, describeAction, describeConditions,
 } from '@/lib/automation-form';
 import { Button } from '@/components/ui/button';
@@ -13,14 +13,16 @@ import { Switch } from '@/components/ui/switch';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import BlockPicker, { choicesFor } from '@/components/automation/BlockPicker';
+import BlockPicker, { choicesFor, LOCK_CHOICES } from '@/components/automation/BlockPicker';
+import LockCard from '@/components/automation/LockCard';
 import ConditionCard from '@/components/automation/ConditionCard';
 import ActionCard from '@/components/automation/ActionCard';
-import { DeviceSelect, FieldLabel, TextInput } from '@/components/automation/fields';
+import { FieldLabel, TextInput } from '@/components/automation/fields';
 
 type Picker =
   | { kind: 'condition' }
   | { kind: 'action' }
+  | { kind: 'lock' }
   | null;
 
 function moveItem<T extends { id: string }>(items: T[], id: string, dir: -1 | 1): T[] {
@@ -49,7 +51,7 @@ export default function AutomationEditor({
   onSave: () => void;
 }) {
   const [picker, setPicker] = useState<Picker>(null);
-  const blockable = devices.filter((d) => [...SWITCHABLE_TYPES, 'thermostat'].includes(d.type));
+  const [lockChosen, setLockChosen] = useState(Boolean(form.blockDeviceId));
   const patchCond = (id: string, patch: Partial<ConditionFormItem>) => {
     onChange({ conditions: form.conditions.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
   };
@@ -135,64 +137,28 @@ export default function AutomationEditor({
       </section>
 
       {form.kind === 'lock' ? (
-        <section className="rounded-2xl border bg-card p-4 space-y-3">
-          <p className="text-sm font-semibold flex items-center gap-1.5"><Shield className="h-4 w-4" /> Dann darf nicht</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <FieldLabel>Gerät</FieldLabel>
-              <DeviceSelect
-                value={form.blockDeviceId}
-                devices={blockable}
-                rooms={rooms}
-                onChange={(v) => {
-                  const d = devices.find((x) => String(x.id) === v);
-                  let status = form.blockStatus;
-                  if (d?.type === 'thermostat' && (status === 'on' || status === 'open' || status === 'close')) status = 'heat';
-                  if (d?.type === 'cover' || d?.type === 'valve') {
-                    if (status === 'on' || status === 'heat') status = 'open';
-                    if (status === 'off') status = 'close';
-                  }
-                  if (d && d.type !== 'thermostat' && d.type !== 'cover' && d.type !== 'valve' && (status === 'heat' || status === 'open' || status === 'close')) {
-                    status = status === 'close' ? 'off' : 'on';
-                  }
-                  onChange({ blockDeviceId: v, blockStatus: status });
-                }}
-              />
-            </div>
-            <div className="space-y-1">
-              <FieldLabel>Verbotener Befehl</FieldLabel>
-              <Select value={form.blockStatus} onValueChange={(v) => onChange({ blockStatus: v as FormState['blockStatus'] })}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(() => {
-                    const d = devices.find((x) => String(x.id) === form.blockDeviceId);
-                    if (d?.type === 'thermostat') {
-                      return (
-                        <>
-                          <SelectItem value="heat">Heizen</SelectItem>
-                          <SelectItem value="off">Ausschalten</SelectItem>
-                        </>
-                      );
-                    }
-                    if (d?.type === 'cover' || d?.type === 'valve') {
-                      return (
-                        <>
-                          <SelectItem value="open">Öffnen</SelectItem>
-                          <SelectItem value="close">Schließen</SelectItem>
-                        </>
-                      );
-                    }
-                    return (
-                      <>
-                        <SelectItem value="on">Einschalten</SelectItem>
-                        <SelectItem value="off">Ausschalten</SelectItem>
-                      </>
-                    );
-                  })()}
-                </SelectContent>
-              </Select>
-            </div>
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold flex items-center gap-1.5"><Shield className="h-4 w-4" /> Dann darf nicht</p>
+            <Button type="button" variant="outline" size="sm" onClick={() => setPicker({ kind: 'lock' })}>
+              <Plus className="h-3.5 w-3.5 mr-1" /> Befehl
+            </Button>
           </div>
+          {picker?.kind === 'lock' && (
+            <BlockPicker
+              title="Verbotenen Befehl wählen"
+              choices={LOCK_CHOICES}
+              onClose={() => setPicker(null)}
+              onPick={(type) => {
+                onChange({ blockStatus: type, blockDeviceId: '' });
+                setLockChosen(true);
+                setPicker(null);
+              }}
+            />
+          )}
+          {lockChosen && (
+            <LockCard form={form} devices={devices} rooms={rooms} onChange={onChange} />
+          )}
         </section>
       ) : (
         <section className="space-y-3">

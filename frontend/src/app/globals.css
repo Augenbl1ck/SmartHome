@@ -29,7 +29,10 @@ summary {
   animation: shake 0.5s ease-in-out;
 }
 
-/* ─── Kiosk-Autostart: Scrollbars aus, Navigation bleibt in der Shell ─ */
+html, body {
+  max-width: 100%;
+  overflow-x: clip;
+}
 
 /* ─── Kiosk: Scrollbars verstecken (Touch-/Wheel-Scroll bleibt) ─── */
 html.kiosk-boot,
@@ -59,7 +62,7 @@ body.kiosk-active *::-webkit-scrollbar {
   .app-side-nav {
     display: flex;
     flex-direction: column;
-    width: 4.75rem;
+    width: 6.6rem;
     flex-shrink: 0;
     min-height: 0;
     background: var(--sidebar);
@@ -106,10 +109,11 @@ body.kiosk-active *::-webkit-scrollbar {
   padding: 0.35rem 0.2rem;
   border-radius: 0.85rem;
   color: var(--muted-foreground);
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   font-weight: 600;
-  line-height: 1.1;
+  line-height: 1.2;
   text-align: center;
+  min-width: 0;
 }
 .nav-item:hover { background: var(--sidebar-accent); color: var(--sidebar-accent-foreground); }
 .nav-item-active {
@@ -117,10 +121,11 @@ body.kiosk-active *::-webkit-scrollbar {
   color: var(--primary);
 }
 .nav-label {
-  max-width: 4.2rem;
+  display: block;
+  width: 100%;
+  white-space: normal;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.2;
 }
 .nav-emoji { font-size: 1.25rem; line-height: 1; }
 
@@ -135,7 +140,12 @@ body.kiosk-active *::-webkit-scrollbar {
     font-size: 0.9rem;
     text-align: left;
   }
-  .nav-label { max-width: none; font-weight: 500; }
+  .nav-label {
+    width: auto;
+    max-width: none;
+    white-space: nowrap;
+    font-weight: 500;
+  }
   .nav-emoji { width: 1.5rem; text-align: center; }
   .dash-sections {
     display: grid;

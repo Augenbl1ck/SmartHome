@@ -70,14 +70,14 @@ export default function EnergyWidget({ initial = null }: Props) {
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Live</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Live</p>
           <p className={cn('font-bold tabular-nums leading-tight', kioskMode ? 'text-lg' : 'text-xl')}>
             {Math.round(data?.live_power_w ?? 0)}
             <span className="text-sm font-medium text-muted-foreground ml-0.5">W</span>
           </p>
         </div>
         <div>
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Heute</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Heute</p>
           <p className={cn('font-bold tabular-nums leading-tight', kioskMode ? 'text-lg' : 'text-xl')}>
             {formatEuro(data?.today_cost ?? 0)}
           </p>
@@ -86,7 +86,7 @@ export default function EnergyWidget({ initial = null }: Props) {
           </p>
         </div>
         <div>
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Monat</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Monat</p>
           <p className={cn('font-bold tabular-nums leading-tight', kioskMode ? 'text-lg' : 'text-xl')}>
             {formatEuro(data?.month_cost ?? 0)}
           </p>

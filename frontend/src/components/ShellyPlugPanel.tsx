@@ -12,6 +12,7 @@ interface Props {
   deviceId: number;
   mode?: 'ble' | 'http';
   mqttPowerW?: number | null;
+  view?: 'stats' | 'config';
 }
 
 interface PowerStatus {
@@ -79,7 +80,7 @@ const DEFAULT_CONFIG: Config = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function ShellyPlugPanel({ deviceId, mode = 'ble', mqttPowerW = null }: Props) {
+export default function ShellyPlugPanel({ deviceId, mode = 'ble', mqttPowerW = null, view = 'stats' }: Props) {
   const [expanded,      setExpanded]      = useState(false);
   const [loadingPower,  setLoadingPower]  = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(false);
@@ -284,7 +285,9 @@ export default function ShellyPlugPanel({ deviceId, mode = 'ble', mqttPowerW = n
     }
   };
 
-  // ── Config open / close ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (view === 'config') void fetchConfig();
+  }, [view, deviceId]);
 
   const handleExpand = async () => {
     if (expanded && isDirty && committed) {
@@ -336,9 +339,9 @@ export default function ShellyPlugPanel({ deviceId, mode = 'ble', mqttPowerW = n
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="mt-2 border-t pt-2 space-y-1">
+    <div className={view === 'config' ? 'space-y-4' : 'mt-3 space-y-1'}>
 
-      {/* ── Verbrauch (immer sichtbar, Auto-Refresh) ───────────────── */}
+      {view !== 'config' && (<>
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
           <Zap className="h-3 w-3" />
@@ -377,19 +380,10 @@ export default function ShellyPlugPanel({ deviceId, mode = 'ble', mqttPowerW = n
           </div>
         ) : null}
       </div>
+      </>)}
 
-      {/* ── Konfiguration ───────────────────────────────────────────── */}
-      <button type="button" onClick={handleExpand}
-        className="cursor-pointer flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-        <Settings className="h-3 w-3" />
-        Gerät konfigurieren
-        {reverting
-          ? <Loader2 className="h-3 w-3 animate-spin" />
-          : expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-      </button>
-
-      {expanded && (
-        <div className="mt-1 space-y-4 max-h-72 overflow-y-auto overflow-x-hidden pr-1">
+      {view === 'config' && (
+        <div className="space-y-4">
           {error && (
             <p className="text-xs text-destructive bg-destructive/10 rounded px-2 py-1">{error}</p>
           )}
@@ -607,9 +601,9 @@ function Section({ label, children, action }: {
   label: string; children: React.ReactNode; action?: React.ReactNode;
 }) {
   return (
-    <div>
-      <div className="flex items-center justify-between mb-1.5">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+    <div className="rounded-2xl border bg-card p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold">{label}</p>
         {action}
       </div>
       {children}
@@ -619,7 +613,7 @@ function Section({ label, children, action }: {
 
 function Label({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <p className={cn('text-[11px] font-semibold uppercase tracking-wider text-muted-foreground', className)}>
+    <p className={cn('text-sm font-medium text-muted-foreground', className)}>
       {children}
     </p>
   );

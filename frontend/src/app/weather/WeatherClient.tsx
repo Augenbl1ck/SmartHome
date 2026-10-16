@@ -120,18 +120,18 @@ export default function WeatherClient({ initial }: Props) {
         <div className="rounded-2xl border bg-card p-4 sm:p-5">
           <div className="flex items-baseline justify-between gap-2 mb-3">
             <p className="text-sm font-semibold">Nächste 24 Stunden</p>
-            <p className="text-[11px] text-muted-foreground">% = Regenwahrsch.</p>
+            <p className="text-xs text-muted-foreground">% = Regenwahrsch.</p>
           </div>
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8 gap-2">
             {hourly.map(h => (
               <div
                 key={h.time}
-                className="flex-shrink-0 w-[4.25rem] rounded-xl bg-muted/50 px-2 py-3 flex flex-col items-center gap-1.5"
+                className="min-w-0 rounded-xl bg-muted/50 px-2 py-3 flex flex-col items-center gap-1.5"
               >
-                <span className="text-[11px] text-muted-foreground tabular-nums">{formatClock(h.time)}</span>
+                <span className="text-xs text-muted-foreground tabular-nums">{formatClock(h.time)}</span>
                 <WeatherIcon icon={h.icon} className="h-6 w-6 text-amber-500" />
                 <span className="text-sm font-semibold tabular-nums">{h.temp}{unit}</span>
-                <span className="text-[10px] text-sky-600 dark:text-sky-400 tabular-nums" title="Regenwahrscheinlichkeit">
+                <span className="text-xs text-sky-600 dark:text-sky-400 tabular-nums" title="Regenwahrscheinlichkeit">
                   Regen {h.pop}%
                 </span>
               </div>
@@ -144,7 +144,7 @@ export default function WeatherClient({ initial }: Props) {
         <div className="rounded-2xl border bg-card p-4 sm:p-5">
           <div className="flex items-baseline justify-between gap-2 mb-3">
             <p className="text-sm font-semibold">Wochenverlauf</p>
-            <p className="text-[11px] text-muted-foreground">% = Regenwahrsch.</p>
+            <p className="text-xs text-muted-foreground">% = Regenwahrsch.</p>
           </div>
           <ul className="divide-y">
             {daily.map(d => (
@@ -153,7 +153,7 @@ export default function WeatherClient({ initial }: Props) {
                 <WeatherIcon icon={d.icon} className="h-6 w-6 text-amber-500 shrink-0" />
                 <span className="text-xs text-muted-foreground capitalize flex-1 min-w-0 truncate">{d.description}</span>
                 {d.uvIndex != null && (
-                  <span className="text-[10px] text-muted-foreground tabular-nums shrink-0" title="UV-Index max.">
+                  <span className="text-xs text-muted-foreground tabular-nums shrink-0" title="UV-Index max.">
                     UV {d.uvIndex}
                   </span>
                 )}
@@ -185,7 +185,7 @@ function InfoChip({
 }) {
   return (
     <div className={cn('rounded-xl bg-muted/50 px-3 py-2.5 flex flex-col gap-0.5')}>
-      <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+      <span className="text-xs text-muted-foreground flex items-center gap-1">
         {icon}
         {label}
       </span>

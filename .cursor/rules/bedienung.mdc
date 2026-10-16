@@ -1,0 +1,18 @@
+---
+description: Bedienungsanleitung mitziehen und ein einheitliches Erscheinungsbild behalten
+alwaysApply: true
+---
+
+# Bedienung und Erscheinungsbild
+
+## Anleitung
+
+Sichtbare Änderungen an dem, was jemand auf dem Bildschirm sieht oder tippt, werden in derselben Änderung in `docs/bedienung.md` nachgezogen. Der passende Abschnitt reicht. Interne Refactors ohne neue Bedienung bleiben aus der Anleitung.
+
+Die Seite `/hilfe` liest diese Datei. Den Text nicht ein zweites Mal in der Oberfläche pflegen.
+
+## Ein Erscheinungsbild
+
+Neue Oberflächen verwenden die vorhandenen Bausteine: abgerundete Karte, Icon, kurzer Titel, Auswahlliste, danach die Felder. Automationen und Sperren teilen sich denselben Stapel.
+
+Kein eigener Dialog-Stil und kein neues Farbschema für eine einzelne Seite. Seiten, die schon in diesem Rahmen sitzen, nicht erneut umgestalten.

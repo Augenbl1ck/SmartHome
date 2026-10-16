@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { Cloud, CloudRain, CloudSnow, Sun, Wind, Droplets, Thermometer } from 'lucide-react';
+import { Cloud, CloudRain, CloudSnow, Sun, Wind } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api, type WeatherCurrent, type WeatherResponse } from '@/lib/api';
 import { useStaleWhileRevalidate } from '@/hooks/useStaleWhileRevalidate';
 import { useKiosk } from '@/components/KioskProvider';
+import { friendlyError } from '@/lib/friendly-error';
 
 function WeatherIcon({ icon, className }: { icon: string; className?: string }) {
   const cls = cn('shrink-0', className);
@@ -28,10 +29,6 @@ function unitSymbol(unit: string): string {
   return unit === 'imperial' ? '°F' : '°C';
 }
 
-function windLabel(unit: string): string {
-  return unit === 'imperial' ? 'mph' : 'km/h';
-}
-
 export default function WeatherWidget({ initial = null, compact = false }: Props) {
   const { kioskMode } = useKiosk();
   const pad = kioskMode ? 'p-3' : 'p-5';
@@ -46,7 +43,6 @@ export default function WeatherWidget({ initial = null, compact = false }: Props
   const error = weather?.error ?? loadError;
   const data: WeatherCurrent | null = weather?.current ?? null;
   const unit = unitSymbol(weather?.unit ?? 'metric');
-  const wUnit = windLabel(weather?.unit ?? 'metric');
 
   if (compact) {
     if (!data) return null;
@@ -63,7 +59,7 @@ export default function WeatherWidget({ initial = null, compact = false }: Props
     if (error) {
       return (
         <div className={cn('rounded-2xl border border-destructive/30 bg-destructive/5', pad)}>
-          <p className="text-sm text-destructive">{error}</p>
+          <p className="text-sm text-destructive">{friendlyError('weather', error)}</p>
         </div>
       );
     }
@@ -95,7 +91,7 @@ export default function WeatherWidget({ initial = null, compact = false }: Props
   if (error && !data) {
     return (
       <div className={cn('rounded-2xl border border-destructive/30 bg-destructive/5', pad)}>
-        <p className="text-sm text-destructive">{error}</p>
+        <p className="text-sm text-destructive">{friendlyError('weather', error)}</p>
       </div>
     );
   }
@@ -124,24 +120,16 @@ export default function WeatherWidget({ initial = null, compact = false }: Props
             <p className={cn('font-bold tabular-nums leading-none', kioskMode ? 'text-2xl' : 'text-3xl')}>
               {data.temp}{unit}
             </p>
-            <p className="text-xs text-muted-foreground capitalize mt-0.5 truncate">
+            <p className="text-sm text-muted-foreground capitalize mt-0.5 truncate">
               {data.city} · {data.description}
             </p>
           </div>
         </div>
 
-        <div className="flex flex-col items-end gap-1 shrink-0 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <Thermometer className="h-3 w-3" />
-            Gefühlt {data.feelsLike}{unit}
-          </span>
-          <span className="flex items-center gap-1">
-            <Droplets className="h-3 w-3" />
-            {data.humidity}%
-          </span>
-          <span className="flex items-center gap-1">
-            <Wind className="h-3 w-3" />
-            {data.windSpeed} {wUnit}
+        <div className="flex flex-col items-end gap-1 shrink-0 text-sm text-muted-foreground">
+          <span>Heute</span>
+          <span className="font-semibold tabular-nums text-foreground">
+            {data.tempMin}{unit} – {data.tempMax}{unit}
           </span>
         </div>
       </div>

@@ -248,19 +248,19 @@ export default function EnergyClient({ initial, initialHistory }: Props) {
 
       <div className="grid grid-cols-3 gap-3">
         <div className="rounded-2xl border bg-card p-4">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Live</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Live</p>
           <p className="text-lg font-bold tabular-nums mt-1">
             {Math.round(data.live_power_w)} W
           </p>
         </div>
         <div className="rounded-2xl border bg-card p-4">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Verbrauch</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Verbrauch</p>
           <p className="text-lg font-bold tabular-nums mt-1">
             {formatKwh(stats.kwh)} kWh
           </p>
         </div>
         <div className="rounded-2xl border bg-card p-4">
-          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Kosten</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">Kosten</p>
           <p className="text-lg font-bold tabular-nums mt-1">
             {formatEuro(stats.cost)}
           </p>

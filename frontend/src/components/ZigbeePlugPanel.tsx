@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, Device } from '@/lib/api';
 import {
-  Zap, ChevronDown, ChevronUp, Loader2, Save, RotateCcw, Settings, Scan,
+  Zap, Loader2, Save, RotateCcw, Scan,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface Props {
   device: Device;
   onUpdated?: (device: Device) => void;
+  view?: 'stats' | 'config';
 }
 
 type IndicatorMode = 'off' | 'off/on' | 'on/off' | 'on';
@@ -77,8 +78,7 @@ function num(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
-export default function ZigbeePlugPanel({ device, onUpdated }: Props) {
-  const [expanded, setExpanded] = useState(false);
+export default function ZigbeePlugPanel({ device, onUpdated, view = 'stats' }: Props) {
   const [draft, setDraft] = useState<Config>(() => configFromAttrs(device.attributes));
   const [committed, setCommitted] = useState<Config>(() => configFromAttrs(device.attributes));
   const [loadingConfig, setLoadingConfig] = useState(false);
@@ -102,11 +102,11 @@ export default function ZigbeePlugPanel({ device, onUpdated }: Props) {
   );
 
   useEffect(() => {
-    if (!expanded || dirty) return;
+    if (view !== 'config' || dirty) return;
     const next = configFromAttrs(device.attributes);
     setDraft(next);
     setCommitted(next);
-  }, [device.attributes, expanded, dirty]);
+  }, [device.attributes, view, dirty]);
 
   const requestGet = useCallback(async () => {
     setLoadingConfig(true);
@@ -126,15 +126,10 @@ export default function ZigbeePlugPanel({ device, onUpdated }: Props) {
     }
   }, [device.id]);
 
-  const handleExpand = () => {
-    const next = !expanded;
-    setExpanded(next);
-    if (next) {
-      setDraft(configFromAttrs(device.attributes));
-      setCommitted(configFromAttrs(device.attributes));
-      void requestGet();
-    }
-  };
+  useEffect(() => {
+    if (view !== 'config') return;
+    void requestGet();
+  }, [view, requestGet]);
 
   const saveAll = async () => {
     setSaving(true);
@@ -187,7 +182,8 @@ export default function ZigbeePlugPanel({ device, onUpdated }: Props) {
   const hasLive = powerW != null || voltage != null || current != null || energy != null;
 
   return (
-    <div className="mt-2 border-t pt-2 space-y-1">
+    <div className={view === 'config' ? 'space-y-4' : 'mt-3 space-y-1'}>
+      {view !== 'config' && (<>
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
           <Zap className="h-3 w-3" />
@@ -217,24 +213,16 @@ export default function ZigbeePlugPanel({ device, onUpdated }: Props) {
           <p className="text-xs text-muted-foreground">Noch keine Messwerte — wartet auf Zigbee.</p>
         )}
       </div>
+      </>)}
 
-      <button type="button" onClick={handleExpand}
-        className="cursor-pointer flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-        <Settings className="h-3 w-3" />
-        Gerät konfigurieren
-        {loadingConfig
-          ? <Loader2 className="h-3 w-3 animate-spin" />
-          : expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-      </button>
-
-      {expanded && (
-        <div className="mt-1 space-y-4 max-h-72 overflow-y-auto overflow-x-hidden pr-1">
+      {view === 'config' && (
+        <div className="space-y-4">
           {error && (
             <p className="text-xs text-destructive bg-destructive/10 rounded px-2 py-1">{error}</p>
           )}
 
           <Section label="LED-Anzeige">
-            <p className="text-[10px] text-muted-foreground mb-2">
+            <p className="text-sm text-muted-foreground mb-2">
               Einfache Status-LED, kein Farbring.
             </p>
             <div className="space-y-1">
@@ -252,7 +240,7 @@ export default function ZigbeePlugPanel({ device, onUpdated }: Props) {
                   <span className={cn('text-xs font-medium w-24 shrink-0', draft.indicatorMode === value && 'text-primary')}>
                     {label}
                   </span>
-                  <span className="text-[10px] leading-tight">{desc}</span>
+                  <span className="text-sm leading-snug text-muted-foreground">{desc}</span>
                 </button>
               ))}
             </div>
@@ -267,7 +255,7 @@ export default function ZigbeePlugPanel({ device, onUpdated }: Props) {
               </div>
               {draft.nightModeEnable && (
                 <div className="space-y-2">
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-sm text-muted-foreground">
                     LED wird nachts ausgeschaltet (kein Dimmen am Gerät).
                   </p>
                   <div className="flex items-center gap-2">
@@ -347,7 +335,7 @@ export default function ZigbeePlugPanel({ device, onUpdated }: Props) {
                   <span className={cn('text-xs font-medium w-20 shrink-0', draft.switchType === value && 'text-primary')}>
                     {label}
                   </span>
-                  <span className="text-[10px] leading-tight">{desc}</span>
+                  <span className="text-sm leading-snug text-muted-foreground">{desc}</span>
                 </button>
               ))}
             </div>
@@ -389,8 +377,8 @@ export default function ZigbeePlugPanel({ device, onUpdated }: Props) {
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">{label}</p>
+    <div className="rounded-2xl border bg-card p-4 space-y-3">
+      <p className="text-sm font-semibold">{label}</p>
       {children}
     </div>
   );

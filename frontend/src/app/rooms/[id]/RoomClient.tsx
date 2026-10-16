@@ -13,6 +13,7 @@ import SensorDayStats from '@/components/SensorDayStats';
 import ShellyPlugPanel from '@/components/ShellyPlugPanel';
 import ZigbeePlugPanel from '@/components/ZigbeePlugPanel';
 import ThermostatAdvancedPanel from '@/components/ThermostatAdvancedPanel';
+import ThermostatConfig from '@/components/ThermostatConfig';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { holdDeviceStatus, clearDeviceStatusHold, reconcileRemoteDevice, reconcileRemoteStatus } from '@/lib/device-status-hold';
 import { getEcho, onEchoReset } from '@/lib/echo';
@@ -83,7 +84,7 @@ function isBleDevice(device: Device): boolean {
   return device.attributes?.protocol === 'bluetooth_shelly_gen3';
 }
 
-/** Hat das Gerät eine MAC-Adresse? → BLE Bridge auf dem Server, kein Browser-BLE nötig */
+/** Hat das Gerät eine MAC-Adresse? �  BLE Bridge auf dem Server, kein Browser-BLE nötig */
 function hasMac(device: Device): boolean {
   return !!(device.attributes?.ble_address as string | undefined)?.trim();
 }
@@ -104,7 +105,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
   const [scanDevice, setScanDevice] = useState<Device | null>(null);
   const [turningOff, setTurningOff] = useState(false);
   const [wakeHint, setWakeHint] = useState<number | null>(null);
-  const [thermoConfigOpen, setThermoConfigOpen] = useState<Set<number>>(new Set());
+  const [configId, setConfigId] = useState<number | null>(null);
   const [editingSetpointId, setEditingSetpointId] = useState<number | null>(null);
   const [setpointDraft, setSetpointDraft] = useState('');
   const [roomWaited, setRoomWaited] = useState(false);
@@ -195,7 +196,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
     return () => window.removeEventListener(DEVICE_UPDATE_EVENT, handler);
   }, []);
 
-  // Echtzeit-Updates via Laravel Reverb WebSocket (MQTT → Backend → Browser)
+  // Echtzeit-Updates via Laravel Reverb WebSocket (MQTT �  Backend �  Browser)
   useEffect(() => {
     let echo: ReturnType<typeof getEcho> | null = null;
     const bindEcho = () => {
@@ -262,7 +263,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
     bleStates.get(id) ?? (shellyBle.isConnected(id) ? 'connected' : 'disconnected');
 
   const handleBlePair = async (device: Device) => {
-    // Hat keine MAC und BLE Bridge verfügbar → Scan starten
+    // Hat keine MAC und BLE Bridge verfügbar �  Scan starten
     setScanDevice(device);
   };
 
@@ -292,7 +293,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
 
   const applySetpoint = async (device: Device, value: number) => {
     const current = setpoints.get(device.id) ?? 20;
-    const clamped = Math.min(35, Math.max(4, Math.round(value * 2) / 2)); // TRVZB: 4–35°C, 0.5°C
+    const clamped = Math.min(35, Math.max(4, Math.round(value * 2) / 2)); // TRVZB: 4�35°C, 0.5°C
     if (clamped === current) return;
     setSetpoints(m => new Map(m).set(device.id, clamped));
     try {
@@ -420,11 +421,11 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
     try {
       if (isBleDevice(device) && shellyBle.isSupported()) {
         // Web Bluetooth immer versuchen wenn im Browser (Chrome/Windows).
-        // Auf dem Pi ist isSupported() false → BLE Bridge übernimmt server-seitig.
+        // Auf dem Pi ist isSupported() false �  BLE Bridge übernimmt server-seitig.
         try {
           await shellyBle.switchSet(device.id, newStatus === 'on');
         } catch {
-          // Nicht verbunden oder BLE nicht verfügbar — Server (BLE Bridge) übernimmt.
+          // Nicht verbunden oder BLE nicht verfügbar � Server (BLE Bridge) übernimmt.
         }
       }
       // Server-API (MQTT / HTTP / BLE Bridge via MAC)
@@ -451,7 +452,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
     const free = active.filter(d => !commandBlocked(d, 'off'));
     const skipped = active.length - free.length;
     if (free.length === 0) {
-      if (skipped > 0) toast.warning('Geräte durch Sperre geschützt — nichts ausgeschaltet.');
+      if (skipped > 0) toast.warning('Geräte durch Sperre geschützt � nichts ausgeschaltet.');
       return;
     }
     setTurningOff(true);
@@ -470,7 +471,63 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
   if (!room) {
     return (
       <div className="py-16 text-center text-sm text-muted-foreground">
-        {roomWaited ? 'Raum nicht gefunden.' : 'Raum wird geladen…'}
+        {roomWaited ? 'Raum nicht gefunden.' : 'Raum wird geladen⬦'}
+      </div>
+    );
+  }
+
+  const configDevice = configId != null ? devices.find(d => d.id === configId) ?? null : null;
+  if (configDevice) {
+    const proto = (configDevice.attributes?.protocol as string) ?? '';
+    const isZigbeePlug = proto === 'zigbee2mqtt' && configDevice.type === 'plug';
+    const isMqttShelly = ['shelly_gen3', 'shelly_gen1', 'shelly_gen3_http'].includes(proto);
+    const useBridge = isBleDevice(configDevice) && hasMac(configDevice);
+    const pendingNow = pending.has(configDevice.id);
+    const locked = !!nextCommandBlocked(configDevice);
+    return (
+      <div className="space-y-4 max-w-3xl animate-page-in">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setConfigId(null)}
+            className="cursor-pointer h-14 w-14 rounded-full flex items-center justify-center bg-muted hover:bg-accent shrink-0"
+            aria-label="Zurück zum Raum"
+          >
+            <ArrowLeft className="h-6 w-6" />
+          </button>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold truncate">{configDevice.name}</h1>
+            <p className="text-sm text-muted-foreground">Einstellungen</p>
+          </div>
+        </div>
+        {isZigbeePlug && (
+          <ZigbeePlugPanel
+            device={configDevice}
+            view="config"
+            onUpdated={(updated) => setDevices(prev => prev.map(d => d.id === updated.id ? { ...d, ...updated } : d))}
+          />
+        )}
+        {(isMqttShelly || (useBridge && isToggleable(configDevice.type as DeviceType))) && (
+          <ShellyPlugPanel
+            deviceId={configDevice.id}
+            mode={useBridge && !isMqttShelly ? 'ble' : 'http'}
+            view="config"
+            mqttPowerW={typeof configDevice.attributes?.power_w === 'number' ? configDevice.attributes.power_w as number : Number(configDevice.attributes?.power_w) || null}
+          />
+        )}
+        {configDevice.type === 'thermostat' && (
+          <ThermostatConfig
+            device={configDevice}
+            devices={devices}
+            storeDevices={storeDevices}
+            storeRooms={storeRooms}
+            roomId={roomId}
+            disabled={pendingNow || locked}
+            onCap={handleThermostatCap}
+            onTempSource={handleTempSource}
+            onUpdated={(updated) => setDevices(prev => prev.map(d => d.id === updated.id ? { ...d, ...updated } : d))}
+          />
+        )}
       </div>
     );
   }
@@ -478,7 +535,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
   return (
     <div className="space-y-5 animate-page-in">
 
-      {/* ── Header (sticky: bleibt unter der App-Nav klickbar) ─────── */}
+      {/* ���� Header (sticky: bleibt unter der App-Nav klickbar) �������������� */}
       <div className="sticky top-0 z-30 -mx-4 md:-mx-6 px-4 md:px-6 py-2 mb-1 flex items-center gap-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         {/* Zurück */}
         <button
@@ -523,7 +580,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
         </button>
       </div>
 
-      {/* ── BLE-Fehler ────────────────────────────────────────────── */}
+      {/* ���� BLE-Fehler �������������������������������������������������������������������������������������������� */}
       {bleError && (
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3">
           <p className="text-sm font-semibold text-destructive">Bluetooth-Fehler</p>
@@ -537,7 +594,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
         </div>
       )}
 
-      {/* ── Geräte-Grid ───────────────────────────────────────────── */}
+      {/* ���� Geräte-Grid ������������������������������������������������������������������������������������������ */}
       {(() => {
         const controlDevices = devices.filter(d => !isSensor(d.type as DeviceType));
         const sensorDevices  = devices.filter(d => isSensor(d.type as DeviceType));
@@ -564,7 +621,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
           const isOn       = device.status === 'on';
           const isActive   = isOn
             || (isFan   && ['low', 'medium', 'high'].includes(device.status))
-            // Thermostat: nur echte Heiz-Modi — nicht jede Zahl/Setpoint als "An"
+            // Thermostat: nur echte Heiz-Modi � nicht jede Zahl/Setpoint als "An"
             || (isTherm && ['auto', 'heat', 'on'].includes(device.status));
           const isPending  = pending.has(device.id);
           const lockReason = nextCommandBlocked(device);
@@ -605,7 +662,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                 isPending && 'opacity-60',
               )}
             >
-              {/* ── Icon + Name + Power-Button ── */}
+              {/* ���� Icon + Name + Power-Button ���� */}
               <div className="flex items-start gap-3">
                 <div className={cn(
                   'h-12 w-12 rounded-xl flex items-center justify-center shrink-0 transition-all duration-300 ease-in-out',
@@ -636,7 +693,17 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                   )}
                 </div>
 
-                {/* Power-Button: Computer nur zum Starten, wenn aus — kein Ausschalten */}
+                {/* Power-Button: Computer nur zum Starten, wenn aus � kein Ausschalten */}
+                {(isTherm || isZigbeePlug || isMqttShelly || (useBridge && toggleable && !sensor)) && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setConfigId(device.id); }}
+                    className="cursor-pointer h-12 w-12 rounded-full flex items-center justify-center shrink-0 bg-muted text-muted-foreground hover:bg-accent"
+                    aria-label="Konfigurieren"
+                  >
+                    <Settings className="h-5 w-5" />
+                  </button>
+                )}
                 {(isComputerDev ? !isOn : (toggleable || isTherm)) && !sensor && !isCover && (
                   <button
                     onClick={e => {
@@ -675,7 +742,8 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                 )}
               </div>
 
-              {/* ── Controls (event isolation, flex-1) ──────────────── */}
+              <div className="mt-3 border-t border-border" />
+
               <div className="flex-1" onClick={e => e.stopPropagation()}>
 
                 {/* Sensor-Wert + Min/Max heute */}
@@ -683,9 +751,9 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                   const LABELS: Partial<Record<string, [string, string]>> = {
                     sensor_door:      ['Offen',          'Geschlossen'],
                     sensor_motion:    ['Bewegt',         'Ruhig'],
-                    sensor_flood:     ['💧 Wasser!',     'Trocken'],
+                    sensor_flood:     ['Wasser',     'Trocken'],
                     sensor_vibration: ['Erschütterung',  'Ruhig'],
-                    sensor_smoke:     ['🔥 Alarm',       '✓ OK'],
+                    sensor_smoke:     ['Alarm',       'OK'],
                   };
                   const isBinary = device.type in LABELS;
                   const active   = device.type === 'sensor_door'
@@ -764,7 +832,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                       </div>
                     ) : bleState === 'connecting' ? (
                       <span className="w-fit flex items-center gap-1 text-xs text-muted-foreground py-1 px-2 rounded-full bg-muted">
-                        <Bluetooth className="h-3 w-3 shrink-0 animate-pulse" /> Verbinde…
+                        <Bluetooth className="h-3 w-3 shrink-0 animate-pulse" /> Verbinde⬦
                       </span>
                     ) : (
                       <button onClick={() => handleBlePair(device)}
@@ -788,17 +856,21 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                   </div>
                 )}
 
-                {useBridge && toggleable && !sensor && <ShellyPlugPanel deviceId={device.id} mode="ble" />}
+                {useBridge && toggleable && !sensor && (
+                  <ShellyPlugPanel deviceId={device.id} mode="ble" view="stats" />
+                )}
                 {isMqttShelly && toggleable && !sensor && (
                   <ShellyPlugPanel
                     deviceId={device.id}
                     mode="http"
+                    view="stats"
                     mqttPowerW={typeof device.attributes?.power_w === 'number' ? device.attributes.power_w as number : Number(device.attributes?.power_w) || null}
                   />
                 )}
                 {isZigbeePlug && (
                   <ZigbeePlugPanel
                     device={device}
+                    view="stats"
                     onUpdated={(updated) => setDevices(prev => prev.map(d => d.id === updated.id ? { ...d, ...updated } : d))}
                   />
                 )}
@@ -834,7 +906,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                   </>
                 )}
 
-                {/* Thermostat: Aktuell sichtbar, Rest unter „Gerät konfigurieren“ */}
+                {/* Thermostat: Aktuell sichtbar, Rest unter �~Gerät konfigurieren�S */}
                 {isTherm && (
                   <div className="mt-4 space-y-2">
                     {(() => {
@@ -846,7 +918,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                         <p>
                           Ventil:{' '}
                           <span className="font-semibold text-foreground">
-                            {shown.valveTemp != null ? `${shown.valveTemp.toFixed(1)}°C` : '—'}
+                            {shown.valveTemp != null ? `${shown.valveTemp.toFixed(1)}°C` : '–'}
                           </span>
                           {getRunningStateLabel(device.attributes) && (
                             <span className="ml-2 text-xs">
@@ -858,7 +930,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                           <p>
                             {shown.sourceName ?? 'Raumfühler'}:{' '}
                             <span className="font-semibold text-foreground">
-                              {shown.sensorTemp != null ? `${shown.sensorTemp.toFixed(1)}°C` : '—'}
+                              {shown.sensorTemp != null ? `${shown.sensorTemp.toFixed(1)}°C` : '–'}
                             </span>
                           </p>
                         )}
@@ -866,25 +938,6 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                       );
                     })()}
 
-                    <button
-                      type="button"
-                      onClick={() => setThermoConfigOpen(prev => {
-                        const next = new Set(prev);
-                        if (next.has(device.id)) next.delete(device.id);
-                        else next.add(device.id);
-                        return next;
-                      })}
-                      className="cursor-pointer flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <Settings className="h-3 w-3" />
-                      Gerät konfigurieren
-                      {thermoConfigOpen.has(device.id)
-                        ? <ChevronUp className="h-3 w-3" />
-                        : <ChevronDown className="h-3 w-3" />}
-                    </button>
-
-                    {thermoConfigOpen.has(device.id) && (
-                      <div className="space-y-3 pt-1">
                         <div>
                           <p className="text-sm text-muted-foreground mb-2">Solltemperatur</p>
                           <div className="flex items-center gap-3">
@@ -949,156 +1002,6 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                           </div>
                         </div>
 
-                        <div className="space-y-2 pt-1">
-                          <div className="flex items-center justify-between gap-3 rounded-xl bg-muted/50 px-3 py-2.5">
-                            <div className="flex items-center gap-2 min-w-0">
-                              {isChildLockOn(device.attributes) ? (
-                                <Lock className="h-4 w-4 text-orange-500 shrink-0" />
-                              ) : (
-                                <Unlock className="h-4 w-4 text-muted-foreground shrink-0" />
-                              )}
-                              <span className="text-sm font-medium truncate">Kindersicherung</span>
-                            </div>
-                            <Switch
-                              checked={isChildLockOn(device.attributes)}
-                              disabled={isDisabled}
-                              onCheckedChange={(on) =>
-                                handleThermostatCap(
-                                  device,
-                                  encodeCapStatus('child_lock', on ? 'LOCK' : 'UNLOCK'),
-                                  { child_lock: on ? 'LOCK' : 'UNLOCK' },
-                                )
-                              }
-                            />
-                          </div>
-
-                          <div className="flex items-center justify-between gap-3 rounded-xl bg-muted/50 px-3 py-2.5">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <Wind className="h-4 w-4 text-sky-500 shrink-0" />
-                              <span className="text-sm font-medium truncate">Offenes Fenster - Erkennung</span>
-                            </div>
-                            <Switch
-                              checked={isOpenWindowOn(device.attributes)}
-                              disabled={isDisabled}
-                              onCheckedChange={(on) =>
-                                handleThermostatCap(
-                                  device,
-                                  encodeCapStatus('open_window', on ? 'ON' : 'OFF'),
-                                  { open_window: on ? 'ON' : 'OFF' },
-                                )
-                              }
-                            />
-                          </div>
-
-                          <div className="rounded-xl bg-muted/50 px-3 py-2.5 space-y-1.5">
-                            <p className="text-xs text-muted-foreground">Raumtemperatur von</p>
-                            <Select
-                              value={temperatureSourceDeviceId(device) != null
-                                ? String(temperatureSourceDeviceId(device))
-                                : 'internal'}
-                              disabled={isDisabled}
-                              onValueChange={(v) => {
-                                void handleTempSource(device, v === 'internal' ? null : Number(v));
-                              }}
-                            >
-                              <SelectTrigger className="w-full bg-background">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="internal">Ventil (intern)</SelectItem>
-                                {(() => {
-                                  const catalog = mergeDeviceLists(storeDevices, devices);
-                                  const selectedId = temperatureSourceDeviceId(device);
-                                  const sources = catalog
-                                    .filter(isRoomTempSensor)
-                                    .slice()
-                                    .sort((a, b) => {
-                                      const ar = a.room_id === roomId ? 0 : 1;
-                                      const br = b.room_id === roomId ? 0 : 1;
-                                      if (ar !== br) return ar - br;
-                                      return a.name.localeCompare(b.name, 'de');
-                                    });
-                                  if (selectedId && !sources.some((s) => s.id === selectedId)) {
-                                    const extra = catalog.find((s) => s.id === selectedId);
-                                    if (extra) sources.unshift(extra);
-                                  }
-                                  return sources.map((s) => {
-                                    const roomName = storeRooms.find(r => r.id === s.room_id)?.name;
-                                    return (
-                                      <SelectItem key={s.id} value={String(s.id)}>
-                                        {roomName && s.room_id !== roomId ? `${roomName} · ${s.name}` : s.name}
-                                      </SelectItem>
-                                    );
-                                  });
-                                })()}
-                              </SelectContent>
-                            </Select>
-                            <p className="text-[11px] text-muted-foreground leading-snug">
-                              Der Fühler am Heizkörper misst oft zu warm. Ein Raumfühler kann mehrere Ventile versorgen.
-                            </p>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="rounded-xl bg-muted/50 px-3 py-2.5 space-y-1">
-                              <p className="text-xs text-muted-foreground">Kalibrierung (°C)</p>
-                              <input
-                                type="number"
-                                step={0.2}
-                                min={-12.7}
-                                max={12.7}
-                                disabled={isDisabled}
-                                className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm tabular-nums"
-                                defaultValue={getCalibration(device.attributes)}
-                                key={`cal-${device.id}-${getCalibration(device.attributes)}`}
-                                onBlur={(e) => {
-                                  const raw = Number(e.target.value);
-                                  if (!Number.isFinite(raw)) return;
-                                  const val = Math.round(Math.min(12.7, Math.max(-12.7, raw)) * 5) / 5;
-                                  if (val === getCalibration(device.attributes)) return;
-                                  handleThermostatCap(
-                                    device,
-                                    encodeCapStatus('local_temperature_calibration', String(val)),
-                                    { local_temperature_calibration: val },
-                                  );
-                                }}
-                              />
-                            </div>
-                            <div className="rounded-xl bg-muted/50 px-3 py-2.5 space-y-1">
-                              <p className="text-xs text-muted-foreground">Frostschutz (°C)</p>
-                              <input
-                                type="number"
-                                step={0.5}
-                                min={4}
-                                max={35}
-                                disabled={isDisabled}
-                                className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm tabular-nums"
-                                defaultValue={getFrostProtection(device.attributes)}
-                                key={`frost-${device.id}-${getFrostProtection(device.attributes)}`}
-                                onBlur={(e) => {
-                                  const raw = Number(e.target.value);
-                                  if (!Number.isFinite(raw)) return;
-                                  const val = Math.round(Math.min(35, Math.max(4, raw)) * 2) / 2;
-                                  if (val === getFrostProtection(device.attributes)) return;
-                                  handleThermostatCap(
-                                    device,
-                                    encodeCapStatus('frost_protection_temperature', String(val)),
-                                    { frost_protection_temperature: val },
-                                  );
-                                }}
-                              />
-                            </div>
-                          </div>
-
-                        <ThermostatAdvancedPanel
-                          device={device}
-                          disabled={isDisabled}
-                          onUpdated={(updated) =>
-                            setDevices((prev) => prev.map((d) => (d.id === updated.id ? { ...d, ...updated } : d)))
-                          }
-                        />
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -1122,8 +1025,8 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                   </div>
                 )}
                 {isRgb && (
-                  <p className="mt-1.5 text-xs text-muted-foreground">
-                    🎨 Farbe via MQTT-Attribut <code className="text-[10px] bg-muted px-1 py-0.5 rounded">color</code>
+                  <p className="mt-1.5 text-sm text-muted-foreground">
+                    Farbe über das MQTT-Attribut color.
                   </p>
                 )}
 
@@ -1144,11 +1047,11 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
                   </div>
                 )}
 
-                {isButton && <p className="mt-3 text-sm text-muted-foreground">Eingang – kein Ausgang</p>}
+                {isButton && <p className="mt-3 text-sm text-muted-foreground">Eingang, kein Ausgang</p>}
 
               </div>{/* end controls */}
 
-              {/* ── Bottom: History + Timestamp (immer unten) ──── */}
+              {/* ���� Bottom: History + Timestamp (immer unten) �������� */}
               {(toggleable && !sensor && !isCover || !!device.last_seen) && (
                 <div className="mt-auto pt-2" onClick={e => e.stopPropagation()}>
                   {/* Verlauf auf Raumseite ausgeblendet */}
@@ -1176,7 +1079,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
               </div>
             )}
 
-            {/* Sensoren — eigene Sektion darunter */}
+            {/* Sensoren � eigene Sektion darunter */}
             {sensorDevices.length > 0 && (
               <div>
                 <p className="text-sm font-medium text-muted-foreground mb-3">Sensoren</p>

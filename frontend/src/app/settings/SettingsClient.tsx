@@ -20,7 +20,7 @@ import {
   Pencil, Plus, Trash2, Wifi, LockKeyhole, LockKeyholeOpen, Timer,
   ChevronDown, Home, Cpu, Cloud, LayoutDashboard, Search, Loader2, Radio,
   ChevronUp, X, ChevronRight, ArrowLeft, Clapperboard, Zap, Monitor, RefreshCw, Check, Bell, Activity,
-  TrainFront, Palette, Sun, Moon,
+  TrainFront, Palette, Sun, Moon, BookOpen,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePinLockContext } from '@/components/PinLockProvider';
@@ -2125,6 +2125,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
   }, []);
 
   // ── Gerät-Dialog ────────────────────────────────────────────────
+  const [linkChosen, setLinkChosen] = useState(false);
   const [deviceDialog, setDeviceDialog] = useState<{
     open: boolean; editing?: Device; form: DeviceForm; saving: boolean; error: string;
     discovered: DiscoveredDevice[] | null; discovering: boolean; discoverError: string; pairLeft: number;
@@ -2140,6 +2141,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
   const openDevice = (d?: Device) => {
     if (deviceDialog.pairLeft > 0) api.zigbeePermitJoin(false).catch(() => {});
     setLanScan({ hosts: null, scanning: false, error: '' });
+    setLinkChosen(!!d);
     setDeviceDialog({
       open: true, editing: d, form: d ? deviceToForm(d) : emptyDevice(),
       saving: false, error: '', discovered: null, discovering: false, discoverError: '', pairLeft: 0,
@@ -2218,6 +2220,19 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     const id = setInterval(refresh, 5000);
     return () => clearInterval(id);
   }, [deviceDialogPairing]);
+
+  const pickLink = (kind: 'zigbee' | 'shelly' | 'esp' | 'computer') => {
+    if (kind === 'computer') {
+      patchDevice({ type: 'computer', mqtt_protocol: 'wake_on_lan', vendorId: '' });
+    } else if (kind === 'zigbee') {
+      selectVendor('zigbee');
+    } else if (kind === 'shelly') {
+      selectVendor('shelly_plugs3');
+    } else {
+      selectVendor('custom');
+    }
+    setLinkChosen(true);
+  };
 
   const selectVendor = (vendorId: string) => {
     const preset = VENDOR_PRESETS.find(v => v.id === vendorId);
@@ -2432,17 +2447,19 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     { id: 'appearance', icon: Palette,    color: 'text-fuchsia-500 bg-fuchsia-500/10', label: 'Darstellung',    desc: 'Hell, Dunkel & System' },
     { id: 'zigbee',   icon: Radio,        color: 'text-cyan-500   bg-cyan-500/10',   label: 'Zigbee',           desc: 'Geräte anlernen & verwalten' },
     { id: 'notifs',   icon: Bell,         color: 'text-rose-500   bg-rose-500/10',   label: 'Benachrichtigungen', desc: 'Push-Nachrichten' },
+    { id: 'help',     icon: BookOpen,     color: 'text-primary    bg-primary/10',    label: 'Hilfe',            desc: 'Bedienungsanleitung', href: '/hilfe' },
   ];
   const viewLabel = CATEGORIES.find(c => c.id === view)?.label ?? view;
 
   return (
     <div className="max-w-2xl xl:max-w-5xl mx-auto">
+      {!deviceDialog.open && !roomDialog.open && (<>
 
       {/* ── Header ────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 mb-5">
         {view && (
           <button onClick={() => navigate(null)}
-            className="cursor-pointer h-12 w-12 rounded-full bg-muted flex items-center justify-center shrink-0 active:scale-90 transition-all">
+            className="cursor-pointer h-14 w-14 rounded-full bg-muted flex items-center justify-center shrink-0 active:scale-90 transition-all">
             <ArrowLeft className="h-5 w-5" />
           </button>
         )}
@@ -2495,7 +2512,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
           {devices.map(device => {
             const room = rooms.find(r => r.id === device.room_id);
             return (
-              <div key={device.id} className="flex items-center gap-3 rounded-lg border px-3 py-2.5">
+              <div key={device.id} className="flex items-center gap-3 rounded-2xl border bg-card px-4 py-3">
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm truncate">{device.name}</p>
                   <div className="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -2515,12 +2532,12 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <button onClick={() => openDevice(device)}
-                    className="cursor-pointer h-8 w-8 flex items-center justify-center rounded-lg hover:bg-accent transition-colors">
+                    className="cursor-pointer h-11 w-11 flex items-center justify-center rounded-xl hover:bg-accent transition-colors">
                     <Pencil className="h-4 w-4 text-muted-foreground" />
                   </button>
                   <button
                     onClick={() => setDeleteConfirm({ open: true, type: 'device', id: device.id, label: device.name })}
-                    className="cursor-pointer h-8 w-8 flex items-center justify-center rounded-lg hover:bg-destructive/10 transition-colors">
+                    className="cursor-pointer h-11 w-11 flex items-center justify-center rounded-xl hover:bg-destructive/10 transition-colors">
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </button>
                 </div>
@@ -2543,7 +2560,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
           {rooms.map(room => {
             const count = devices.filter(d => d.room_id === room.id).length;
             return (
-              <div key={room.id} className="flex items-center gap-3 rounded-lg border px-3 py-2.5">
+              <div key={room.id} className="flex items-center gap-3 rounded-2xl border bg-card px-4 py-3">
                 <span className="text-xl shrink-0">{room.icon}</span>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm">{room.name}</p>
@@ -2551,12 +2568,12 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <button onClick={() => openRoom(room)}
-                    className="cursor-pointer h-8 w-8 flex items-center justify-center rounded-lg hover:bg-accent transition-colors">
+                    className="cursor-pointer h-11 w-11 flex items-center justify-center rounded-xl hover:bg-accent transition-colors">
                     <Pencil className="h-4 w-4 text-muted-foreground" />
                   </button>
                   <button
                     onClick={() => setDeleteConfirm({ open: true, type: 'room', id: room.id, label: room.name })}
-                    className="cursor-pointer h-8 w-8 flex items-center justify-center rounded-lg hover:bg-destructive/10 transition-colors">
+                    className="cursor-pointer h-11 w-11 flex items-center justify-center rounded-xl hover:bg-destructive/10 transition-colors">
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </button>
                 </div>
@@ -2682,24 +2699,47 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
       {view === 'appearance' && <div key="appearance" className="animate-page-in"><AppearanceSection /></div>}
       {view === 'zigbee'    && <div key="zigbee"    className="animate-page-in"><ZigbeeSection rooms={rooms} onDeviceImported={d => { setDevices(prev => [...prev, d]); upsertDevice(d); router.refresh(); }} onLinkedDeviceRemoved={id => { setDevices(prev => prev.filter(d => d.id !== id)); removeDeviceFromStore(id); router.refresh(); }} /></div>}
       {view === 'notifs'    && <div key="notifs"    className="animate-page-in"><NotificationsSection /></div>}
+      </>)}
 
       {/* ═══════════════════════════════════════════════════════════
           Dialoge
       ══════════════════════════════════════════════════════════ */}
 
       {/* ── Gerät-Dialog ──────────────────────────────────────────── */}
-      <Dialog open={deviceDialog.open}
-        onOpenChange={open => {
-          if (!open) closeDeviceDialog();
-        }}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{deviceDialog.editing ? 'Gerät bearbeiten' : 'Neues Gerät'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
+      {deviceDialog.open && (
+        <div className="space-y-5 max-w-3xl">
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="text-2xl font-bold">{deviceDialog.editing ? 'Gerät bearbeiten' : 'Neues Gerät'}</h1>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={closeDeviceDialog}>Abbrechen</Button>
+              <Button onClick={saveDevice} disabled={deviceDialog.saving}>{deviceDialog.saving ? 'Speichern…' : 'Speichern'}</Button>
+            </div>
+          </div>
+          <div className="space-y-4">
+            {!deviceDialog.editing && !linkChosen ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {([
+                  ['zigbee', 'Zigbee', 'Stick sucht neue Geräte'],
+                  ['shelly', 'Shelly', 'Steckdose per MQTT oder IP'],
+                  ['esp', 'ESP32', 'Eigenes MQTT-Topic'],
+                  ['computer', 'Computer', 'Wake-on-LAN'],
+                ] as const).map(([id, label, hint]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => pickLink(id)}
+                    className="cursor-pointer rounded-2xl border bg-card p-4 text-left min-h-20 hover:bg-accent"
+                  >
+                    <span className="block text-sm font-semibold">{label}</span>
+                    <span className="block text-sm text-muted-foreground mt-1">{hint}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+            <>
 
             {/* ── Zigbee Discovery ──────────────────────────────── */}
-            {!deviceDialog.editing && deviceDialog.form.type !== 'computer' && (
+            {!deviceDialog.editing && deviceDialog.form.vendorId === 'zigbee' && (
               <div className="rounded-xl border bg-muted/30 p-3 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm font-medium">
@@ -2748,7 +2788,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
                           <span className="font-medium text-sm truncate">{d.friendly_name}</span>
                           <div className="flex items-center gap-1 shrink-0">
                             <span className={cn(
-                              'text-[10px] px-1.5 py-0.5 rounded font-medium',
+                              'text-xs px-1.5 py-0.5 rounded font-medium',
                               d.source === 'zigbee2mqtt'
                                 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
                                 : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
@@ -2756,7 +2796,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
                               {d.source === 'zigbee2mqtt' ? 'Zigbee' : 'Shelly'}
                             </span>
                             {!d.supported && (
-                              <span className="text-[10px] bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 px-1.5 py-0.5 rounded">
+                              <span className="text-xs bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 px-1.5 py-0.5 rounded">
                                 Experimentell
                               </span>
                             )}
@@ -2818,7 +2858,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
             </div>
 
             {/* ── Hersteller / Verbindung ───────────────────────── */}
-            {!deviceDialog.editing && deviceDialog.form.type !== 'computer' && deviceDialog.form.vendorId !== '' && (() => {
+            {!deviceDialog.editing && !linkChosen && deviceDialog.form.type !== 'computer' && deviceDialog.form.vendorId !== '' && (() => {
               const isShelly = deviceDialog.form.vendorId.startsWith('shelly');
               const shellyModels = VENDOR_PRESETS.filter(v => v.group === 'shelly');
               const mainPresets  = VENDOR_PRESETS.filter(v => !v.group);
@@ -2842,7 +2882,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
                         )}>
                         <span className="text-2xl">{v.icon}</span>
                         <span className="text-xs font-semibold leading-tight">{v.label}</span>
-                        <span className="text-[10px] text-muted-foreground leading-tight">{v.desc}</span>
+                        <span className="text-sm text-muted-foreground leading-tight">{v.desc}</span>
                       </button>
                     ))}
                   </div>
@@ -2861,7 +2901,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
                           <span className="text-base shrink-0">{m.icon}</span>
                           <div className="min-w-0">
                             <p className="text-xs font-semibold truncate">{m.label}</p>
-                            <p className="text-[10px] text-muted-foreground truncate">{m.desc}</p>
+                            <p className="text-sm text-muted-foreground truncate">{m.desc}</p>
                           </div>
                         </button>
                       ))}
@@ -2902,7 +2942,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
                       ))}
                     </div>
                   )}
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-sm text-muted-foreground">
                     Gerät antippen, um Name, IP und MAC zu übernehmen. Der PC muss dafür eingeschaltet sein.
                   </p>
                 </div>
@@ -2920,7 +2960,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
                   placeholder="192.168.1.50"
                   hint="Für Online-Anzeige. Wird beim Scan automatisch gesetzt."
                   inputMode="decimal" autoComplete="off" />
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                <p className="text-sm text-muted-foreground leading-relaxed">
                   Im BIOS/UEFI und in Windows (Netzwerkkarte → Energieverwaltung) muss Wake-on-LAN aktiv sein.
                 </p>
               </div>
@@ -3040,26 +3080,23 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
             </div>
 
             {deviceDialog.error && <p className="text-sm text-destructive">{deviceDialog.error}</p>}
+            </>
+            )}
           </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={closeDeviceDialog}>
-              Abbrechen
-            </Button>
-            <Button onClick={saveDevice} disabled={deviceDialog.saving}>
-              {deviceDialog.saving ? 'Speichern…' : 'Speichern'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
 
       {/* ── Raum-Dialog ───────────────────────────────────────────── */}
-      <Dialog open={roomDialog.open}
-        onOpenChange={open => !open && setRoomDialog({ open: false, editing: undefined, name: '', icon: '🏠', saving: false, error: '' })}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{roomDialog.editing ? 'Raum bearbeiten' : 'Neuer Raum'}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
+      {roomDialog.open && (
+        <div className="space-y-5 max-w-3xl">
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="text-2xl font-bold">{roomDialog.editing ? 'Raum bearbeiten' : 'Neuer Raum'}</h1>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setRoomDialog({ open: false, editing: undefined, name: '', icon: '🏠', saving: false, error: '' })}>Abbrechen</Button>
+              <Button onClick={saveRoom} disabled={roomDialog.saving}>{roomDialog.saving ? 'Speichern…' : 'Speichern'}</Button>
+            </div>
+          </div>
+          <div className="rounded-2xl border bg-card p-4 space-y-4">
             <Field label="Name" value={roomDialog.name}
               onChange={v => setRoomDialog(s => ({ ...s, name: v }))}
               placeholder="z.B. Wohnzimmer"
@@ -3083,17 +3120,8 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
 
             {roomDialog.error && <p className="text-sm text-destructive">{roomDialog.error}</p>}
           </div>
-          <DialogFooter>
-            <Button variant="ghost"
-              onClick={() => setRoomDialog({ open: false, editing: undefined, name: '', icon: '🏠', saving: false, error: '' })}>
-              Abbrechen
-            </Button>
-            <Button onClick={saveRoom} disabled={roomDialog.saving}>
-              {roomDialog.saving ? 'Speichern…' : 'Speichern'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
 
       {/* ── PIN-Dialog (Inline-Numpad, kein Virtual-Keyboard) ───── */}
       <Dialog open={pinDialog.open}

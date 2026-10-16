@@ -11,6 +11,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useStaleWhileRevalidate } from '@/hooks/useStaleWhileRevalidate';
 import { useKiosk } from '@/components/KioskProvider';
+import { friendlyError } from '@/lib/friendly-error';
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
@@ -111,7 +112,7 @@ export default function TransitWidget({ initial = null }: Props) {
   if (!board && loadError) {
     return (
       <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5">
-        <p className="text-sm text-destructive">{loadError}</p>
+        <p className="text-sm text-destructive">{friendlyError('transit', loadError)}</p>
       </div>
     );
   }
@@ -138,7 +139,7 @@ export default function TransitWidget({ initial = null }: Props) {
       </div>
 
       {error && (
-        <p className="text-xs text-amber-600 dark:text-amber-400">{error}</p>
+        <p className="text-sm text-amber-600 dark:text-amber-400">{friendlyError('transit', error)}</p>
       )}
 
       {connections.length > 0 && (
@@ -147,10 +148,10 @@ export default function TransitWidget({ initial = null }: Props) {
           {connections.map(conn => (
             <div key={conn.id} className="rounded-xl border bg-background/50 px-3 py-2">
               <p className="text-sm font-semibold truncate">{conn.label}</p>
-              <p className="text-[11px] text-muted-foreground truncate mb-1">
+              <p className="text-xs text-muted-foreground truncate mb-1">
                 {conn.from.name} → {conn.to.name}
               </p>
-              {conn.error && <p className="text-xs text-destructive">{conn.error}</p>}
+              {conn.error && <p className="text-sm text-destructive">{friendlyError('transit', conn.error)}</p>}
               {conn.journeys.length === 0 && !conn.error && (
                 <p className="text-xs text-muted-foreground py-1">Keine Verbindungen gefunden</p>
               )}
@@ -170,7 +171,7 @@ export default function TransitWidget({ initial = null }: Props) {
           {stations.map(st => (
             <div key={st.stop.id} className="rounded-xl border bg-background/50 px-3 py-2">
               <p className="text-sm font-semibold truncate mb-1">{st.stop.name}</p>
-              {st.error && <p className="text-xs text-destructive">{st.error}</p>}
+              {st.error && <p className="text-sm text-destructive">{friendlyError('transit', st.error)}</p>}
               {st.departures.length === 0 && !st.error && (
                 <p className="text-xs text-muted-foreground py-1">Keine Abfahrten</p>
               )}
