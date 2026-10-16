@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Log;
  * AutomationEngine – Conditions (AND/OR) + Legacy-Trigger, Aktionen.
  *
  * Conditions-Automationen: Auswertung bei Geräte-Update und jede Minute (Rising Edge).
+ * Thermostat „An“ in einem Zeitfenster geht beim Verlassen des Fensters wieder auf Aus.
  * Legacy: klassische Trigger + optionale Conditions.
  */
 class AutomationEngine
@@ -143,6 +144,7 @@ class AutomationEngine
 
     /**
      * Conditions-only: Rising Edge wenn Bedingungen wahr werden.
+     * Fällt das Fenster wieder weg, Thermostate die auf An gestellt wurden zurück auf Aus.
      */
     public function evaluateConditionsAutomations(): void
     {
@@ -155,6 +157,11 @@ class AutomationEngine
             $pass     = $this->conditionsPass($automation->conditions);
 
             if (!$pass) {
+                if ($this->heatingWindowApplied(Cache::get($cacheKey))) {
+                    if (!$this->releaseHeatingWindow($automation)) {
+                        continue;
+                    }
+                }
                 Cache::forget($cacheKey);
                 continue;
             }
@@ -163,9 +170,9 @@ class AutomationEngine
                 continue;
             }
 
-            Cache::put($cacheKey, true, now()->addDays(7));
             Log::info("[AutomationEngine] Conditions-Automation '{$automation->name}' ausgelöst");
-            $this->executeAction($automation);
+            $ok = $this->executeAction($automation);
+            Cache::put($cacheKey, $ok ? 'applied' : 'pending', now()->addDays(7));
         }
     }
 
@@ -186,9 +193,9 @@ class AutomationEngine
             return;
         }
 
-        $this->markConditionEdge($automation);
         Log::info("[AutomationEngine] Automation '{$automation->name}' sofort ausgeführt (Bedingungen aktuell erfüllt)");
-        $this->executeAction($automation);
+        $ok = $this->executeAction($automation);
+        Cache::put($this->conditionEdgeKey($automation), $ok ? 'applied' : 'pending', now()->addDays(7));
     }
 
     public function forgetConditionEdge(Automation $automation): void
@@ -196,9 +203,86 @@ class AutomationEngine
         Cache::forget($this->conditionEdgeKey($automation));
     }
 
-    private function markConditionEdge(Automation $automation): void
+    private function heatingWindowApplied(mixed $state): bool
     {
-        Cache::put($this->conditionEdgeKey($automation), true, now()->addDays(7));
+        return $state === 'applied' || $state === true;
+    }
+
+    /**
+     * Thermostate, die diese Automation auf An gestellt hat, wieder aus.
+     * Sollwert bleibt gespeichert. Andere Aktionen bleiben unangetastet.
+     */
+    private function releaseHeatingWindow(Automation $automation): bool
+    {
+        $offs = $this->thermostatOffActions($automation->action ?? []);
+        if ($offs === []) {
+            return true;
+        }
+
+        $ok = true;
+        foreach ($offs as $off) {
+            if (!$this->actionExecutor->execute($off, allowActivateScene: true)) {
+                $ok = false;
+            }
+        }
+
+        if (!$ok) {
+            Log::info("[AutomationEngine] Automation '{$automation->name}': Aus nach Zeitfenster blockiert, nächste Minute erneut");
+            return false;
+        }
+
+        $names = [];
+        foreach ($offs as $off) {
+            $names[] = optional(Device::find($off['device_id'] ?? null))->name ?? 'Thermostat';
+        }
+        $summary = implode(', ', $names) . ' Aus (Zeitfenster vorbei)';
+        Log::info("[AutomationEngine] Automation '{$automation->name}': {$summary}");
+        $this->recordAutomationFired($automation, $summary);
+
+        return true;
+    }
+
+    /**
+     * @param  array<string, mixed>  $action
+     * @return list<array{type: string, device_id: int, mode: string}>
+     */
+    private function thermostatOffActions(array $action): array
+    {
+        $type = $action['type'] ?? '';
+        if ($type === 'multi') {
+            $items = $action['actions'] ?? [];
+            if (!is_array($items)) {
+                return [];
+            }
+            $offs = [];
+            foreach ($items as $item) {
+                if (is_array($item)) {
+                    array_push($offs, ...$this->thermostatOffActions($item));
+                }
+            }
+
+            return $offs;
+        }
+
+        if ($type !== 'set_thermostat_mode') {
+            return [];
+        }
+
+        $mode = strtolower((string) ($action['mode'] ?? ''));
+        if (!in_array($mode, ['heat', 'on', 'auto'], true)) {
+            return [];
+        }
+
+        $deviceId = (int) ($action['device_id'] ?? 0);
+        if ($deviceId <= 0) {
+            return [];
+        }
+
+        return [[
+            'type' => 'set_thermostat_mode',
+            'device_id' => $deviceId,
+            'mode' => 'off',
+        ]];
     }
 
     private function conditionEdgeKey(Automation $automation): string
@@ -263,6 +347,7 @@ class AutomationEngine
             'device_status' => $this->conditionDeviceStatus($condition),
             'temperature_above', 'temperature_below' => $this->conditionTemperature($condition, $type === 'temperature_above'),
             'humidity_above', 'humidity_below' => $this->conditionHumidity($condition, $type === 'humidity_above'),
+            'power_above', 'power_below' => $this->conditionPower($condition, $type === 'power_above'),
             'door_open' => $this->conditionDeviceEquals($condition, 'open'),
             'door_closed' => $this->conditionDeviceEquals($condition, 'closed'),
             'motion' => $this->conditionDeviceEquals($condition, 'on'),
@@ -342,6 +427,18 @@ class AutomationEngine
         }
         $value = (float) $device->attributes['humidity'];
         $threshold = (float) ($condition['threshold'] ?? 0);
+        return $above ? $value > $threshold : $value < $threshold;
+    }
+
+    private function conditionPower(array $condition, bool $above): bool
+    {
+        $device = Device::find($condition['device_id'] ?? null);
+        if (!$device || !isset($device->attributes['power_w']) || !is_numeric($device->attributes['power_w'])) {
+            return false;
+        }
+        $value = (float) $device->attributes['power_w'];
+        $threshold = (float) ($condition['threshold'] ?? 0);
+
         return $above ? $value > $threshold : $value < $threshold;
     }
 
@@ -477,11 +574,11 @@ class AutomationEngine
      * Führt die Automation aus. Bei Sperre optional alle 5 Minuten erneut versuchen.
      * Retries prüfen die Wenn-Bedingungen nicht erneut (z.B. 22:00 bleibt gültig).
      */
-    private function executeAction(Automation $automation, bool $isRetry = false): void
+    private function executeAction(Automation $automation, bool $isRetry = false): bool
     {
         $action = $automation->action ?? [];
         if (!is_array($action) || $action === []) {
-            return;
+            return true;
         }
 
         $ok = $this->runActionPayload($action);
@@ -495,8 +592,11 @@ class AutomationEngine
             );
             if ($isRetry) {
                 Log::info("[AutomationEngine] Automation '{$automation->name}' nach Sperre erfolgreich ausgeführt");
+                if ($this->isConditionsOnly($automation)) {
+                    Cache::put($this->conditionEdgeKey($automation), 'applied', now()->addDays(7));
+                }
             }
-            return;
+            return true;
         }
 
         if ($automation->retry_if_blocked) {
@@ -505,13 +605,15 @@ class AutomationEngine
                 Log::info("[AutomationEngine] Automation '{$automation->name}' durch Sperre blockiert, Wiederholung alle 5 Min.");
                 $this->recordAutomationFired($automation, $summary . ' (blockiert, Wiederholung alle 5 Min.)');
             }
-            return;
+            return false;
         }
 
         if (!$isRetry) {
             Log::info("[AutomationEngine] Automation '{$automation->name}' durch Sperre übersprungen");
             $this->recordAutomationFired($automation, $summary . ' (durch Sperre blockiert)');
         }
+
+        return false;
     }
 
     /**
@@ -646,9 +748,8 @@ class AutomationEngine
                 '„%s" Modus %s',
                 $deviceName(),
                 match ((string) ($action['mode'] ?? '')) {
-                    'heat' => 'Heizen',
+                    'heat', 'auto', 'on' => 'An',
                     'off'  => 'Aus',
-                    'auto' => 'Auto',
                     default => (string) ($action['mode'] ?? '?'),
                 }
             ),

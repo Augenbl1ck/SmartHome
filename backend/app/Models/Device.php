@@ -84,6 +84,7 @@ class Device extends Model
      */
     public function markCommandedStatus(string $status, int $seconds = 10): void
     {
+        $this->refresh();
         $attrs = $this->extra();
         $attrs['commanded_status'] = $status;
         $attrs['commanded_until'] = now()->utc()->addSeconds($seconds)->toIso8601String();

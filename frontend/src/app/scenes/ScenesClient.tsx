@@ -149,7 +149,7 @@ function actionFromStored(a: Record<string, unknown>): SceneActionForm {
     deviceId: a.device_id != null ? String(a.device_id) : '',
     deviceStatus: (a.status as ActionDeviceStatus) ?? 'on',
     setpoint: a.setpoint != null ? String(a.setpoint) : '21',
-    thermostatMode: (a.mode as ThermostatMode) ?? 'heat',
+    thermostatMode: a.mode === 'off' ? 'off' : 'heat',
     childLock: a.locked != null ? Boolean(a.locked) : true,
     openWindow: a.enabled != null ? Boolean(a.enabled) : true,
     calibration: a.type === 'set_thermostat_calibration' && a.value != null ? String(a.value) : '0',
@@ -796,9 +796,8 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
                       >
                         <SelectTrigger className="w-full h-8 text-xs"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="heat">Heizen</SelectItem>
+                          <SelectItem value="heat">An</SelectItem>
                           <SelectItem value="off">Aus</SelectItem>
-                          <SelectItem value="auto">Auto</SelectItem>
                         </SelectContent>
                       </Select>
                     )}
