@@ -93,7 +93,7 @@ Die Kacheln sind nach Aufgabe sortiert: Geräte, Räume, Szenen, Automationen, D
 
 Unter **Einstellungen**, **App**.
 
-**Android** lädt dort eine Datei herunter und öffnet sie. Beim ersten Start trägst du zwei Adressen ein: eine für zu Hause im WLAN und eine für unterwegs. Die App nimmt zu Hause die erste, sobald sie erreichbar ist, sonst die zweite. Beide bleiben auf dem Handy. **Aktualisieren** erscheint, wenn auf dem Pi eine neuere Datei liegt. Android fragt dann, ob die App ersetzt werden darf.
+**Android** lädt dort eine Datei herunter und öffnet sie. Beim ersten Start trägst du zwei Adressen ein: eine für zu Hause im WLAN und eine für unterwegs. Danach zeigt die App nur noch einen Ladekreis und verbindet sich. Sie nimmt zu Hause die erste, sobald sie erreichbar ist, sonst die zweite. Beide bleiben auf dem Handy. **Aktualisieren** erscheint, wenn auf dem Pi eine neuere Datei liegt. Android fragt dann, ob die App ersetzt werden darf.
 
 **iPhone:** die Seite in Safari öffnen, **Teilen**, dann **Zum Home-Bildschirm**. Eine Datei zum Installieren gibt es dort nicht.
 

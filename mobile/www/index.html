@@ -14,10 +14,23 @@
     button { margin-top: 0.75rem; border: 0; padding: 0 1rem; background: #2563eb; color: white; }
     .card { background: white; border-radius: 1rem; padding: 1.25rem; }
     #status { font-size: 0.875rem; margin: 0.75rem 0 0; }
+    #loading { min-height: 70vh; display: flex; align-items: center; justify-content: center; }
+    .spin {
+      width: 2.75rem;
+      height: 2.75rem;
+      border: 3px solid #d4d4d8;
+      border-top-color: #2563eb;
+      border-radius: 50%;
+      animation: turn 0.8s linear infinite;
+    }
+    @keyframes turn { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
   <main>
+    <div id="loading" hidden>
+      <div class="spin" role="status" aria-label="Verbinden"></div>
+    </div>
     <form class="card" id="form">
       <h1>Adresse</h1>
       <label for="home">Zu Hause, im WLAN</label>
@@ -32,6 +45,8 @@
     var HOME = 'smarthome_home';
     var AWAY = 'smarthome_away';
     var OLD = 'smarthome_server';
+    var form = document.getElementById('form');
+    var loading = document.getElementById('loading');
     var homeInput = document.getElementById('home');
     var awayInput = document.getElementById('away');
     var statusNode = document.getElementById('status');
@@ -45,6 +60,17 @@
       if (!value) return '';
       if (!/^https?:\/\//i.test(value)) value = 'http://' + value;
       return value;
+    }
+
+    function showForm(message) {
+      loading.hidden = true;
+      form.hidden = false;
+      statusNode.textContent = message || '';
+    }
+
+    function showLoading() {
+      form.hidden = true;
+      loading.hidden = false;
     }
 
     function reachable(url) {
@@ -67,21 +93,17 @@
       });
     }
 
-    function openUrl(url) {
-      location.replace(url);
-    }
-
     async function choose(home, away) {
-      statusNode.textContent = 'Verbinden…';
+      showLoading();
       if (home && await reachable(home)) {
-        openUrl(home);
+        location.replace(home);
         return;
       }
       if (away && await reachable(away)) {
-        openUrl(away);
+        location.replace(away);
         return;
       }
-      statusNode.textContent = 'Keine der Adressen ist erreichbar.';
+      showForm('Keine der Adressen ist erreichbar.');
     }
 
     homeInput.value = (localStorage.getItem(HOME) || '').replace(/^https?:\/\//i, '');
@@ -93,12 +115,12 @@
       choose(savedHome, savedAway);
     }
 
-    document.getElementById('form').addEventListener('submit', function (event) {
+    form.addEventListener('submit', function (event) {
       event.preventDefault();
       var home = normalize(homeInput.value);
       var away = normalize(awayInput.value);
       if (!home && !away) {
-        statusNode.textContent = 'Mindestens eine Adresse eintragen.';
+        showForm('Mindestens eine Adresse eintragen.');
         return;
       }
       if (home) localStorage.setItem(HOME, home); else localStorage.removeItem(HOME);
