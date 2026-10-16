@@ -14,6 +14,81 @@ function detectKind(): Kind {
   return 'other';
 }
 
+type AddressBridge = {
+  getHome: () => string;
+  getAway: () => string;
+  setHome: (value: string) => void;
+  setAway: (value: string) => void;
+};
+
+function addressBridge(): AddressBridge | null {
+  if (typeof window === 'undefined') return null;
+  const value = (window as Window & { SmartHomeAddress?: AddressBridge }).SmartHomeAddress;
+  return value ?? null;
+}
+
+function normalizeAddress(value: string): string {
+  const trimmed = value.trim().replace(/\/$/, '');
+  if (!trimmed) return '';
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+}
+
+function AddressFields() {
+  const [home, setHome] = useState('');
+  const [away, setAway] = useState('');
+  const [note, setNote] = useState('');
+
+  useEffect(() => {
+    const bridge = addressBridge();
+    if (!bridge) return;
+    setHome(bridge.getHome().replace(/^https?:\/\//i, ''));
+    setAway(bridge.getAway().replace(/^https?:\/\//i, ''));
+  }, []);
+
+  return (
+    <div className="space-y-3 border-t border-border pt-3">
+      <div>
+        <label htmlFor="app-home" className="text-sm text-muted-foreground">Zu Hause, im WLAN</label>
+        <input
+          id="app-home"
+          value={home}
+          onChange={(event) => setHome(event.target.value)}
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          className="mt-1 w-full min-h-11 rounded-xl border border-input bg-background px-3 text-sm"
+        />
+      </div>
+      <div>
+        <label htmlFor="app-away" className="text-sm text-muted-foreground">Unterwegs, über Tailscale</label>
+        <input
+          id="app-away"
+          value={away}
+          onChange={(event) => setAway(event.target.value)}
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          className="mt-1 w-full min-h-11 rounded-xl border border-input bg-background px-3 text-sm"
+        />
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          const bridge = addressBridge();
+          if (!bridge) return;
+          bridge.setHome(normalizeAddress(home));
+          bridge.setAway(normalizeAddress(away));
+          setNote('Gespeichert. Gilt beim nächsten Öffnen.');
+        }}
+        className="cursor-pointer inline-flex items-center min-h-11 rounded-xl bg-muted px-4 text-sm font-medium"
+      >
+        Speichern
+      </button>
+      {note ? <p className="text-sm text-muted-foreground">{note}</p> : null}
+    </div>
+  );
+}
+
 function AndroidCard({
   apkReady,
   updateReady,
@@ -58,6 +133,7 @@ function AndroidCard({
       <p className="text-sm text-muted-foreground">
         Beim ersten Start trägst du die Adresse für zu Hause und die für unterwegs ein. Beide bleiben auf dem Handy.
       </p>
+      {inApp ? <AddressFields /> : null}
     </section>
   );
 }

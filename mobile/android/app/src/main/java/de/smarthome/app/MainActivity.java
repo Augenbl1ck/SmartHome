@@ -1,11 +1,14 @@
 package de.smarthome.app;
 
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import androidx.core.content.FileProvider;
 import androidx.core.content.pm.PackageInfoCompat;
@@ -35,6 +38,54 @@ public class MainActivity extends BridgeActivity {
                 installFrom(url);
             }
         });
+        webView.addJavascriptInterface(new AddressStore(this), "SmartHomeAddress");
+    }
+
+    public static final class AddressStore {
+        private final Context context;
+
+        AddressStore(Context context) {
+            this.context = context.getApplicationContext();
+        }
+
+        @JavascriptInterface
+        public String getHome() {
+            return read("smarthome_home");
+        }
+
+        @JavascriptInterface
+        public String getAway() {
+            return read("smarthome_away");
+        }
+
+        @JavascriptInterface
+        public void setHome(String value) {
+            write("smarthome_home", value);
+        }
+
+        @JavascriptInterface
+        public void setAway(String value) {
+            write("smarthome_away", value);
+        }
+
+        private SharedPreferences prefs() {
+            return context.getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE);
+        }
+
+        private String read(String key) {
+            String value = prefs().getString(key, "");
+            return value == null ? "" : value;
+        }
+
+        private void write(String key, String value) {
+            SharedPreferences.Editor editor = prefs().edit();
+            if (value == null || value.trim().isEmpty()) {
+                editor.remove(key);
+            } else {
+                editor.putString(key, value.trim());
+            }
+            editor.apply();
+        }
     }
 
     private long installedVersion() {
