@@ -70,12 +70,33 @@ journalctl -u smarthome-backend -f
 ## 7. Update einspielen
 
 ```bash
-cd ~/SmartHome
-git pull
-cd backend  && composer install --no-dev && php artisan migrate --force
-cd ../frontend && npm run build
-sudo systemctl restart smarthome-backend smarthome-frontend
+bash ~/SmartHome/deploy/update.sh
 ```
+
+Das Update bleibt auf dem Branch, der in `~/.config/smarthome/branch` steht.
+Ohne diese Datei wird der gerade ausgecheckte Branch gespeichert.
+
+## 8. Branch auf dem Pi wählen
+
+Stabil ist `master`. Zum Ausprobieren `design/ha-ui`. Die Datenbank, `.env` und das Frontend-Env bleiben liegen. Der Build dauert ein paar Minuten, danach starten die Dienste neu.
+
+Einmalig, solange der Pi noch auf `master` steht:
+
+```bash
+cd ~/SmartHome
+git fetch origin
+git checkout design/ha-ui
+bash deploy/update.sh
+```
+
+Danach liegt der Schalter außerhalb des Repos und überlebt den Wechsel zurück:
+
+```bash
+bash ~/.local/bin/smarthome-branch design/ha-ui
+bash ~/.local/bin/smarthome-branch master
+```
+
+`main` wird als `master` gelesen. Ein Branch muss auf `origin` liegen, bevor der Pi ihn holen kann.
 
 ---
 

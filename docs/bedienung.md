@@ -93,3 +93,5 @@ Die Kacheln sind nach Aufgabe sortiert: Geräte, Räume, Szenen, Automationen, D
 Der Panel-Start mit `?kiosk=1` blendet die Browser-Zurück-Taste aus und versteckt die Scrollbalken. **Display** in der Leiste schaltet den Bildschirm aus. **Sperren** erscheint, sobald eine PIN gesetzt ist.
 
 Am Handy und am PC bleibt die normale Navigation.
+
+Welcher Stand auf dem Pi läuft, bleibt beim Update erhalten. Zum Ausprobieren `bash ~/.local/bin/smarthome-branch design/ha-ui`, zurück mit `bash ~/.local/bin/smarthome-branch master`. Der erste Wechsel steht in `deploy/DEPLOYMENT.md`.

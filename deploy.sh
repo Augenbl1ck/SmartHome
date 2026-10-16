@@ -36,7 +36,19 @@ echo -e "${NC}"
 # 1. Git Pull
 # =============================================================================
 section "1. Repository aktualisieren"
-git -C "$REPO_DIR" pull origin main
+BRANCH_FILE="$HOME/.config/smarthome/branch"
+if [ -f "$BRANCH_FILE" ]; then
+  BRANCH=$(tr -d '[:space:]' < "$BRANCH_FILE")
+else
+  BRANCH=$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD)
+fi
+if [ "$BRANCH" = "main" ]; then
+  BRANCH=master
+fi
+info "Branch: $BRANCH"
+git -C "$REPO_DIR" fetch origin "$BRANCH"
+git -C "$REPO_DIR" checkout "$BRANCH"
+git -C "$REPO_DIR" pull --ff-only origin "$BRANCH"
 info "Git pull abgeschlossen"
 
 # =============================================================================

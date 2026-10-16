@@ -24,7 +24,28 @@ cd "$INSTALL_DIR"
 echo "[1/7] Code aktualisieren..."
 # Lokale Deploy-Skript-Änderungen verwerfen (Autostart-Edits auf dem Pi)
 git checkout -- deploy/start-kiosk.sh deploy/update.sh deploy/smarthome-kiosk.desktop deploy/run-backend.sh 2>/dev/null || true
-git pull
+
+BRANCH_FILE="$HOME/.config/smarthome/branch"
+mkdir -p "$HOME/.config/smarthome"
+if [ -f "$BRANCH_FILE" ]; then
+  BRANCH=$(tr -d '[:space:]' < "$BRANCH_FILE")
+else
+  BRANCH=$(git rev-parse --abbrev-ref HEAD)
+  printf '%s\n' "$BRANCH" > "$BRANCH_FILE"
+fi
+if [ "$BRANCH" = "main" ]; then
+  BRANCH=master
+  printf '%s\n' "$BRANCH" > "$BRANCH_FILE"
+fi
+echo "  Branch: $BRANCH"
+git fetch origin "$BRANCH"
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "Lokale Änderungen blockieren das Update:"
+  git status --short
+  exit 1
+fi
+git checkout "$BRANCH"
+git pull --ff-only origin "$BRANCH"
 
 echo "[2/7] Backend-Abhängigkeiten..."
 cd "$INSTALL_DIR/backend"
@@ -101,6 +122,13 @@ sudo systemctl is-active --quiet smarthome-reverb   && echo "  reverb       ✓"
 sudo systemctl is-active --quiet smarthome-queue    && echo "  queue        ✓" || echo "  queue        ✗"
 sudo systemctl is-active --quiet smarthome-scheduler && echo "  scheduler    ✓" || echo "  scheduler    ✗"
 
+mkdir -p "$HOME/.local/bin"
+cp "$INSTALL_DIR/deploy/use-branch.sh" "$HOME/.local/bin/smarthome-branch"
+chmod +x "$HOME/.local/bin/smarthome-branch" 2>/dev/null || true
+
 echo ""
 echo "=== Update abgeschlossen ==="
+echo "Branch: $BRANCH"
+echo "Wechseln: bash ~/.local/bin/smarthome-branch master"
+echo "          bash ~/.local/bin/smarthome-branch design/ha-ui"
 echo "App: http://$(hostname -I | awk '{print $1}')"
