@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { api, Room } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { isAndroidApp } from '@/lib/app-personal';
 import { usePinLockContext } from '@/components/PinLockProvider';
 
 const MORE_LINKS = [
@@ -88,7 +89,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="nav-footer">
-          {mounted && (
+          {mounted && !isAndroidApp() && (
             <button type="button" onClick={sleepScreen} className="nav-item" aria-label="Display aus">
               <MonitorOff className="h-5 w-5 shrink-0" />
               <span className="nav-label">Display</span>
@@ -161,7 +162,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 </Link>
               );
             })}
-            {sheet === 'more' && mounted && (
+            {sheet === 'more' && mounted && !isAndroidApp() && (
               <button type="button" className="sheet-link" onClick={sleepScreen}>
                 <MonitorOff className="h-5 w-5" />
                 <span className="text-sm font-medium">Display aus</span>

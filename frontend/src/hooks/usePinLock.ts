@@ -333,7 +333,7 @@ export function usePinLock(): PinLockState {
         setLocked(true);
       }
       if (st > 0 && idle >= st) {
-        if (powerOff) {
+        if (powerOff && !isAndroidApp()) {
           if (!displayOffSent.current) {
             displayOffSent.current = true;
             setDisplayPoweredOff(true);
@@ -405,6 +405,7 @@ export function usePinLock(): PinLockState {
   }, []);
 
   const sleepScreen = useCallback(() => {
+    if (isAndroidApp()) return;
     if (screenPowerOffRef.current) {
       if (displayOffSent.current) return;
       displayOffSent.current = true;

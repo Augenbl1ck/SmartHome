@@ -28,6 +28,7 @@ import { useTheme } from '@/components/ThemeToggle';
 import EmojiPicker from '@/components/EmojiPicker';
 import { cn } from '@/lib/utils';
 import { saveDashboardLayout, loadDashboardLayout, createFieldId, createPageId, fieldSectionId, sectionLabel, allAssignableSections, type SectionId, type DashboardField, type DashboardLayout, type DashboardPage } from '@/hooks/useDashboardLayout';
+import { isAndroidApp } from '@/lib/app-personal';
 
 // ─────────────────────────────────────────────────────────────────
 // Typen & Konstanten
@@ -568,7 +569,7 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
   };
 
   const renameField = (id: string, name: string) => {
-    const nextFields = fields.map(f => f.id === id ? { ...f, name: name.trim() || f.name } : f);
+    const nextFields = fields.map(f => f.id === id ? { ...f, name } : f);
     setFields(nextFields);
     persist({ fields: nextFields });
   };
@@ -781,6 +782,10 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
                       value={field.name}
                       onClick={e => e.stopPropagation()}
                       onChange={e => renameField(field.id, e.target.value)}
+                      onBlur={e => {
+                        const trimmed = e.target.value.trim();
+                        renameField(field.id, trimmed || 'Feld');
+                      }}
                       className="text-sm font-medium bg-transparent border-none outline-none flex-1 min-w-0"
                     />
                     <span className="text-xs text-muted-foreground shrink-0">{field.deviceIds.length} Geräte</span>
@@ -2661,6 +2666,7 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
             </select>
           </div>
 
+          {!isAndroidApp() && (
           <div className="flex items-center justify-between px-4 py-3 gap-3">
             <div>
               <p className="text-sm font-medium">Display wirklich aus</p>
@@ -2676,8 +2682,9 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
               className="h-5 w-5 rounded accent-primary cursor-pointer shrink-0"
             />
           </div>
+          )}
 
-          {/* Manuell sperren / Display */}
+          {(pinLock.hasPin || !isAndroidApp()) && (
           <div className="flex items-center justify-between px-4 py-3 gap-3">
             <p className="text-sm font-medium">Jetzt aus</p>
             <div className="flex gap-2">
@@ -2686,11 +2693,14 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
                   <LockKeyhole className="h-4 w-4 mr-1" /> Sperren
                 </Button>
               )}
+              {!isAndroidApp() && (
               <Button size="sm" variant="outline" onClick={pinLock.sleepScreen}>
                 Display aus
               </Button>
+              )}
             </div>
           </div>
+          )}
         </div>
       )}
 

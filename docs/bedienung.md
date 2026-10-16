@@ -99,7 +99,7 @@ Unter **Einstellungen**, **App**.
 
 ## Am Raspberry Pi
 
-Der Panel-Start mit `?kiosk=1` blendet die Browser-Zurück-Taste aus und versteckt die Scrollbalken. **Display** in der Leiste schaltet den Bildschirm aus. **Sperren** erscheint, sobald eine PIN gesetzt ist.
+Der Panel-Start mit `?kiosk=1` blendet die Browser-Zurück-Taste aus und versteckt die Scrollbalken. **Display** in der Leiste schaltet den Pi-Bildschirm aus. In der Android-App gibt es das nicht. **Sperren** erscheint, sobald eine PIN gesetzt ist.
 
 Am Handy und am PC bleibt die normale Navigation.
 
