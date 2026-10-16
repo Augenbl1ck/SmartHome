@@ -1,0 +1,13 @@
+{
+  "name": "smarthome-android",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Android-Hülle ohne fest eingebaute Adresse.",
+  "dependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/core": "^7.4.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.4.3"
+  }
+}

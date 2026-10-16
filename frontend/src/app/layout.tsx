@@ -27,6 +27,10 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "SmartHome",
   },
+  icons: {
+    icon: "/icons/icon.svg",
+    apple: "/icons/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

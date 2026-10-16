@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SmartHome</title>
+  <style>
+    body { margin: 0; min-height: 100vh; font-family: sans-serif; background: #e8edf5; color: #18181b; }
+    main { max-width: 28rem; margin: 0 auto; padding: 1.5rem; }
+    h1 { font-size: 1.25rem; margin: 0 0 0.75rem; }
+    label { display: block; font-size: 0.875rem; margin-bottom: 0.5rem; }
+    input, button { font: inherit; min-height: 2.75rem; border-radius: 0.75rem; }
+    input { width: 100%; box-sizing: border-box; padding: 0 0.75rem; border: 1px solid #d4d4d8; }
+    button { margin-top: 0.75rem; border: 0; padding: 0 1rem; background: #2563eb; color: white; }
+    .card { background: white; border-radius: 1rem; padding: 1.25rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <form class="card" id="form">
+      <h1>Adresse</h1>
+      <label for="url">Adresse der SmartHome-Seite</label>
+      <input id="url" name="url" type="url" inputmode="url" autocomplete="off" required />
+      <button type="submit">Öffnen</button>
+    </form>
+  </main>
+  <script>
+    var KEY = 'smarthome_server';
+    var input = document.getElementById('url');
+    var saved = localStorage.getItem(KEY);
+    if (saved) location.replace(saved);
+    document.getElementById('form').addEventListener('submit', function (event) {
+      event.preventDefault();
+      var value = input.value.trim().replace(/\/$/, '');
+      if (!value) return;
+      if (!/^https?:\/\//i.test(value)) value = 'http://' + value;
+      localStorage.setItem(KEY, value);
+      location.replace(value);
+    });
+  </script>
+</body>
+</html>

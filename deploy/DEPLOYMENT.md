@@ -98,6 +98,22 @@ bash ~/.local/bin/smarthome-branch master
 
 `main` wird als `master` gelesen. Ein Branch muss auf `origin` liegen, bevor der Pi ihn holen kann.
 
+## 9. Android-Datei
+
+Die Datei wird nicht im Play Store veröffentlicht. Einmal bauen, danach liegt sie unter `frontend/public/downloads/smarthome.apk`. **Einstellungen → App** bietet sie an. Die Datei enthält keine Adresse. Das iPhone nutzt sie nicht. Pi-`.env` und Kiosk bleiben unverändert.
+
+```bash
+cd mobile
+npm install
+npx cap add android
+npx cap sync android
+cd android
+./gradlew assembleDebug
+cp app/build/outputs/apk/debug/app-debug.apk ../../frontend/public/downloads/smarthome.apk
+```
+
+Unter Windows heißt das Build-Kommando `gradlew.bat assembleDebug`.
+
 ---
 
 ## Kiosk / Autostart

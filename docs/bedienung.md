@@ -87,6 +87,15 @@ Die Kacheln sind nach Aufgabe sortiert: Geräte, Räume, Szenen, Automationen, D
 - **Sicherheit** setzt die PIN und die Sperre.
 - **Darstellung** schaltet hell, dunkel oder automatisch.
 - **Hilfe** öffnet diese Anleitung.
+- **App** installiert die Seite auf dem eigenen Handy. Nichts davon liegt in einem öffentlichen Store.
+
+## Auf dem Handy
+
+Unter **Einstellungen**, **App**.
+
+**Android** lädt dort eine Datei herunter und öffnet sie. Beim ersten Start trägst du die Adresse dieser Seite ein. Sie bleibt auf dem Handy.
+
+**iPhone:** die Seite in Safari öffnen, **Teilen**, dann **Zum Home-Bildschirm**. Eine Datei zum Installieren gibt es dort nicht.
 
 ## Am Raspberry Pi
 
