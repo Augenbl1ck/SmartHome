@@ -14,7 +14,15 @@ function detectKind(): Kind {
   return 'other';
 }
 
-function AndroidCard({ apkReady }: { apkReady: boolean }) {
+function AndroidCard({
+  apkReady,
+  updateReady,
+  inApp,
+}: {
+  apkReady: boolean;
+  updateReady: boolean;
+  inApp: boolean | null;
+}) {
   return (
     <section className="rounded-2xl border bg-card p-5 space-y-3">
       <div className="flex items-center gap-3">
@@ -26,20 +34,29 @@ function AndroidCard({ apkReady }: { apkReady: boolean }) {
           <p className="text-sm text-muted-foreground">Datei von dieser Seite, nicht aus dem Play Store.</p>
         </div>
       </div>
-      {apkReady ? (
+      {apkReady && updateReady ? (
+        <a
+          href="/downloads/smarthome.apk"
+          className="inline-flex items-center min-h-11 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground"
+        >
+          Aktualisieren
+        </a>
+      ) : apkReady && inApp === false ? (
         <a
           href="/downloads/smarthome.apk"
           className="inline-flex items-center min-h-11 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground"
         >
           Herunterladen
         </a>
+      ) : apkReady && inApp == null ? null : apkReady && inApp ? (
+        <p className="text-sm text-muted-foreground">Die App ist aktuell.</p>
       ) : (
         <p className="text-sm text-muted-foreground">
           Die Datei liegt auf diesem Server noch nicht. Sie wird einmal gebaut und dann hier abgelegt.
         </p>
       )}
       <p className="text-sm text-muted-foreground">
-        Beim ersten Start trägst du die Adresse dieser Seite ein. Sie bleibt auf dem Handy.
+        Beim ersten Start trägst du die Adresse für zu Hause und die für unterwegs ein. Beide bleiben auf dem Handy.
       </p>
     </section>
   );
@@ -66,12 +83,20 @@ function IosCard() {
   );
 }
 
-export default function AppInstall({ apkReady }: { apkReady: boolean }) {
+export default function AppInstall({ apkReady, versionCode }: { apkReady: boolean; versionCode: number }) {
   const [kind, setKind] = useState<Kind>('other');
+  const [installed, setInstalled] = useState<number | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     setKind(detectKind());
+    const match = navigator.userAgent.match(/SmartHomeAndroid\/(\d+)/);
+    setInstalled(match ? Number(match[1]) : null);
+    setReady(true);
   }, []);
+
+  const updateReady = installed != null && versionCode > installed;
+  const inApp = ready ? installed != null : null;
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">
@@ -88,11 +113,11 @@ export default function AppInstall({ apkReady }: { apkReady: boolean }) {
       {kind === 'ios' ? (
         <>
           <IosCard />
-          <AndroidCard apkReady={apkReady} />
+          <AndroidCard apkReady={apkReady} updateReady={updateReady} inApp={inApp} />
         </>
       ) : (
         <>
-          <AndroidCard apkReady={apkReady} />
+          <AndroidCard apkReady={apkReady} updateReady={updateReady} inApp={inApp} />
           <IosCard />
         </>
       )}

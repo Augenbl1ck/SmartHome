@@ -1,8 +1,17 @@
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import AppInstall from './AppInstall';
 
 export default function AppPage() {
   const apkReady = existsSync(join(process.cwd(), 'public', 'downloads', 'smarthome.apk'));
-  return <AppInstall apkReady={apkReady} />;
+  let versionCode = 0;
+  const versionPath = join(process.cwd(), '..', 'mobile', 'app-version.json');
+  if (existsSync(versionPath)) {
+    try {
+      versionCode = Number(JSON.parse(readFileSync(versionPath, 'utf8')).versionCode) || 0;
+    } catch {
+      versionCode = 0;
+    }
+  }
+  return <AppInstall apkReady={apkReady} versionCode={versionCode} />;
 }

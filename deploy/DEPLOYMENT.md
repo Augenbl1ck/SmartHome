@@ -102,6 +102,8 @@ bash ~/.local/bin/smarthome-branch master
 
 Die Datei wird nicht im Play Store veröffentlicht. Einmal bauen, danach liegt sie unter `frontend/public/downloads/smarthome.apk`. **Einstellungen → App** bietet sie an. Die Datei enthält keine Adresse. Das iPhone nutzt sie nicht. Pi-`.env` und Kiosk bleiben unverändert.
 
+Vor jedem neuen Build die Zahl `versionCode` in `mobile/app-version.json` um eins erhöhen. Die App vergleicht diese Zahl und zeigt dann **Aktualisieren**.
+
 ```bash
 cd mobile
 npm install
