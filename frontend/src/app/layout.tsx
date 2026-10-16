@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import NavBar from "@/components/NavBar";
 import AutomationRunnerProvider from "@/components/AutomationRunnerProvider";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 import PinLockProvider from "@/components/PinLockProvider";
@@ -79,7 +78,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <VirtualKeyboardProvider>
             <KioskProvider>
               <SmartHomeProvider>
-              <NavBar />
               <main className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6 max-w-6xl mx-auto w-full pb-24 md:pb-8">
                 {children}
               </main>

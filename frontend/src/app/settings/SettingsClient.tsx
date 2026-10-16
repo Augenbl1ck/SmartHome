@@ -24,7 +24,6 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePinLockContext } from '@/components/PinLockProvider';
-import { useKiosk } from '@/components/KioskProvider';
 import { useTheme } from '@/components/ThemeToggle';
 import EmojiPicker from '@/components/EmojiPicker';
 import { cn } from '@/lib/utils';
@@ -1908,33 +1907,6 @@ function AppearanceSection() {
   );
 }
 
-function KioskSection() {
-  const { kioskMode, setKioskMode } = useKiosk();
-  return (
-    <div className="rounded-2xl border bg-card px-4 py-3 space-y-3">
-        <p className="text-xs text-muted-foreground">
-          Vollbild-Modus für Wandbildschirme. Versteckt die Navigationsleiste und
-          zeigt stattdessen eine Room-Schnellleiste unten. Display aus und
-          PIN-Sperre stehen unter Sicherheit.
-        </p>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium">Kiosk-Modus aktiv</p>
-            <p className="text-xs text-muted-foreground">
-              {kioskMode ? 'Aktiv — Bottom-Bar sichtbar' : 'Deaktiviert'}
-            </p>
-          </div>
-          <input
-            type="checkbox"
-            checked={kioskMode}
-            onChange={e => setKioskMode(e.target.checked)}
-            className="h-5 w-5 rounded accent-primary cursor-pointer"
-          />
-        </div>
-    </div>
-  );
-}
-
 function SystemSection() {
   const [status, setStatus] = useState<{
     cpu_temp: number | null;
@@ -2458,7 +2430,6 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
     { id: 'system',   icon: Activity,     color: 'text-emerald-500 bg-emerald-500/10', label: 'System',         desc: 'CPU-Temp & Status' },
     { id: 'security', icon: LockKeyhole,  color: 'text-orange-500 bg-orange-500/10', label: 'Sicherheit',       desc: 'PIN & Bildschirmsperre' },
     { id: 'appearance', icon: Palette,    color: 'text-fuchsia-500 bg-fuchsia-500/10', label: 'Darstellung',    desc: 'Hell, Dunkel & System' },
-    { id: 'kiosk',    icon: Monitor,      color: 'text-teal-500   bg-teal-500/10',   label: 'Kiosk-Modus',      desc: 'Wandbildschirm einrichten' },
     { id: 'zigbee',   icon: Radio,        color: 'text-cyan-500   bg-cyan-500/10',   label: 'Zigbee',           desc: 'Geräte anlernen & verwalten' },
     { id: 'notifs',   icon: Bell,         color: 'text-rose-500   bg-rose-500/10',   label: 'Benachrichtigungen', desc: 'Push-Nachrichten' },
   ];
@@ -2709,7 +2680,6 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
       {view === 'widgets'   && <div key="widgets"   className="animate-page-in"><WidgetsSection /></div>}
       {view === 'system'    && <div key="system"    className="animate-page-in"><SystemSection /></div>}
       {view === 'appearance' && <div key="appearance" className="animate-page-in"><AppearanceSection /></div>}
-      {view === 'kiosk'     && <div key="kiosk"     className="animate-page-in"><KioskSection /></div>}
       {view === 'zigbee'    && <div key="zigbee"    className="animate-page-in"><ZigbeeSection rooms={rooms} onDeviceImported={d => { setDevices(prev => [...prev, d]); upsertDevice(d); router.refresh(); }} onLinkedDeviceRemoved={id => { setDevices(prev => prev.filter(d => d.id !== id)); removeDeviceFromStore(id); router.refresh(); }} /></div>}
       {view === 'notifs'    && <div key="notifs"    className="animate-page-in"><NotificationsSection /></div>}
 
