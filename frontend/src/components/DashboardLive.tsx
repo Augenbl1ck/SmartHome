@@ -6,7 +6,7 @@ import { api, Device, DeviceType, Room, Scene, type CalendarEventsResponse, type
 import { countsAsActive, deviceTemperature } from '@/lib/devices';
 import { DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { reconcileRemoteDevice, reconcileRemoteStatus } from '@/lib/device-status-hold';
-import { getEcho } from '@/lib/echo';
+import { getEcho, onEchoReset } from '@/lib/echo';
 import { useSmartHomeStore } from '@/store/smarthome';
 import { cn } from '@/lib/utils';
 import { loadBootstrapSnapshot, saveBootstrapSnapshot, mergeBootstrap, bootstrapHasContent } from '@/lib/bootstrap-snapshot';
@@ -137,24 +137,32 @@ export default function DashboardLive({
     window.addEventListener(DEVICE_UPDATE_EVENT, handler);
 
     let echo: ReturnType<typeof getEcho> | null = null;
-    try {
-      echo = getEcho();
-      echo.channel('devices').listen('.device.updated', (data: {
-        id: number; status: string; attributes: Record<string, unknown>; last_seen: string;
-      }) => {
-        setDevices(prev => prev.map(d => d.id === data.id
-          ? reconcileRemoteDevice(d, { status: data.status, attributes: data.attributes, last_seen: data.last_seen })
-          : d
-        ));
-        patchDevice(data.id, { status: data.status, attributes: data.attributes, last_seen: data.last_seen });
-      });
-    } catch (err) {
-      console.warn('[WebSocket] Reverb nicht erreichbar', err);
-    }
+    const bindEcho = () => {
+      try { echo?.leaveChannel('devices'); } catch { /* alte Verbindung */ }
+      echo = null;
+      try {
+        echo = getEcho();
+        echo.channel('devices').listen('.device.updated', (data: {
+          id: number; status: string; attributes: Record<string, unknown>; last_seen: string;
+        }) => {
+          setDevices(prev => prev.map(d => d.id === data.id
+            ? reconcileRemoteDevice(d, { status: data.status, attributes: data.attributes, last_seen: data.last_seen })
+            : d
+          ));
+          patchDevice(data.id, { status: data.status, attributes: data.attributes, last_seen: data.last_seen });
+        });
+      } catch (err) {
+        echo = null;
+        console.warn('[WebSocket] Reverb nicht erreichbar', err);
+      }
+    };
+    bindEcho();
+    const offEcho = onEchoReset(bindEcho);
 
     return () => {
       clearInterval(clock);
       window.removeEventListener(DEVICE_UPDATE_EVENT, handler);
+      offEcho();
       if (echo) echo.leaveChannel('devices');
     };
   }, [patchDevice]);

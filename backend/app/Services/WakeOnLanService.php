@@ -138,16 +138,8 @@ class WakeOnLanService
     private function arpReachable(string $ip): bool
     {
         if (PHP_OS_FAMILY === 'Windows') {
-            exec('arp -a ' . $ip, $lines);
-            foreach ($lines as $line) {
-                if (! str_contains($line, $ip)) {
-                    continue;
-                }
-                if (preg_match('/([0-9a-fA-F]{2}(?:[-:][0-9a-fA-F]{2}){5})/', $line)) {
-                    return true;
-                }
-            }
-
+            // arp -a hat kein REACHABLE/STALE. Cache-Einträge bleiben nach dem
+            // Ausschalten liegen — ICMP und TCP entscheiden.
             return false;
         }
 
@@ -156,11 +148,11 @@ class WakeOnLanService
         if ($line === '') {
             return false;
         }
-        if (preg_match('/\b(FAILED|INCOMPLETE)\b/', $line)) {
-            return false;
-        }
 
-        return (bool) preg_match('/lladdr\s+[0-9a-fA-F:]+/', $line);
+        // STALE bleibt nach dem Ausschalten minutenlang mit MAC im Cache.
+        // Nur eine frisch bestätigte Nachbarschaft zählt als an.
+        return (bool) preg_match('/\bREACHABLE\b/', $line)
+            && (bool) preg_match('/lladdr\s+[0-9a-fA-F:]+/', $line);
     }
 
     private function tcpReachable(string $ip): bool

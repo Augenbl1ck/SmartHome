@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { api, Device, DeviceType, Room, ZigbeeDevice, type LanHost, type TransitConfig, type TransitConnection, type TransitStop, type TransitStopRef } from '@/lib/api';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { deviceLabels, CUSTOM_COLORS, formatMacAddress, isTemperatureSource } from '@/lib/devices';
-import { getEcho } from '@/lib/echo';
+import { getEcho, onEchoReset } from '@/lib/echo';
 import { reconcileRemoteDevice } from '@/lib/device-status-hold';
 import { useSmartHomeStore } from '@/store/smarthome';
 import { Button } from '@/components/ui/button';
@@ -2126,20 +2126,28 @@ export default function SettingsClient({ initialRooms, initialDevices }: Props) 
   // WebSocket-Updates für Geräte (Status, Attribute, last_seen)
   useEffect(() => {
     let echo: ReturnType<typeof getEcho> | null = null;
-    try {
-      echo = getEcho();
-      echo.channel('devices').listen('.device.updated', (data: {
-        id: number; status: string; attributes: Record<string, unknown>; last_seen: string;
-      }) => {
-        setDevices(prev => prev.map(d => d.id === data.id
-          ? reconcileRemoteDevice(d, { status: data.status, attributes: data.attributes, last_seen: data.last_seen })
-          : d
-        ));
-      });
-    } catch (err) {
-      console.warn('[Settings] WebSocket nicht verfügbar', err);
-    }
+    const bindEcho = () => {
+      try { echo?.leaveChannel('devices'); } catch { /* alte Verbindung */ }
+      echo = null;
+      try {
+        echo = getEcho();
+        echo.channel('devices').listen('.device.updated', (data: {
+          id: number; status: string; attributes: Record<string, unknown>; last_seen: string;
+        }) => {
+          setDevices(prev => prev.map(d => d.id === data.id
+            ? reconcileRemoteDevice(d, { status: data.status, attributes: data.attributes, last_seen: data.last_seen })
+            : d
+          ));
+        });
+      } catch (err) {
+        echo = null;
+        console.warn('[Settings] WebSocket nicht verfügbar', err);
+      }
+    };
+    bindEcho();
+    const offEcho = onEchoReset(bindEcho);
     return () => {
+      offEcho();
       if (echo) echo.leaveChannel('devices');
     };
   }, []);

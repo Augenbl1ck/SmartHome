@@ -20,7 +20,7 @@ import {
   Waves, Flame, Battery, Gauge, Filter, Clapperboard, Shield,
   List, LayoutGrid,
 } from 'lucide-react';
-import { getEcho } from '@/lib/echo';
+import { getEcho, onEchoReset } from '@/lib/echo';
 import { isInterlockAutomation } from '@/lib/devices';
 import { useSmartHomeStore } from '@/store/smarthome';
 
@@ -994,6 +994,7 @@ export default function AutomationsClient({ initialAutomations, devices: devices
   const scenes = scenesProp.length ? scenesProp : storeScenes;
   const [automations, setAutomations] = useState(initialAutomations);
   const [logs, setLogs]               = useState<AutomationLog[]>(initialLogs);
+  const [toggleError, setToggleError] = useState('');
   const [activeTab, setActiveTab]     = useState<'automations' | 'locks' | 'history'>('automations');
   const [listView, setListView]       = useState<'flat' | 'byRoom'>('flat');
 
@@ -1026,30 +1027,52 @@ export default function AutomationsClient({ initialAutomations, devices: devices
     }));
   };
 
+  useEffect(() => {
+    let cancelled = false;
+    api.getAutomations()
+      .then((fresh) => { if (!cancelled) setAutomations(fresh); })
+      .catch(() => { /* SSR-Stand behalten */ });
+    return () => { cancelled = true; };
+  }, []);
+
   // Echtzeit-Updates: neuer Log-Eintrag wenn Automation feuert
   useEffect(() => {
     let echo: ReturnType<typeof getEcho> | null = null;
-    try {
-      echo = getEcho();
-      echo.channel('automations').listen('.automation.fired', (data: {
-        name: string; summary: string;
-      }) => {
-        const entry: AutomationLog = {
-          id: Date.now(),
-          automation_id: null,
-          automation_name: data.name,
-          action_summary: data.summary,
-          fired_at: new Date().toISOString(),
-        };
-        setLogs(prev => [entry, ...prev].slice(0, 200));
-      });
-    } catch { /* Reverb nicht erreichbar */ }
-    return () => { if (echo) echo.leaveChannel('automations'); };
+    const bindEcho = () => {
+      try { echo?.leaveChannel('automations'); } catch { /* alte Verbindung */ }
+      echo = null;
+      try {
+        echo = getEcho();
+        echo.channel('automations').listen('.automation.fired', (data: {
+          name: string; summary: string;
+        }) => {
+          const entry: AutomationLog = {
+            id: Date.now(),
+            automation_id: null,
+            automation_name: data.name,
+            action_summary: data.summary,
+            fired_at: new Date().toISOString(),
+          };
+          setLogs(prev => [entry, ...prev].slice(0, 200));
+        });
+      } catch { echo = null; }
+    };
+    bindEcho();
+    const offEcho = onEchoReset(bindEcho);
+    return () => {
+      offEcho();
+      if (echo) echo.leaveChannel('automations');
+    };
   }, []);
 
   const handleToggle = async (automation: Automation) => {
-    const updated = await api.updateAutomation(automation.id, { enabled: !automation.enabled });
-    setAutomations((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+    setToggleError('');
+    try {
+      const updated = await api.updateAutomation(automation.id, { enabled: !automation.enabled });
+      setAutomations((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+    } catch (e) {
+      setToggleError(e instanceof Error ? e.message : 'Änderung konnte nicht gespeichert werden');
+    }
   };
 
   const openDuplicate = (a: Automation) => {
@@ -1250,6 +1273,9 @@ export default function AutomationsClient({ initialAutomations, devices: devices
           </button>
           <h1 className="text-2xl font-bold">Automationen</h1>
         </div>
+        {toggleError && (
+          <p className="text-sm text-destructive max-w-[16rem] text-right">{toggleError}</p>
+        )}
         {activeTab === 'automations' && (
           <Button size="sm" onClick={() => setDialog({ open: true, form: emptyForm(), saving: false, error: '' })}>
             <Plus className="h-4 w-4 mr-1" /> Neue Automation

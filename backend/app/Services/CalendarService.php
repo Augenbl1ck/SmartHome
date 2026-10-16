@@ -36,11 +36,7 @@ class CalendarService
 
         $ics = SnapshotCache::get($this->icsKey($url));
         if (!is_string($ics) || $ics === '') {
-            return [
-                'events' => [],
-                'configured' => true,
-                'error' => 'Kalender noch nicht geladen',
-            ];
+            return $this->refresh($from, $to);
         }
 
         try {
@@ -76,9 +72,13 @@ class CalendarService
 
             return ['events' => $this->parseEvents($ics, $from, $to), 'configured' => true];
         } catch (\Throwable $e) {
-            $stale = $this->events($from, $to);
-            if (($stale['events'] ?? []) !== []) {
-                return $stale;
+            $staleIcs = SnapshotCache::get($this->icsKey($url));
+            if (is_string($staleIcs) && $staleIcs !== '') {
+                try {
+                    return ['events' => $this->parseEvents($staleIcs, $from, $to), 'configured' => true];
+                } catch (\Throwable $parseError) {
+                    /* frischer Fehlertext unten */
+                }
             }
 
             return [

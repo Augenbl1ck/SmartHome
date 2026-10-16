@@ -15,7 +15,7 @@ import ZigbeePlugPanel from '@/components/ZigbeePlugPanel';
 import ThermostatAdvancedPanel from '@/components/ThermostatAdvancedPanel';
 import { emitDeviceUpdate, DEVICE_UPDATE_EVENT } from '@/lib/device-events';
 import { holdDeviceStatus, clearDeviceStatusHold, reconcileRemoteDevice, reconcileRemoteStatus } from '@/lib/device-status-hold';
-import { getEcho } from '@/lib/echo';
+import { getEcho, onEchoReset } from '@/lib/echo';
 import { useSmartHomeStore } from '@/store/smarthome';
 import BleScanDialog from '@/components/BleScanDialog';
 import {
@@ -198,40 +198,48 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
   // Echtzeit-Updates via Laravel Reverb WebSocket (MQTT → Backend → Browser)
   useEffect(() => {
     let echo: ReturnType<typeof getEcho> | null = null;
-    try {
-      echo = getEcho();
-      echo.channel('devices').listen('.device.updated', (data: {
-        id: number; room_id?: number; status: string; attributes: Record<string, unknown>; last_seen: string;
-      }) => {
-        if (data.room_id != null && data.room_id !== roomId) return;
-        setDevices(prev => {
-          const exists = prev.some(d => d.id === data.id);
-          if (!exists) {
-            refreshDevices();
-            return prev;
-          }
-          return prev.map(d => d.id === data.id
-            ? reconcileRemoteDevice(d, { status: data.status, attributes: data.attributes, last_seen: data.last_seen })
-            : d
-          );
-        });
-        const existing = useSmartHomeStore.getState().devices.find(d => d.id === data.id);
-        if (existing) {
-          upsertDevice({
-            ...existing,
-            status: data.status,
-            attributes: data.attributes,
-            last_seen: data.last_seen,
+    const bindEcho = () => {
+      try { echo?.leaveChannel('devices'); } catch { /* alte Verbindung */ }
+      echo = null;
+      try {
+        echo = getEcho();
+        echo.channel('devices').listen('.device.updated', (data: {
+          id: number; room_id?: number; status: string; attributes: Record<string, unknown>; last_seen: string;
+        }) => {
+          if (data.room_id != null && data.room_id !== roomId) return;
+          setDevices(prev => {
+            const exists = prev.some(d => d.id === data.id);
+            if (!exists) {
+              refreshDevices();
+              return prev;
+            }
+            return prev.map(d => d.id === data.id
+              ? reconcileRemoteDevice(d, { status: data.status, attributes: data.attributes, last_seen: data.last_seen })
+              : d
+            );
           });
-        }
-        if (data.attributes?.setpoint !== undefined) {
-          setSetpoints(m => new Map(m).set(data.id, Number(data.attributes.setpoint)));
-        }
-      });
-    } catch (err) {
-      console.warn('[WebSocket] Reverb nicht erreichbar', err);
-    }
+          const existing = useSmartHomeStore.getState().devices.find(d => d.id === data.id);
+          if (existing) {
+            upsertDevice({
+              ...existing,
+              status: data.status,
+              attributes: data.attributes,
+              last_seen: data.last_seen,
+            });
+          }
+          if (data.attributes?.setpoint !== undefined) {
+            setSetpoints(m => new Map(m).set(data.id, Number(data.attributes.setpoint)));
+          }
+        });
+      } catch (err) {
+        echo = null;
+        console.warn('[WebSocket] Reverb nicht erreichbar', err);
+      }
+    };
+    bindEcho();
+    const offEcho = onEchoReset(bindEcho);
     return () => {
+      offEcho();
       if (echo) echo.leaveChannel('devices');
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps

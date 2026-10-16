@@ -16,7 +16,34 @@ export default function KioskBar() {
 
   useEffect(() => {
     setMounted(true);
-    api.getRooms().then(setRooms).catch(() => {});
+    let cancelled = false;
+
+    const load = async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const list = await api.getRooms();
+          if (!cancelled) setRooms(list);
+          return;
+        } catch {
+          if (attempt < 2) {
+            await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+          }
+        }
+      }
+    };
+
+    void load();
+    const interval = window.setInterval(() => { void load(); }, 3 * 60_000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void load();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, []);
 
   const isActive = (href: string) =>
