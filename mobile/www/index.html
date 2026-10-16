@@ -14,7 +14,10 @@
     button { margin-top: 0.75rem; border: 0; padding: 0 1rem; background: #2563eb; color: white; }
     .card { background: white; border-radius: 1rem; padding: 1.25rem; }
     #status { font-size: 0.875rem; margin: 0.75rem 0 0; }
-    #loading { min-height: 70vh; display: flex; align-items: center; justify-content: center; }
+    #loading { min-height: 70vh; display: none; align-items: center; justify-content: center; }
+    #loading.on { display: flex; }
+    #form { display: none; }
+    #form.on { display: block; }
     .spin {
       width: 2.75rem;
       height: 2.75rem;
@@ -28,7 +31,7 @@
 </head>
 <body>
   <main>
-    <div id="loading" hidden>
+    <div id="loading" class="on">
       <div class="spin" role="status" aria-label="Verbinden"></div>
     </div>
     <form class="card" id="form">
@@ -50,9 +53,19 @@
     var homeInput = document.getElementById('home');
     var awayInput = document.getElementById('away');
     var statusNode = document.getElementById('status');
+    var store = window.Capacitor && Capacitor.registerPlugin
+      ? Capacitor.registerPlugin('Preferences')
+      : null;
 
-    if (!localStorage.getItem(HOME) && localStorage.getItem(OLD)) {
-      localStorage.setItem(HOME, localStorage.getItem(OLD));
+    function showForm(message) {
+      loading.classList.remove('on');
+      form.classList.add('on');
+      statusNode.textContent = message || '';
+    }
+
+    function showLoading() {
+      form.classList.remove('on');
+      loading.classList.add('on');
     }
 
     function normalize(value) {
@@ -62,15 +75,28 @@
       return value;
     }
 
-    function showForm(message) {
-      loading.hidden = true;
-      form.hidden = false;
-      statusNode.textContent = message || '';
+    function strip(value) {
+      return (value || '').replace(/^https?:\/\//i, '');
     }
 
-    function showLoading() {
-      form.hidden = true;
-      loading.hidden = false;
+    async function readKey(key) {
+      if (store) {
+        try {
+          var saved = await store.get({ key: key });
+          if (saved && saved.value) return saved.value;
+        } catch (e) {}
+      }
+      return localStorage.getItem(key) || '';
+    }
+
+    async function writeKey(key, value) {
+      if (value) localStorage.setItem(key, value);
+      else localStorage.removeItem(key);
+      if (!store) return;
+      try {
+        if (value) await store.set({ key: key, value: value });
+        else await store.remove({ key: key });
+      } catch (e) {}
     }
 
     function reachable(url) {
@@ -103,16 +129,23 @@
         location.replace(away);
         return;
       }
+      homeInput.value = strip(home);
+      awayInput.value = strip(away);
       showForm('Keine der Adressen ist erreichbar.');
     }
 
-    homeInput.value = (localStorage.getItem(HOME) || '').replace(/^https?:\/\//i, '');
-    awayInput.value = (localStorage.getItem(AWAY) || '').replace(/^https?:\/\//i, '');
-
-    var savedHome = localStorage.getItem(HOME) || '';
-    var savedAway = localStorage.getItem(AWAY) || '';
-    if (savedHome || savedAway) {
-      choose(savedHome, savedAway);
+    async function boot() {
+      var legacy = await readKey(OLD);
+      var home = await readKey(HOME);
+      var away = await readKey(AWAY);
+      if (!home && legacy) home = legacy;
+      if (home) await writeKey(HOME, home);
+      if (away) await writeKey(AWAY, away);
+      if (home || away) {
+        choose(home, away);
+        return;
+      }
+      showForm('');
     }
 
     form.addEventListener('submit', function (event) {
@@ -123,10 +156,12 @@
         showForm('Mindestens eine Adresse eintragen.');
         return;
       }
-      if (home) localStorage.setItem(HOME, home); else localStorage.removeItem(HOME);
-      if (away) localStorage.setItem(AWAY, away); else localStorage.removeItem(AWAY);
-      choose(home, away);
+      Promise.all([writeKey(HOME, home), writeKey(AWAY, away)]).then(function () {
+        choose(home, away);
+      });
     });
+
+    boot();
   </script>
 </body>
 </html>
