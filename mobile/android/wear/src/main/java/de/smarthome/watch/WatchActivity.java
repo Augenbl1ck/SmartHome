@@ -1,10 +1,10 @@
 package de.smarthome.watch;
 
 import android.app.Activity;
-import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageInstaller;
-import android.graphics.Color;
+import android.content.IntentFilter;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
@@ -12,16 +12,12 @@ import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
-import com.google.android.gms.wearable.ChannelClient;
 import com.google.android.gms.wearable.MessageClient;
 import com.google.android.gms.wearable.Node;
 import com.google.android.gms.wearable.Wearable;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.json.JSONArray;
@@ -32,19 +28,13 @@ public class WatchActivity extends Activity {
     private JSONObject detail;
     private boolean versionChecked;
     private boolean updating;
+    private boolean updateOffered;
     private final android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
     private final MessageClient.OnMessageReceivedListener messages = this::onMessage;
-    private final ChannelClient.ChannelCallback channels = new ChannelClient.ChannelCallback() {
+    private final BroadcastReceiver expectUpdates = new BroadcastReceiver() {
         @Override
-        public void onChannelOpened(ChannelClient.Channel channel) {
-            if (!"/smarthome/apk".equals(channel.getPath())) return;
-            Wearable.getChannelClient(WatchActivity.this).getInputStream(channel).addOnSuccessListener(input ->
-                new Thread(() -> {
-                    updating = false;
-                    handler.removeCallbacksAndMessages(null);
-                    saveAndInstall(input);
-                }).start()
-            );
+        public void onReceive(Context context, Intent intent) {
+            if (!updating) addUpdateButton();
         }
     };
 
@@ -62,14 +52,36 @@ public class WatchActivity extends Activity {
             ScrollView.LayoutParams.WRAP_CONTENT
         ));
         setContentView(scroll);
+        WatchApk.listen(this);
+        applyMode(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        applyMode(intent);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         Wearable.getMessageClient(this).addListener(messages);
-        Wearable.getChannelClient(this).registerChannelCallback(channels);
-        if (updating) return;
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(expectUpdates, new IntentFilter("de.smarthome.WATCH_EXPECT"), Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(expectUpdates, new IntentFilter("de.smarthome.WATCH_EXPECT"));
+        }
+        if (updating) {
+            showUpdating();
+            return;
+        }
+        String mode = getIntent().getStringExtra("mode");
+        if ("confirm".equals(mode) || "failed".equals(mode)) {
+            applyMode(getIntent());
+            getIntent().removeExtra("mode");
+            return;
+        }
         if (versionChecked) loadDevices();
         else refresh();
     }
@@ -77,7 +89,10 @@ public class WatchActivity extends Activity {
     @Override
     protected void onPause() {
         Wearable.getMessageClient(this).removeListener(messages);
-        Wearable.getChannelClient(this).unregisterChannelCallback(channels);
+        try {
+            unregisterReceiver(expectUpdates);
+        } catch (Exception ignored) {
+        }
         super.onPause();
     }
 
@@ -85,18 +100,11 @@ public class WatchActivity extends Activity {
         if ("/smarthome/hello".equals(event.getPath())) {
             String answer = new String(event.getData(), StandardCharsets.UTF_8);
             if ("ok".equals(answer)) {
+                if (updating) return;
                 versionChecked = true;
                 loadDevices();
-            } else {
-                updating = true;
-                runOnUiThread(() -> show("Aktualisieren…"));
-                handler.postDelayed(() -> {
-                    if (!updating) return;
-                    updating = false;
-                    versionChecked = true;
-                    runOnUiThread(() -> show("Update später."));
-                    loadDevices();
-                }, 20000);
+            } else if ("update".equals(answer)) {
+                runOnUiThread(this::beginUpdate);
             }
             return;
         }
@@ -132,6 +140,50 @@ public class WatchActivity extends Activity {
         );
     }
 
+    private void applyMode(Intent intent) {
+        if (intent == null) return;
+        String mode = intent.getStringExtra("mode");
+        if ("updating".equals(mode)) beginUpdate();
+        else if ("failed".equals(mode)) {
+            updating = false;
+            handler.removeCallbacksAndMessages(null);
+            show("Update fehlgeschlagen.");
+        } else if ("confirm".equals(mode)) {
+            updating = false;
+            handler.removeCallbacksAndMessages(null);
+            show("Installation bestätigen.");
+        }
+    }
+
+    private void beginUpdate() {
+        updating = true;
+        updateOffered = false;
+        showUpdating();
+        handler.removeCallbacksAndMessages(null);
+        handler.postDelayed(() -> {
+            if (!updating) return;
+            updating = false;
+            show("Update später.");
+        }, 120000);
+    }
+
+    private void requestUpdate() {
+        beginUpdate();
+        send("pull", "");
+    }
+
+    private int expectedStored() {
+        return getSharedPreferences("watch", MODE_PRIVATE).getInt("expected", 0);
+    }
+
+    private void addUpdateButton() {
+        if (updateOffered || updating) return;
+        int expected = expectedStored();
+        if (expected <= 0 || installedVersion() >= expected) return;
+        updateOffered = true;
+        list.addView(pillButton("Aktualisieren", this::requestUpdate));
+    }
+
     private void render(String json) {
         try {
             JSONObject payload = new JSONObject(json);
@@ -140,6 +192,7 @@ public class WatchActivity extends Activity {
                 return;
             }
             list.removeAllViews();
+            updateOffered = false;
             String temp = payload.optString("temp", "");
             if (!temp.isEmpty()) {
                 TextView head = label(temp, 22);
@@ -156,6 +209,7 @@ public class WatchActivity extends Activity {
             }
             if (items == null || items.length() == 0) {
                 if (temp.isEmpty()) show("Keine Geräte gewählt.");
+                else addUpdateButton();
                 return;
             }
             for (int i = 0; i < items.length(); i++) {
@@ -185,6 +239,7 @@ public class WatchActivity extends Activity {
                 }
                 list.addView(row);
             }
+            addUpdateButton();
         } catch (Exception e) {
             show("Antwort unlesbar.");
         }
@@ -309,50 +364,25 @@ public class WatchActivity extends Activity {
         }
     }
 
-    private void saveAndInstall(InputStream input) {
-        File file = new File(getCacheDir(), "smarthome-watch-update.apk");
-        try (InputStream in = input; OutputStream out = new FileOutputStream(file)) {
-            byte[] buf = new byte[8192];
-            int n;
-            while ((n = in.read(buf)) >= 0) out.write(buf, 0, n);
-        } catch (Exception e) {
-            runOnUiThread(() -> show("Update fehlgeschlagen."));
-            return;
-        }
-        runOnUiThread(() -> install(file));
-    }
-
-    private void install(File file) {
-        if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
-            startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, android.net.Uri.parse("package:" + getPackageName())));
-            return;
-        }
-        try {
-            PackageInstaller installer = getPackageManager().getPackageInstaller();
-            PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
-            int sessionId = installer.createSession(params);
-            try (PackageInstaller.Session session = installer.openSession(sessionId)) {
-                try (OutputStream out = session.openWrite("base", 0, file.length()); InputStream in = new java.io.FileInputStream(file)) {
-                    byte[] buf = new byte[8192];
-                    int n;
-                    while ((n = in.read(buf)) >= 0) out.write(buf, 0, n);
-                    session.fsync(out);
-                }
-                Intent callback = new Intent(this, WatchActivity.class);
-                int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-                if (Build.VERSION.SDK_INT >= 31) flags |= PendingIntent.FLAG_MUTABLE;
-                PendingIntent pending = PendingIntent.getActivity(this, sessionId, callback, flags);
-                session.commit(pending.getIntentSender());
-            }
-            show("Installation bestätigen.");
-        } catch (Exception e) {
-            show("Update fehlgeschlagen.");
-        }
+    private void showUpdating() {
+        if (list == null) return;
+        list.removeAllViews();
+        updateOffered = false;
+        ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleLarge);
+        bar.setIndeterminate(true);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(48), dp(48));
+        lp.gravity = Gravity.CENTER_HORIZONTAL;
+        lp.bottomMargin = dp(8);
+        bar.setLayoutParams(lp);
+        list.addView(bar);
+        list.addView(label("Wird aktualisiert", 14));
     }
 
     private void show(String text) {
         list.removeAllViews();
+        updateOffered = false;
         list.addView(label(text, 14));
+        addUpdateButton();
     }
 
     private TextView label(String text, int sizeDp) {

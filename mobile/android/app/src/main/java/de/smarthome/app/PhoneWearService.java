@@ -25,11 +25,45 @@ public class PhoneWearService extends WearableListenerService {
                 installed = Integer.parseInt(new String(event.getData(), StandardCharsets.UTF_8).trim());
             } catch (NumberFormatException ignored) {
             }
-            int expected = expectedWatchVersion();
-            Wearable.getMessageClient(this).sendMessage(event.getSourceNodeId(), "/smarthome/hello", "ok".getBytes(StandardCharsets.UTF_8));
-            if (expected > 0 && installed < expected && hasWatchApk()) {
-                new android.os.Handler(getMainLooper()).postDelayed(() -> sendWatchApk(event.getSourceNodeId()), 800);
+            WatchBridge.noteHello(installed);
+            int expected = WatchBridge.expected(this);
+            boolean newer = expected > 0 && installed < expected && WatchBridge.hasApk(this) && WatchBridge.claimAuto(expected);
+            byte[] reply = (newer ? "update" : "ok").getBytes(StandardCharsets.UTF_8);
+            Wearable.getMessageClient(this).sendMessage(event.getSourceNodeId(), "/smarthome/hello", reply);
+            if (expected > 0) {
+                Wearable.getMessageClient(this).sendMessage(
+                    event.getSourceNodeId(),
+                    "/smarthome/expect",
+                    String.valueOf(expected).getBytes(StandardCharsets.UTF_8)
+                );
             }
+            if (newer) {
+                String nodeId = event.getSourceNodeId();
+                new Thread(() -> {
+                    try {
+                        Thread.sleep(400);
+                    } catch (InterruptedException ignored) {
+                    }
+                    WatchBridge.sendApk(this, nodeId);
+                }).start();
+            }
+            return;
+        }
+        if ("/smarthome/version".equals(path)) {
+            WatchBridge.onVersion(new String(event.getData(), StandardCharsets.UTF_8));
+            return;
+        }
+        if ("/smarthome/pull".equals(path)) {
+            String nodeId = event.getSourceNodeId();
+            new Thread(() -> {
+                try {
+                    Wearable.getMessageClient(this).sendMessage(nodeId, "/smarthome/hello", "update".getBytes(StandardCharsets.UTF_8));
+                    Wearable.getMessageClient(this).sendMessage(nodeId, "/smarthome/expect", String.valueOf(WatchBridge.expected(this)).getBytes(StandardCharsets.UTF_8));
+                    Thread.sleep(400);
+                } catch (Exception ignored) {
+                }
+                WatchBridge.sendApk(this, nodeId);
+            }).start();
             return;
         }
         String reply;
@@ -47,35 +81,6 @@ public class PhoneWearService extends WearableListenerService {
             event.getSourceNodeId(),
             "/smarthome/state",
             reply.getBytes(StandardCharsets.UTF_8)
-        );
-    }
-
-    private boolean hasWatchApk() {
-        try (InputStream in = getAssets().open("smarthome-watch.apk")) {
-            return in.read() >= 0;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private int expectedWatchVersion() {
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(getAssets().open("watch-version.txt"), StandardCharsets.UTF_8))) {
-            return Integer.parseInt(reader.readLine().trim());
-        } catch (Exception e) {
-            return 0;
-        }
-    }
-
-    private void sendWatchApk(String nodeId) {
-        Wearable.getChannelClient(this).openChannel(nodeId, "/smarthome/apk").addOnSuccessListener(channel ->
-            Wearable.getChannelClient(this).getOutputStream(channel).addOnSuccessListener(stream -> new Thread(() -> {
-                try (InputStream in = getAssets().open("smarthome-watch.apk"); OutputStream out = stream) {
-                    byte[] buf = new byte[8192];
-                    int n;
-                    while ((n = in.read(buf)) >= 0) out.write(buf, 0, n);
-                } catch (Exception ignored) {
-                }
-            }).start())
         );
     }
 

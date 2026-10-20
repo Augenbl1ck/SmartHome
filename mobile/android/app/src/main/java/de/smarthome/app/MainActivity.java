@@ -6,9 +6,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Build;
 import android.content.SharedPreferences;
-import android.content.pm.PackageInfo;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.webkit.JavascriptInterface;
@@ -39,6 +37,17 @@ public class MainActivity extends BridgeActivity {
         webView.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
             if (url != null && url.contains("smarthome.apk")) {
                 installFrom(url);
+            }
+        });
+        WatchBridge.setListener(new WatchBridge.Listener() {
+            @Override
+            public void onWatchVersion(String version) {
+                emit("smarthome:watch-version", version);
+            }
+
+            @Override
+            public void onWatchStatus(String status) {
+                emit("smarthome:watch-update", status);
             }
         });
         webView.addJavascriptInterface(new AddressStore(this), "SmartHomeAddress");
@@ -128,6 +137,31 @@ public class MainActivity extends BridgeActivity {
             write("smarthome_personal", value);
         }
 
+        @JavascriptInterface
+        public String getPhoneVersion() {
+            return WatchBridge.phoneVersion(context);
+        }
+
+        @JavascriptInterface
+        public String getWatchExpected() {
+            return String.valueOf(WatchBridge.expected(context));
+        }
+
+        @JavascriptInterface
+        public String getWatchVersion() {
+            return WatchBridge.lastVersion();
+        }
+
+        @JavascriptInterface
+        public void askWatchVersion() {
+            WatchBridge.ask(context);
+        }
+
+        @JavascriptInterface
+        public void updateWatch() {
+            WatchBridge.push(context);
+        }
+
         private SharedPreferences prefs() {
             return context.getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE);
         }
@@ -149,9 +183,16 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    private void emit(String name, String detail) {
+        if (getBridge() == null || getBridge().getWebView() == null) return;
+        String js = "window.dispatchEvent(new CustomEvent(" + org.json.JSONObject.quote(name)
+            + ",{detail:" + org.json.JSONObject.quote(detail == null ? "" : detail) + "}))";
+        getBridge().getWebView().post(() -> getBridge().getWebView().evaluateJavascript(js, null));
+    }
+
     private long installedVersion() {
         try {
-            PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
             return PackageInfoCompat.getLongVersionCode(info);
         } catch (Exception e) {
             return 0;

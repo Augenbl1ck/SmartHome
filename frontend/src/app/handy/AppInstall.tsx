@@ -22,6 +22,11 @@ type AddressBridge = {
   setAway: (value: string) => void;
   getWatchDevices?: () => string;
   setWatchDevices?: (value: string) => void;
+  getPhoneVersion?: () => string;
+  getWatchExpected?: () => string;
+  getWatchVersion?: () => string;
+  askWatchVersion?: () => void;
+  updateWatch?: () => void;
 };
 
 function addressBridge(): AddressBridge | null {
@@ -128,6 +133,68 @@ function WatchDevices() {
   );
 }
 
+function WatchVersions() {
+  const [phone, setPhone] = useState('');
+  const [watch, setWatch] = useState('');
+  const [expected, setExpected] = useState(0);
+  const [status, setStatus] = useState('');
+  const [asked, setAsked] = useState(false);
+
+  useEffect(() => {
+    const bridge = addressBridge();
+    if (!bridge?.getPhoneVersion) return;
+    setPhone(bridge.getPhoneVersion());
+    setExpected(Number(bridge.getWatchExpected?.() ?? 0));
+    setWatch(bridge.getWatchVersion?.() ?? '');
+    const onVersion = (event: Event) => {
+      setWatch((event as CustomEvent<string>).detail ?? '');
+      setAsked(true);
+    };
+    const onStatus = (event: Event) => {
+      setStatus((event as CustomEvent<string>).detail ?? '');
+    };
+    window.addEventListener('smarthome:watch-version', onVersion);
+    window.addEventListener('smarthome:watch-update', onStatus);
+    bridge.askWatchVersion?.();
+    const timer = window.setTimeout(() => setAsked(true), 7000);
+    return () => {
+      window.removeEventListener('smarthome:watch-version', onVersion);
+      window.removeEventListener('smarthome:watch-update', onStatus);
+      window.clearTimeout(timer);
+    };
+  }, []);
+
+  if (!phone) return null;
+  const watchCode = Number(watch);
+  const known = watch !== '' && Number.isFinite(watchCode);
+  const mismatch = expected > 0 && (!known || watchCode !== expected);
+  const watchLabel = !asked && !known ? '…' : known ? String(watchCode) : 'nicht verbunden';
+
+  return (
+    <div className="space-y-3 border-t border-border pt-3">
+      <p className="text-sm">Handy: {phone}</p>
+      <p className="text-sm">Uhr: {watchLabel}</p>
+      {expected > 0 ? <p className="text-sm text-muted-foreground">Datei für die Uhr: {expected}</p> : null}
+      {mismatch ? (
+        <button
+          type="button"
+          disabled={status === 'Wird aktualisiert'}
+          onClick={() => {
+            setStatus('Wird aktualisiert');
+            addressBridge()?.updateWatch?.();
+          }}
+          className="cursor-pointer inline-flex items-center min-h-11 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-70"
+        >
+          {status === 'Wird aktualisiert' ? 'Wird aktualisiert' : 'Uhr aktualisieren'}
+        </button>
+      ) : asked && known ? (
+        <p className="text-sm text-muted-foreground">Uhr ist aktuell.</p>
+      ) : null}
+      {status && status !== 'Wird aktualisiert' ? <p className="text-sm text-muted-foreground">{status}</p> : null}
+    </div>
+  );
+}
+
 function AndroidCard({
   apkReady,
   updateReady,
@@ -170,6 +237,7 @@ function AndroidCard({
       {inApp && !updateReady ? (
         <p className="text-sm text-muted-foreground">Die installierte App ist nicht älter als diese Seite. Eine neuere Datei liegt erst nach dem Update auf dem Pi hier.</p>
       ) : null}
+      {inApp ? <WatchVersions /> : null}
       {inApp ? <AddressFields /> : null}
       {inApp ? <WatchDevices /> : null}
     </section>
