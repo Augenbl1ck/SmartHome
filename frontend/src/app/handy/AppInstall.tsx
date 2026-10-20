@@ -155,23 +155,21 @@ function AndroidCard({
         >
           Aktualisieren
         </a>
-      ) : apkReady && inApp === false ? (
+      ) : apkReady ? (
         <a
           href="/downloads/smarthome.apk"
           className="inline-flex items-center min-h-11 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground"
         >
-          Herunterladen
+          {inApp ? 'Erneut installieren' : 'Herunterladen'}
         </a>
-      ) : apkReady && inApp == null ? null : apkReady && inApp ? (
-        <p className="text-sm text-muted-foreground">Die App ist aktuell.</p>
       ) : (
         <p className="text-sm text-muted-foreground">
           Die Datei liegt auf diesem Server noch nicht. Sie wird einmal gebaut und dann hier abgelegt.
         </p>
       )}
-      <p className="text-sm text-muted-foreground">
-        Beim ersten Start trägst du die Adresse für zu Hause und die für unterwegs ein. Beide bleiben auf dem Handy.
-      </p>
+      {inApp && !updateReady ? (
+        <p className="text-sm text-muted-foreground">Die installierte App ist nicht älter als diese Seite. Eine neuere Datei liegt erst nach dem Update auf dem Pi hier.</p>
+      ) : null}
       {inApp ? <AddressFields /> : null}
       {inApp ? <WatchDevices /> : null}
     </section>
