@@ -28,13 +28,20 @@ import org.json.JSONObject;
 public class WatchActivity extends Activity {
     private LinearLayout list;
     private JSONObject detail;
+    private boolean versionChecked;
+    private boolean updating;
+    private final android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
     private final MessageClient.OnMessageReceivedListener messages = this::onMessage;
     private final ChannelClient.ChannelCallback channels = new ChannelClient.ChannelCallback() {
         @Override
         public void onChannelOpened(ChannelClient.Channel channel) {
             if (!"/smarthome/apk".equals(channel.getPath())) return;
             Wearable.getChannelClient(WatchActivity.this).getInputStream(channel).addOnSuccessListener(input ->
-                new Thread(() -> saveAndInstall(input)).start()
+                new Thread(() -> {
+                    updating = false;
+                    handler.removeCallbacksAndMessages(null);
+                    saveAndInstall(input);
+                }).start()
             );
         }
     };
@@ -60,7 +67,9 @@ public class WatchActivity extends Activity {
         super.onResume();
         Wearable.getMessageClient(this).addListener(messages);
         Wearable.getChannelClient(this).registerChannelCallback(channels);
-        refresh();
+        if (updating) return;
+        if (versionChecked) loadDevices();
+        else refresh();
     }
 
     @Override
@@ -74,13 +83,18 @@ public class WatchActivity extends Activity {
         if ("/smarthome/hello".equals(event.getPath())) {
             String answer = new String(event.getData(), StandardCharsets.UTF_8);
             if ("ok".equals(answer)) {
-                Wearable.getNodeClient(this).getConnectedNodes().addOnSuccessListener(nodes -> {
-                    if (!nodes.isEmpty()) {
-                        Wearable.getMessageClient(this).sendMessage(nodes.get(0).getId(), "/smarthome/refresh", new byte[0]);
-                    }
-                });
+                versionChecked = true;
+                loadDevices();
             } else {
+                updating = true;
                 runOnUiThread(() -> show("Aktualisieren…"));
+                handler.postDelayed(() -> {
+                    if (!updating) return;
+                    updating = false;
+                    versionChecked = true;
+                    runOnUiThread(() -> show("Update später."));
+                    loadDevices();
+                }, 20000);
             }
             return;
         }
@@ -92,6 +106,16 @@ public class WatchActivity extends Activity {
     private void refresh() {
         show("Laden…");
         Wearable.getNodeClient(this).getConnectedNodes().addOnSuccessListener(this::askPhone).addOnFailureListener(e -> show("Handy nicht verbunden."));
+    }
+
+    private void loadDevices() {
+        Wearable.getNodeClient(this).getConnectedNodes().addOnSuccessListener(nodes -> {
+            if (nodes.isEmpty()) {
+                show("Handy nicht in der Nähe.");
+                return;
+            }
+            Wearable.getMessageClient(this).sendMessage(nodes.get(0).getId(), "/smarthome/refresh", new byte[0]);
+        });
     }
 
     private void askPhone(List<Node> nodes) {

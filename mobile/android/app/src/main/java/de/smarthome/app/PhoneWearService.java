@@ -26,11 +26,9 @@ public class PhoneWearService extends WearableListenerService {
             } catch (NumberFormatException ignored) {
             }
             int expected = expectedWatchVersion();
-            if (installed != expected) {
-                Wearable.getMessageClient(this).sendMessage(event.getSourceNodeId(), "/smarthome/hello", "update".getBytes(StandardCharsets.UTF_8));
-                sendWatchApk(event.getSourceNodeId());
-            } else {
-                Wearable.getMessageClient(this).sendMessage(event.getSourceNodeId(), "/smarthome/hello", "ok".getBytes(StandardCharsets.UTF_8));
+            Wearable.getMessageClient(this).sendMessage(event.getSourceNodeId(), "/smarthome/hello", "ok".getBytes(StandardCharsets.UTF_8));
+            if (expected > 0 && installed < expected && hasWatchApk()) {
+                new android.os.Handler(getMainLooper()).postDelayed(() -> sendWatchApk(event.getSourceNodeId()), 800);
             }
             return;
         }
@@ -50,6 +48,14 @@ public class PhoneWearService extends WearableListenerService {
             "/smarthome/state",
             reply.getBytes(StandardCharsets.UTF_8)
         );
+    }
+
+    private boolean hasWatchApk() {
+        try (InputStream in = getAssets().open("smarthome-watch.apk")) {
+            return in.read() >= 0;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private int expectedWatchVersion() {
