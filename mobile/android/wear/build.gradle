@@ -1,5 +1,7 @@
 apply plugin: 'com.android.application'
 
+def appVersion = new groovy.json.JsonSlurper().parse(file("../../app-version.json"))
+
 android {
     namespace "de.smarthome.watch"
     compileSdk 35
@@ -7,7 +9,7 @@ android {
         applicationId "de.smarthome.app"
         minSdk 30
         targetSdk 35
-        versionCode 1
+        versionCode appVersion.watchVersionCode
         versionName "1.0"
     }
     compileOptions {

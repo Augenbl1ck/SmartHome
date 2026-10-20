@@ -183,7 +183,7 @@ function WatchCard({ watchReady }: { watchReady: boolean }) {
     <section className="rounded-2xl border bg-card p-5 space-y-3">
       <h2 className="text-base font-semibold">Galaxy Watch</h2>
       <p className="text-sm text-muted-foreground">
-        Die Uhr schaltet nur die Geräte, die in der App unter „Auf der Uhr“ markiert sind. Installieren per adb oder Galaxy Wearable.
+        Die Uhr schaltet nur die Geräte, die in der App unter „Auf der Uhr“ markiert sind. Sie schickt den Wunsch ans Handy, das Handy spricht mit dem Pi. Installieren per adb oder Galaxy Wearable.
       </p>
       {watchReady ? (
         <a

@@ -1,6 +1,7 @@
 apply plugin: 'com.android.application'
 
 def appVersion = new groovy.json.JsonSlurper().parse(file("../../app-version.json"))
+def watchAssets = file("$buildDir/generated/watch-assets")
 
 android {
     namespace "de.smarthome.app"
@@ -16,6 +17,11 @@ android {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    sourceSets {
+        main {
+            assets.srcDir watchAssets
         }
     }
     buildTypes {
@@ -46,6 +52,17 @@ dependencies {
 }
 
 apply from: 'capacitor.build.gradle'
+
+tasks.register('prepareWatch', Copy) {
+    dependsOn ':wear:assembleDebug'
+    from('../wear/build/outputs/apk/debug/wear-debug.apk')
+    into(watchAssets)
+    rename { 'smarthome-watch.apk' }
+    doLast {
+        file("$watchAssets/watch-version.txt").text = "${appVersion.watchVersionCode}"
+    }
+}
+preBuild.dependsOn prepareWatch
 
 try {
     def servicesJSON = file('google-services.json')
