@@ -1,5 +1,6 @@
 package de.smarthome.app;
 
+import android.content.Intent;
 import android.content.SharedPreferences;
 import com.google.android.gms.wearable.MessageEvent;
 import com.google.android.gms.wearable.Wearable;
@@ -39,6 +40,8 @@ public class PhoneWearService extends WearableListenerService {
             reply = toggle(id);
         } else if ("/smarthome/refresh".equals(path)) {
             reply = list();
+        } else if ("/smarthome/command".equals(path)) {
+            reply = command(new String(event.getData(), StandardCharsets.UTF_8));
         } else {
             return;
         }
@@ -86,7 +89,8 @@ public class PhoneWearService extends WearableListenerService {
             String type = device.optString("type", "");
             String next = "on".equals(status) || "heat".equals(status) || "open".equals(status) ? "off" : "on";
             if ("thermostat".equals(type) && "on".equals(next)) next = "heat";
-            post(base + "/api/v1/devices/" + id + "/set-status", "{\"status\":\"" + next + "\"}");
+            String body = post(base + "/api/v1/devices/" + id + "/set-status", "{\"status\":\"" + next + "\"}");
+            notifyWeb(id, freshStatus(body, next));
         } catch (Exception e) {
             return error("Schalten fehlgeschlagen.");
         }
@@ -121,13 +125,15 @@ public class PhoneWearService extends WearableListenerService {
                 String reading = temperature(device);
                 if (temp.isEmpty() && !reading.isEmpty()) temp = reading;
                 String type = device.optString("type", "");
-                boolean toggle = !type.startsWith("sensor_") && !"button".equals(type) && !"energy_meter".equals(type);
-                if (!toggle) continue;
                 JSONObject item = new JSONObject();
                 item.put("id", id);
                 item.put("name", device.optString("name", "Gerät"));
                 item.put("status", device.optString("status", ""));
+                item.put("label", labelFor(device.optString("status", ""), type));
                 item.put("type", type);
+                item.put("screen", screenFor(type));
+                item.put("setpoint", setpoint(device));
+                item.put("level", level(device));
                 items.put(item);
             }
             JSONObject out = new JSONObject();
@@ -188,7 +194,7 @@ public class PhoneWearService extends WearableListenerService {
         }
     }
 
-    private void post(String url, String json) throws Exception {
+    private String post(String url, String json) throws Exception {
         HttpURLConnection conn = open(url);
         conn.setRequestMethod("POST");
         conn.setDoOutput(true);
@@ -197,8 +203,97 @@ public class PhoneWearService extends WearableListenerService {
             out.write(json.getBytes(StandardCharsets.UTF_8));
         }
         int code = conn.getResponseCode();
+        String body = "";
+        InputStream stream = code >= 300 ? conn.getErrorStream() : conn.getInputStream();
+        if (stream != null) {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+                StringBuilder text = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) text.append(line);
+                body = text.toString();
+            }
+        }
         conn.disconnect();
         if (code >= 300) throw new IllegalStateException("Status " + code);
+        return body;
+    }
+
+    private String command(String raw) {
+        int split = raw.indexOf('\n');
+        if (split < 1) return error("Befehl unklar.");
+        int id;
+        try {
+            id = Integer.parseInt(raw.substring(0, split).trim());
+        } catch (NumberFormatException e) {
+            return error("Gerät unbekannt.");
+        }
+        String status = raw.substring(split + 1).trim();
+        String base = reach();
+        if (base.isEmpty()) return error("Pi nicht erreichbar.");
+        try {
+            String body = post(base + "/api/v1/devices/" + id + "/set-status", "{\"status\":\"" + status + "\"}");
+            notifyWeb(id, freshStatus(body, status));
+        } catch (Exception e) {
+            return error("Nicht gespeichert.");
+        }
+        return list();
+    }
+
+    private String freshStatus(String body, String fallback) {
+        try {
+            return new JSONObject(body).optString("status", fallback);
+        } catch (Exception e) {
+            return fallback;
+        }
+    }
+
+    private void notifyWeb(int id, String status) {
+        Intent intent = new Intent("de.smarthome.DEVICE_UPDATE");
+        intent.setPackage(getPackageName());
+        intent.putExtra("id", id);
+        intent.putExtra("status", status);
+        sendBroadcast(intent);
+    }
+
+    private String screenFor(String type) {
+        if ("thermostat".equals(type)) return "thermostat";
+        if ("dimmer".equals(type) || "rgb".equals(type) || "led".equals(type)) return "dimmer";
+        if ("cover".equals(type)) return "cover";
+        if (type.startsWith("sensor_") || "button".equals(type) || "energy_meter".equals(type)) return "info";
+        return "switch";
+    }
+
+    private String labelFor(String status, String type) {
+        return switch (status) {
+            case "on" -> "thermostat".equals(type) ? "Heizt" : "An";
+            case "heat", "auto" -> "Heizt";
+            case "off" -> "Aus";
+            case "open" -> "Offen";
+            case "closed", "close" -> "Geschlossen";
+            case "low" -> "Niedrig";
+            case "medium" -> "Mittel";
+            case "high" -> "Hoch";
+            default -> status.isEmpty() ? "—" : status;
+        };
+    }
+
+    private double setpoint(JSONObject device) {
+        JSONObject attrs = device.optJSONObject("attributes");
+        if (attrs == null) return 20;
+        if (attrs.has("setpoint")) return attrs.optDouble("setpoint", 20);
+        if (attrs.has("occupied_heating_setpoint")) return attrs.optDouble("occupied_heating_setpoint", 20);
+        return 20;
+    }
+
+    private int level(JSONObject device) {
+        JSONObject attrs = device.optJSONObject("attributes");
+        if (attrs != null && attrs.has("brightness")) return attrs.optInt("brightness", 50);
+        String status = device.optString("status", "");
+        try {
+            return Integer.parseInt(status);
+        } catch (NumberFormatException e) {
+            return 50;
+        }
     }
 
     private HttpURLConnection open(String url) throws Exception {

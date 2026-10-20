@@ -27,6 +27,7 @@ import org.json.JSONObject;
 
 public class WatchActivity extends Activity {
     private LinearLayout list;
+    private JSONObject detail;
     private final MessageClient.OnMessageReceivedListener messages = this::onMessage;
     private final ChannelClient.ChannelCallback channels = new ChannelClient.ChannelCallback() {
         @Override
@@ -119,16 +120,22 @@ public class WatchActivity extends Activity {
                 list.addView(head);
             }
             JSONArray items = payload.optJSONArray("items");
+            if (detail != null && items != null) {
+                for (int i = 0; i < items.length(); i++) {
+                    JSONObject item = items.getJSONObject(i);
+                    if (item.optInt("id") == detail.optInt("id")) detail = item;
+                }
+                renderDetail();
+                return;
+            }
             if (items == null || items.length() == 0) {
                 if (temp.isEmpty()) show("Keine Geräte gewählt.");
                 return;
             }
             for (int i = 0; i < items.length(); i++) {
                 JSONObject item = items.getJSONObject(i);
-                int id = item.getInt("id");
-                String type = item.optString("type", "");
-                TextView row = label(item.optString("name", "Gerät") + "\n" + item.optString("status", ""), 14);
-                row.setMinHeight(dp(44));
+                TextView row = label(item.optString("name", "Gerät") + "\n" + item.optString("label", item.optString("status", "")), 14);
+                row.setMinHeight(dp(48));
                 row.setBackgroundColor(Color.parseColor("#1c1917"));
                 row.setPadding(dp(8), dp(6), dp(8), dp(6));
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -137,7 +144,19 @@ public class WatchActivity extends Activity {
                 );
                 lp.topMargin = dp(6);
                 row.setLayoutParams(lp);
-                row.setOnClickListener(v -> toggle(id, item.optString("status", ""), type));
+                String screen = item.optString("screen", "switch");
+                if ("info".equals(screen)) {
+                    row.setOnClickListener(null);
+                } else if ("switch".equals(screen)) {
+                    int id = item.getInt("id");
+                    row.setOnClickListener(v -> toggle(id));
+                } else {
+                    JSONObject chosen = item;
+                    row.setOnClickListener(v -> {
+                        detail = chosen;
+                        renderDetail();
+                    });
+                }
                 list.addView(row);
             }
         } catch (Exception e) {
@@ -145,8 +164,12 @@ public class WatchActivity extends Activity {
         }
     }
 
-    private void toggle(int id, String status, String type) {
+    private void toggle(int id) {
         show("Schalten…");
+        send("toggle", String.valueOf(id));
+    }
+
+    private void send(String path, String body) {
         Wearable.getNodeClient(this).getConnectedNodes().addOnSuccessListener(nodes -> {
             if (nodes.isEmpty()) {
                 show("Handy nicht in der Nähe.");
@@ -154,10 +177,63 @@ public class WatchActivity extends Activity {
             }
             Wearable.getMessageClient(this).sendMessage(
                 nodes.get(0).getId(),
-                "/smarthome/toggle",
-                String.valueOf(id).getBytes(StandardCharsets.UTF_8)
+                "/smarthome/" + path,
+                body.getBytes(StandardCharsets.UTF_8)
             );
         });
+    }
+
+    private void renderDetail() {
+        if (detail == null) return;
+        list.removeAllViews();
+        String screen = detail.optString("screen", "");
+        list.addView(button("Zurück", () -> {
+            detail = null;
+            refresh();
+        }));
+        list.addView(label(detail.optString("name", "Gerät"), 16));
+        list.addView(label(detail.optString("label", ""), 14));
+        if ("thermostat".equals(screen)) {
+            double setpoint = detail.optDouble("setpoint", 20);
+            list.addView(label(String.format(java.util.Locale.US, "%.1f°C", setpoint), 22));
+            list.addView(button("−", () -> command(detail.optInt("id"), formatSetpoint(setpoint - 0.5))));
+            list.addView(button("+", () -> command(detail.optInt("id"), formatSetpoint(setpoint + 0.5))));
+            list.addView(button("Heizt", () -> command(detail.optInt("id"), "heat")));
+            list.addView(button("Aus", () -> command(detail.optInt("id"), "off")));
+        } else if ("dimmer".equals(screen)) {
+            int level = detail.optInt("level", 50);
+            list.addView(label(level + "%", 22));
+            list.addView(button("−", () -> command(detail.optInt("id"), String.valueOf(Math.max(0, level - 10)))));
+            list.addView(button("+", () -> command(detail.optInt("id"), String.valueOf(Math.min(100, level + 10)))));
+        } else if ("cover".equals(screen)) {
+            list.addView(button("Öffnen", () -> command(detail.optInt("id"), "open")));
+            list.addView(button("Stopp", () -> command(detail.optInt("id"), "stop")));
+            list.addView(button("Schließen", () -> command(detail.optInt("id"), "close")));
+        }
+    }
+
+    private String formatSetpoint(double value) {
+        double clamped = Math.max(4, Math.min(35, value));
+        return String.format(java.util.Locale.US, "%.1f", clamped);
+    }
+
+    private void command(int id, String status) {
+        show("Speichern…");
+        send("command", id + "\n" + status);
+    }
+
+    private TextView button(String text, Runnable action) {
+        TextView view = label(text, 16);
+        view.setMinHeight(dp(48));
+        view.setBackgroundColor(Color.parseColor("#1c1917"));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        lp.topMargin = dp(6);
+        view.setLayoutParams(lp);
+        view.setOnClickListener(v -> action.run());
+        return view;
     }
 
     private int installedVersion() {

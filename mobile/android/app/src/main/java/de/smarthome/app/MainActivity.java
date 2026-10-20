@@ -1,7 +1,10 @@
 package de.smarthome.app;
 
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.os.Build;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.net.Uri;
@@ -39,6 +42,33 @@ public class MainActivity extends BridgeActivity {
             }
         });
         webView.addJavascriptInterface(new AddressStore(this), "SmartHomeAddress");
+        IntentFilter filter = new IntentFilter("de.smarthome.DEVICE_UPDATE");
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(deviceUpdates, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(deviceUpdates, filter);
+        }
+    }
+
+    private final BroadcastReceiver deviceUpdates = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            int id = intent.getIntExtra("id", 0);
+            String status = intent.getStringExtra("status");
+            if (id == 0 || status == null || getBridge() == null || getBridge().getWebView() == null) return;
+            String js = "window.dispatchEvent(new CustomEvent('smarthome:device-update',{detail:{id:"
+                + id + ",status:" + org.json.JSONObject.quote(status) + "}}))";
+            getBridge().getWebView().evaluateJavascript(js, null);
+        }
+    };
+
+    @Override
+    public void onDestroy() {
+        try {
+            unregisterReceiver(deviceUpdates);
+        } catch (Exception ignored) {
+        }
+        super.onDestroy();
     }
 
     public static final class AddressStore {
@@ -76,6 +106,16 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void setWatchDevices(String value) {
             write("smarthome_watch_devices", value);
+        }
+
+        @JavascriptInterface
+        public String getWatchField() {
+            return read("smarthome_watch_field");
+        }
+
+        @JavascriptInterface
+        public void setWatchField(String value) {
+            write("smarthome_watch_field", value);
         }
 
         @JavascriptInterface

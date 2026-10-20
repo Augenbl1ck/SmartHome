@@ -421,6 +421,12 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
   const [fields, setFields] = useState<DashboardField[]>([]);
   const [roomTemperatureDeviceIds, setRoomTemperatureDeviceIds] = useState<Record<string, number>>({});
   const [expandedField, setExpandedField] = useState<string | null>(null);
+  const [watchFieldId, setWatchFieldId] = useState('');
+
+  useEffect(() => {
+    const bridge = (window as Window & { SmartHomeAddress?: { getWatchField?: () => string } }).SmartHomeAddress;
+    setWatchFieldId(bridge?.getWatchField?.() ?? '');
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -574,6 +580,26 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
     persist({ fields: nextFields });
   };
 
+  const markWatchField = (field: DashboardField) => {
+    const bridge = (window as Window & { SmartHomeAddress?: { setWatchField?: (id: string) => void; setWatchDevices?: (ids: string) => void } }).SmartHomeAddress;
+    if (!bridge?.setWatchDevices) return;
+    if (watchFieldId === field.id) {
+      bridge.setWatchField?.('');
+      bridge.setWatchDevices('');
+      setWatchFieldId('');
+      return;
+    }
+    bridge.setWatchField?.(field.id);
+    bridge.setWatchDevices(field.deviceIds.join(','));
+    setWatchFieldId(field.id);
+  };
+
+  const syncWatchDevices = (fieldId: string, deviceIds: number[]) => {
+    if (watchFieldId !== fieldId) return;
+    const bridge = (window as Window & { SmartHomeAddress?: { setWatchDevices?: (ids: string) => void } }).SmartHomeAddress;
+    bridge?.setWatchDevices?.(deviceIds.join(','));
+  };
+
   const addDeviceToField = (fieldId: string, deviceId: number) => {
     const nextFields = fields.map(f =>
       f.id === fieldId && !f.deviceIds.includes(deviceId)
@@ -582,6 +608,7 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
     );
     setFields(nextFields);
     persist({ fields: nextFields });
+    syncWatchDevices(fieldId, nextFields.find(f => f.id === fieldId)?.deviceIds ?? []);
   };
 
   const removeDeviceFromField = (fieldId: string, deviceId: number) => {
@@ -590,6 +617,7 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
     );
     setFields(nextFields);
     persist({ fields: nextFields });
+    syncWatchDevices(fieldId, nextFields.find(f => f.id === fieldId)?.deviceIds ?? []);
   };
 
   const moveDeviceInField = (fieldId: string, index: number, dir: -1 | 1) => {
@@ -603,6 +631,7 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
     });
     setFields(nextFields);
     persist({ fields: nextFields });
+    syncWatchDevices(fieldId, nextFields.find(f => f.id === fieldId)?.deviceIds ?? []);
   };
 
   const selectableDevices = useMemo(
@@ -789,6 +818,16 @@ function DashboardWidgetsSection({ devices, rooms }: { devices: Device[]; rooms:
                       className="text-sm font-medium bg-transparent border-none outline-none flex-1 min-w-0"
                     />
                     <span className="text-xs text-muted-foreground shrink-0">{field.deviceIds.length} Geräte</span>
+                    {isAndroidApp() && (
+                      <input
+                        type="checkbox"
+                        title="Auf der Uhr"
+                        checked={watchFieldId === field.id}
+                        onClick={e => e.stopPropagation()}
+                        onChange={() => markWatchField(field)}
+                        className="h-5 w-5 rounded accent-primary shrink-0"
+                      />
+                    )}
                   </button>
                   <button
                     onClick={() => deleteField(field.id)}
