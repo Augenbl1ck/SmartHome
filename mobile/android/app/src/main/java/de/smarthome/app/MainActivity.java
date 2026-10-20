@@ -69,6 +69,16 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public String getWatchDevices() {
+            return read("smarthome_watch_devices");
+        }
+
+        @JavascriptInterface
+        public void setWatchDevices(String value) {
+            write("smarthome_watch_devices", value);
+        }
+
+        @JavascriptInterface
         public String getPersonal() {
             return read("smarthome_personal");
         }
@@ -95,6 +105,7 @@ public class MainActivity extends BridgeActivity {
                 editor.putString(key, value.trim());
             }
             editor.apply();
+            WatchSync.push(context);
         }
     }
 

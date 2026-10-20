@@ -4,6 +4,7 @@ import AppInstall from './AppInstall';
 
 export default function AppPage() {
   const apkReady = existsSync(join(process.cwd(), 'public', 'downloads', 'smarthome.apk'));
+  const watchReady = existsSync(join(process.cwd(), 'public', 'downloads', 'smarthome-watch.apk'));
   let versionCode = 0;
   const versionPath = join(process.cwd(), '..', 'mobile', 'app-version.json');
   if (existsSync(versionPath)) {
@@ -13,5 +14,5 @@ export default function AppPage() {
       versionCode = 0;
     }
   }
-  return <AppInstall apkReady={apkReady} versionCode={versionCode} />;
+  return <AppInstall apkReady={apkReady} watchReady={watchReady} versionCode={versionCode} />;
 }

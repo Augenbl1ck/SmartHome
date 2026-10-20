@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Smartphone } from 'lucide-react';
+import { api, type Device } from '@/lib/api';
 
 type Kind = 'android' | 'ios' | 'other';
 
@@ -19,6 +20,8 @@ type AddressBridge = {
   getAway: () => string;
   setHome: (value: string) => void;
   setAway: (value: string) => void;
+  getWatchDevices?: () => string;
+  setWatchDevices?: (value: string) => void;
 };
 
 function addressBridge(): AddressBridge | null {
@@ -89,6 +92,42 @@ function AddressFields() {
   );
 }
 
+function WatchDevices() {
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [selected, setSelected] = useState<number[]>([]);
+
+  useEffect(() => {
+    const bridge = addressBridge();
+    const raw = bridge?.getWatchDevices?.() ?? '';
+    setSelected(raw.split(',').map((part) => Number(part)).filter((id) => id > 0));
+    api.getDevices().then(setDevices).catch(() => setDevices([]));
+  }, []);
+
+  const toggle = (id: number) => {
+    const next = selected.includes(id) ? selected.filter((item) => item !== id) : [...selected, id];
+    setSelected(next);
+    addressBridge()?.setWatchDevices?.(next.join(','));
+  };
+
+  return (
+    <div className="space-y-2 border-t border-border pt-3">
+      <p className="text-sm font-medium">Auf der Uhr</p>
+      <p className="text-sm text-muted-foreground">Diese Geräte erscheinen auf der Galaxy Watch.</p>
+      {devices.map((device) => (
+        <label key={device.id} className="flex items-center gap-3 min-h-11 text-sm">
+          <input
+            type="checkbox"
+            checked={selected.includes(device.id)}
+            onChange={() => toggle(device.id)}
+            className="h-5 w-5 rounded accent-primary"
+          />
+          <span className="truncate">{device.name}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 function AndroidCard({
   apkReady,
   updateReady,
@@ -134,6 +173,28 @@ function AndroidCard({
         Beim ersten Start trägst du die Adresse für zu Hause und die für unterwegs ein. Beide bleiben auf dem Handy.
       </p>
       {inApp ? <AddressFields /> : null}
+      {inApp ? <WatchDevices /> : null}
+    </section>
+  );
+}
+
+function WatchCard({ watchReady }: { watchReady: boolean }) {
+  return (
+    <section className="rounded-2xl border bg-card p-5 space-y-3">
+      <h2 className="text-base font-semibold">Galaxy Watch</h2>
+      <p className="text-sm text-muted-foreground">
+        Die Uhr schaltet nur die Geräte, die in der App unter „Auf der Uhr“ markiert sind. Installieren per adb oder Galaxy Wearable.
+      </p>
+      {watchReady ? (
+        <a
+          href="/downloads/smarthome-watch.apk"
+          className="inline-flex items-center min-h-11 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground"
+        >
+          Uhr-Datei herunterladen
+        </a>
+      ) : (
+        <p className="text-sm text-muted-foreground">Die Uhr-Datei liegt auf diesem Server noch nicht.</p>
+      )}
     </section>
   );
 }
@@ -159,7 +220,15 @@ function IosCard() {
   );
 }
 
-export default function AppInstall({ apkReady, versionCode }: { apkReady: boolean; versionCode: number }) {
+export default function AppInstall({
+  apkReady,
+  watchReady,
+  versionCode,
+}: {
+  apkReady: boolean;
+  watchReady: boolean;
+  versionCode: number;
+}) {
   const [kind, setKind] = useState<Kind>('other');
   const [installed, setInstalled] = useState<number | null>(null);
   const [ready, setReady] = useState(false);
@@ -190,10 +259,12 @@ export default function AppInstall({ apkReady, versionCode }: { apkReady: boolea
         <>
           <IosCard />
           <AndroidCard apkReady={apkReady} updateReady={updateReady} inApp={inApp} />
+          <WatchCard watchReady={watchReady} />
         </>
       ) : (
         <>
           <AndroidCard apkReady={apkReady} updateReady={updateReady} inApp={inApp} />
+          <WatchCard watchReady={watchReady} />
           <IosCard />
         </>
       )}
