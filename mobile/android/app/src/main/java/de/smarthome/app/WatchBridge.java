@@ -109,7 +109,7 @@ public final class WatchBridge {
         new Thread(() -> {
             status("Wird aktualisiert");
             String result = send(context);
-            if ("ok".equals(result)) status("Auf der Uhr bestätigen. Die Uhr-App dabei offen lassen.");
+            if ("ok".equals(result)) status("Auf der Uhr auf Installieren tippen.");
             else if ("nicht verbunden".equals(result)) status("Uhr nicht verbunden.");
             else if ("keine Datei".equals(result)) status("Keine Uhr-Datei in der App.");
             else status("Update fehlgeschlagen.");

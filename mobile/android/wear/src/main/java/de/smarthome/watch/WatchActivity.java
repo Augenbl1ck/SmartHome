@@ -29,12 +29,17 @@ public class WatchActivity extends Activity {
     private boolean versionChecked;
     private boolean updating;
     private boolean updateOffered;
+    private boolean installReady;
     private final android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
     private final MessageClient.OnMessageReceivedListener messages = this::onMessage;
     private final BroadcastReceiver expectUpdates = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (!updating) addUpdateButton();
+            if ("de.smarthome.WATCH_INSTALL_READY".equals(intent.getAction())) {
+                showInstall();
+                return;
+            }
+            if (!updating && !installReady) addUpdateButton();
         }
     };
 
@@ -67,10 +72,17 @@ public class WatchActivity extends Activity {
     protected void onResume() {
         super.onResume();
         Wearable.getMessageClient(this).addListener(messages);
+        IntentFilter filter = new IntentFilter();
+        filter.addAction("de.smarthome.WATCH_EXPECT");
+        filter.addAction("de.smarthome.WATCH_INSTALL_READY");
         if (Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(expectUpdates, new IntentFilter("de.smarthome.WATCH_EXPECT"), Context.RECEIVER_NOT_EXPORTED);
+            registerReceiver(expectUpdates, filter, Context.RECEIVER_NOT_EXPORTED);
         } else {
-            registerReceiver(expectUpdates, new IntentFilter("de.smarthome.WATCH_EXPECT"));
+            registerReceiver(expectUpdates, filter);
+        }
+        if (installReady || "install".equals(getIntent().getStringExtra("mode"))) {
+            showInstall();
+            return;
         }
         if (updating) {
             showUpdating();
@@ -100,7 +112,7 @@ public class WatchActivity extends Activity {
         if ("/smarthome/hello".equals(event.getPath())) {
             String answer = new String(event.getData(), StandardCharsets.UTF_8);
             if ("ok".equals(answer)) {
-                if (updating) return;
+                if (updating || installReady) return;
                 versionChecked = true;
                 loadDevices();
             } else if ("update".equals(answer)) {
@@ -148,11 +160,20 @@ public class WatchActivity extends Activity {
             updating = false;
             handler.removeCallbacksAndMessages(null);
             show("Update fehlgeschlagen.");
-        } else if ("confirm".equals(mode)) {
-            updating = false;
-            handler.removeCallbacksAndMessages(null);
-            show("Installation bestätigen.");
+        } else if ("confirm".equals(mode) || "install".equals(mode)) {
+            showInstall();
         }
+    }
+
+    private void showInstall() {
+        updating = false;
+        installReady = true;
+        handler.removeCallbacksAndMessages(null);
+        if (list == null) return;
+        list.removeAllViews();
+        updateOffered = false;
+        list.addView(label("Tippen zum Installieren", 14));
+        list.addView(pillButton("Installieren", () -> WatchApk.openInstaller(this)));
     }
 
     private void beginUpdate() {

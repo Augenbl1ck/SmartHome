@@ -4,7 +4,9 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInstaller;
+import android.net.Uri;
 import android.os.Build;
+import androidx.core.content.FileProvider;
 import com.google.android.gms.wearable.ChannelClient;
 import com.google.android.gms.wearable.Wearable;
 import java.io.File;
@@ -60,17 +62,40 @@ final class WatchApk {
             show(context, "failed");
             return;
         }
-        install(context, file);
-    }
-
-    private static void install(Context context, File file) {
+        installing = false;
         if (Build.VERSION.SDK_INT >= 26 && !context.getPackageManager().canRequestPackageInstalls()) {
-            installing = false;
             Intent settings = new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, android.net.Uri.parse("package:" + context.getPackageName()));
             settings.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             context.startActivity(settings);
             return;
         }
+        showInstall(context);
+        if (!openInstaller(context)) commitSession(context, file);
+    }
+
+    static void showInstall(Context context) {
+        Intent intent = new Intent("de.smarthome.WATCH_INSTALL_READY");
+        intent.setPackage(context.getPackageName());
+        context.sendBroadcast(intent);
+        show(context, "install");
+    }
+
+    static boolean openInstaller(Context context) {
+        File file = new File(context.getCacheDir(), "smarthome-watch-update.apk");
+        if (!file.exists()) return false;
+        try {
+            Uri uri = FileProvider.getUriForFile(context, context.getPackageName() + ".fileprovider", file);
+            Intent view = new Intent(Intent.ACTION_VIEW);
+            view.setDataAndType(uri, "application/vnd.android.package-archive");
+            view.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            context.startActivity(view);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static void commitSession(Context context, File file) {
         try {
             PackageInstaller installer = context.getPackageManager().getPackageInstaller();
             PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
@@ -82,17 +107,14 @@ final class WatchApk {
                     while ((n = in.read(buf)) >= 0) out.write(buf, 0, n);
                     session.fsync(out);
                 }
-                Intent callbackIntent = new Intent(context, WatchActivity.class);
-                callbackIntent.putExtra("mode", "confirm");
+                Intent callbackIntent = new Intent(context, InstallResultReceiver.class);
+                callbackIntent.setPackage(context.getPackageName());
                 int flags = PendingIntent.FLAG_UPDATE_CURRENT;
                 if (Build.VERSION.SDK_INT >= 31) flags |= PendingIntent.FLAG_MUTABLE;
-                PendingIntent pending = PendingIntent.getActivity(context, sessionId, callbackIntent, flags);
+                PendingIntent pending = PendingIntent.getBroadcast(context, sessionId, callbackIntent, flags);
                 session.commit(pending.getIntentSender());
             }
-            installing = false;
-            show(context, "confirm");
         } catch (Exception e) {
-            installing = false;
             show(context, "failed");
         }
     }
