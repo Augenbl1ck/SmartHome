@@ -5,6 +5,8 @@ import android.app.PendingIntent;
 import android.content.Intent;
 import android.content.pm.PackageInstaller;
 import android.graphics.Color;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.TypedValue;
@@ -158,10 +160,10 @@ public class WatchActivity extends Activity {
             }
             for (int i = 0; i < items.length(); i++) {
                 JSONObject item = items.getJSONObject(i);
-                TextView row = label(item.optString("name", "Gerät") + "\n" + item.optString("label", item.optString("status", "")), 14);
-                row.setMinHeight(dp(48));
-                row.setBackgroundColor(Color.parseColor("#1c1917"));
-                row.setPadding(dp(8), dp(6), dp(8), dp(6));
+                TextView row = label(item.optString("name", "Gerät") + "\n" + item.optString("label", ""), 14);
+                row.setMinHeight(dp(52));
+                pill(row, isActive(item.optString("status", "")));
+                row.setPadding(dp(16), dp(8), dp(16), dp(8));
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
@@ -189,7 +191,6 @@ public class WatchActivity extends Activity {
     }
 
     private void toggle(int id) {
-        show("Schalten…");
         send("toggle", String.valueOf(id));
     }
 
@@ -211,7 +212,7 @@ public class WatchActivity extends Activity {
         if (detail == null) return;
         list.removeAllViews();
         String screen = detail.optString("screen", "");
-        list.addView(button("Zurück", () -> {
+        list.addView(pillButton("Zurück", () -> {
             detail = null;
             refresh();
         }));
@@ -220,19 +221,31 @@ public class WatchActivity extends Activity {
         if ("thermostat".equals(screen)) {
             double setpoint = detail.optDouble("setpoint", 20);
             list.addView(label(String.format(java.util.Locale.US, "%.1f°C", setpoint), 22));
-            list.addView(button("−", () -> command(detail.optInt("id"), formatSetpoint(setpoint - 0.5))));
-            list.addView(button("+", () -> command(detail.optInt("id"), formatSetpoint(setpoint + 0.5))));
-            list.addView(button("Heizt", () -> command(detail.optInt("id"), "heat")));
-            list.addView(button("Aus", () -> command(detail.optInt("id"), "off")));
+            list.addView(circle("−", () -> command(detail.optInt("id"), formatSetpoint(setpoint - 0.5))));
+            list.addView(label("kälter", 12));
+            list.addView(circle("+", () -> command(detail.optInt("id"), formatSetpoint(setpoint + 0.5))));
+            list.addView(label("wärmer", 12));
+            list.addView(pillButton("Heizung an", () -> command(detail.optInt("id"), "heat")));
+            list.addView(pillButton("Heizung aus", () -> command(detail.optInt("id"), "off")));
         } else if ("dimmer".equals(screen)) {
             int level = detail.optInt("level", 50);
             list.addView(label(level + "%", 22));
-            list.addView(button("−", () -> command(detail.optInt("id"), String.valueOf(Math.max(0, level - 10)))));
-            list.addView(button("+", () -> command(detail.optInt("id"), String.valueOf(Math.min(100, level + 10)))));
+            list.addView(circle("−", () -> command(detail.optInt("id"), String.valueOf(Math.max(0, level - 10)))));
+            list.addView(label("dunkler", 12));
+            list.addView(circle("+", () -> command(detail.optInt("id"), String.valueOf(Math.min(100, level + 10)))));
+            list.addView(label("heller", 12));
         } else if ("cover".equals(screen)) {
-            list.addView(button("Öffnen", () -> command(detail.optInt("id"), "open")));
-            list.addView(button("Stopp", () -> command(detail.optInt("id"), "stop")));
-            list.addView(button("Schließen", () -> command(detail.optInt("id"), "close")));
+            list.addView(pillButton("öffnen", () -> command(detail.optInt("id"), "open")));
+            list.addView(pillButton("stoppen", () -> command(detail.optInt("id"), "stop")));
+            list.addView(pillButton("schließen", () -> command(detail.optInt("id"), "close")));
+        } else if ("fan".equals(screen)) {
+            list.addView(pillButton("niedrig", () -> command(detail.optInt("id"), "low")));
+            list.addView(pillButton("mittel", () -> command(detail.optInt("id"), "medium")));
+            list.addView(pillButton("hoch", () -> command(detail.optInt("id"), "high")));
+            list.addView(pillButton("aus", () -> command(detail.optInt("id"), "off")));
+        } else if ("valve".equals(screen)) {
+            list.addView(pillButton("öffnen", () -> command(detail.optInt("id"), "open")));
+            list.addView(pillButton("schließen", () -> command(detail.optInt("id"), "close")));
         }
     }
 
@@ -242,19 +255,47 @@ public class WatchActivity extends Activity {
     }
 
     private void command(int id, String status) {
-        show("Speichern…");
         send("command", id + "\n" + status);
     }
 
-    private TextView button(String text, Runnable action) {
-        TextView view = label(text, 16);
+    private boolean isActive(String status) {
+        return "on".equals(status) || "heat".equals(status) || "auto".equals(status)
+            || "open".equals(status) || "low".equals(status) || "medium".equals(status) || "high".equals(status);
+    }
+
+    private void pill(TextView view, boolean on) {
+        GradientDrawable shape = new GradientDrawable();
+        shape.setCornerRadius(dp(26));
+        shape.setColor(Color.parseColor(on ? "#b45309" : "#3f3f46"));
+        view.setBackground(shape);
+    }
+
+    private TextView circle(String text, Runnable action) {
+        TextView view = label(text, 20);
+        GradientDrawable shape = new GradientDrawable();
+        shape.setShape(GradientDrawable.OVAL);
+        shape.setColor(Color.parseColor("#3f3f46"));
+        view.setBackground(shape);
+        int size = dp(56);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(size, size);
+        lp.gravity = Gravity.CENTER_HORIZONTAL;
+        lp.topMargin = dp(8);
+        view.setLayoutParams(lp);
+        view.setGravity(Gravity.CENTER);
+        view.setOnClickListener(v -> action.run());
+        return view;
+    }
+
+    private TextView pillButton(String text, Runnable action) {
+        TextView view = label(text, 15);
         view.setMinHeight(dp(48));
-        view.setBackgroundColor(Color.parseColor("#1c1917"));
+        pill(view, false);
+        view.setPadding(dp(16), dp(8), dp(16), dp(8));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        lp.topMargin = dp(6);
+        lp.topMargin = dp(8);
         view.setLayoutParams(lp);
         view.setOnClickListener(v -> action.run());
         return view;

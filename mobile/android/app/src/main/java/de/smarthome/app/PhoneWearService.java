@@ -265,20 +265,22 @@ public class PhoneWearService extends WearableListenerService {
         if ("thermostat".equals(type)) return "thermostat";
         if ("dimmer".equals(type) || "rgb".equals(type) || "led".equals(type)) return "dimmer";
         if ("cover".equals(type)) return "cover";
+        if ("fan".equals(type)) return "fan";
+        if ("valve".equals(type)) return "valve";
         if (type.startsWith("sensor_") || "button".equals(type) || "energy_meter".equals(type)) return "info";
         return "switch";
     }
 
     private String labelFor(String status, String type) {
         return switch (status) {
-            case "on" -> "thermostat".equals(type) ? "Heizt" : "An";
-            case "heat", "auto" -> "Heizt";
-            case "off" -> "Aus";
-            case "open" -> "Offen";
-            case "closed", "close" -> "Geschlossen";
-            case "low" -> "Niedrig";
-            case "medium" -> "Mittel";
-            case "high" -> "Hoch";
+            case "on" -> "thermostat".equals(type) ? "heizt" : "ist an";
+            case "heat", "auto" -> "heizt";
+            case "off" -> "ist aus";
+            case "open" -> "ist offen";
+            case "closed", "close" -> "ist geschlossen";
+            case "low" -> "niedrig";
+            case "medium" -> "mittel";
+            case "high" -> "hoch";
             default -> status.isEmpty() ? "—" : status;
         };
     }
