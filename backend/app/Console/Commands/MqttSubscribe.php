@@ -421,6 +421,8 @@ class MqttSubscribe extends Command
             if ($celsius !== null) {
                 app(\App\Services\DeviceService::class)->syncThermostatsFromSensor($device, $celsius);
             }
+        } elseif ($isThermostat && (isset($data['local_temperature']) || isset($data['temperature_sensor_select']))) {
+            app(\App\Services\DeviceService::class)->reassertRoomSensor($device->fresh() ?? $device);
         }
 
         $fresh = $device->fresh();
@@ -523,6 +525,9 @@ class MqttSubscribe extends Command
             'child_lock' => $data['child_lock'] ?? null,
             'indicator_mode' => $data['indicator_mode'] ?? null,
             'local_temperature' => isset($data['local_temperature']) ? round((float) $data['local_temperature'], 1) : null,
+            'temperature_sensor_select' => isset($data['temperature_sensor_select']) ? strtolower((string) $data['temperature_sensor_select']) : null,
+            'external_temperature_input' => isset($data['external_temperature_input']) && is_numeric($data['external_temperature_input'])
+                ? round((float) $data['external_temperature_input'], 1) : null,
             'running_state' => $data['running_state'] ?? null,
             'temporary_mode_select' => $data['temporary_mode_select'] ?? null,
             'temporary_mode_duration' => $data['temporary_mode_duration'] ?? null,

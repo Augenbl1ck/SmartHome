@@ -18,7 +18,7 @@ Ist etwas noch nicht eingerichtet, steht ein kurzer Satz auf der Karte und ein L
 
 In der Leiste tippst du den Raum an. Am Handy liegt **Räume** in der unteren Leiste.
 
-Im Raum schaltest du Geräte mit dem runden Schalter. Daneben sitzt das Zahnrad, wenn das Gerät Einstellungen hat. Es öffnet eine eigene Seite. Zurück führt zur Raumkarte. Die Solltemperatur am Thermostat stellst du mit Plus und Minus auf der Kachel.
+Im Raum schaltest du Geräte mit dem runden Schalter. Daneben sitzt das Zahnrad, wenn das Gerät Einstellungen hat. Es öffnet eine eigene Seite. Zurück führt zur Raumkarte. Die Solltemperatur am Thermostat stellst du mit Plus und Minus auf der Kachel. Unter dem Zahnrad wählst du den Raumfühler. Die Kachel zeigt die Ventiltemperatur und die Fühlertemperatur. Fällt der Kopf auf den eigenen Fühler zurück, setzt die App den Raumfühler wieder.
 
 Sensoren stehen darunter und lassen sich nicht schalten. **Alles ausschalten** gilt für die schaltbaren Geräte in diesem Raum.
 

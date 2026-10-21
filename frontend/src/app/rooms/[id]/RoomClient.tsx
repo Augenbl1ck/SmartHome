@@ -343,7 +343,7 @@ export default function RoomClient({ roomId, room: roomProp, initialDevices }: P
       upsertDevice(updated);
       toast.success(
         sensorId
-          ? 'Raumfühler gesetzt. Ventil: TRVZB-Firmware 1.2.1+, Zigbee2MQTT 2.1.2+. Ohne neue Messung fällt es nach ca. 2 Std. auf intern zurück.'
+          ? 'Raumfühler gesetzt. Fällt der Kopf auf den eigenen Fühler zurück, setzt die App ihn wieder.'
           : 'Interner Fühler am Ventil.',
       );
     } catch (err) {

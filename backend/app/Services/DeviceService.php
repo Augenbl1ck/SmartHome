@@ -6,6 +6,7 @@ use App\Events\DeviceStatusUpdated;
 use App\Exceptions\DeviceCommandBlockedException;
 use App\Models\Device;
 use App\Models\DeviceLog;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Services\MqttHelper;
@@ -506,10 +507,9 @@ class DeviceService
         $celsius = max(0.0, min(99.9, round($celsius, 1)));
 
         try {
-            $this->publishMqttJson($thermostat, [
-                'temperature_sensor_select' => 'external',
-                'external_temperature_input' => $celsius,
-            ]);
+            // Getrennt: der TRVZB verwirft die Temperatur, solange der Fühler noch intern ist.
+            $this->publishMqttJson($thermostat, ['temperature_sensor_select' => 'external']);
+            $this->publishMqttJson($thermostat, ['external_temperature_input' => $celsius]);
 
             return true;
         } catch (\Throwable $e) {
@@ -534,6 +534,46 @@ class DeviceService
                     $this->syncExternalTemperature($thermostat, $celsius);
                 }
             });
+    }
+
+    /**
+     * Kalibrierung und die 2-Stunden-Frist am TRVZB stellen auf den Ventilfühler zurück.
+     * local_temperature folgt dann nicht mehr dem Raumfühler.
+     */
+    public function reassertRoomSensor(Device $thermostat): void
+    {
+        if ($thermostat->type !== 'thermostat' || ! $this->roomSensorFellBack($thermostat)) {
+            return;
+        }
+        $key = 'thermostat-room-sensor:'.$thermostat->id;
+        if (! Cache::add($key, 1, now()->addMinutes(3))) {
+            return;
+        }
+        Log::info("[Thermostat] {$thermostat->name}: Raumfühler erneut gesetzt");
+        $this->syncExternalTemperature($thermostat);
+    }
+
+    private function roomSensorFellBack(Device $thermostat): bool
+    {
+        $attrs = $thermostat->extra();
+        $sourceId = (int) ($attrs['temperature_source_device_id'] ?? 0);
+        if ($sourceId < 1) {
+            return false;
+        }
+        $select = strtolower((string) ($attrs['temperature_sensor_select'] ?? ''));
+        if ($select === 'internal') {
+            return true;
+        }
+        $local = isset($attrs['local_temperature']) && is_numeric($attrs['local_temperature'])
+            ? (float) $attrs['local_temperature']
+            : null;
+        $sensor = Device::find($sourceId);
+        $room = $sensor ? $this->sensorTemperature($sensor) : null;
+        if ($local === null || $room === null) {
+            return false;
+        }
+
+        return abs($local - $room) >= 1.5;
     }
 
     public function useInternalTemperature(Device $thermostat): void
