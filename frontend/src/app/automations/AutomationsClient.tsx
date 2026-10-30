@@ -379,8 +379,8 @@ export default function AutomationsClient({ initialAutomations, devices: devices
       }
       if (a.type === 'set_thermostat_frost_protection') {
         const v = Number(a.frostProtection);
-        if (Number.isNaN(v) || v < 4 || v > 35)
-          return `${label}: Frostschutz muss zwischen 4 und 35°C liegen.`;
+        if (Number.isNaN(v) || v < 4 || v > 10)
+          return `${label}: Frostschutz muss zwischen 4 und 10°C liegen.`;
       }
       if (a.type === 'thermostat_boost') {
         const d = Number(a.boostDuration);

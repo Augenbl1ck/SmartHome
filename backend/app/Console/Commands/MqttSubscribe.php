@@ -424,6 +424,9 @@ class MqttSubscribe extends Command
         } elseif ($isThermostat && (isset($data['local_temperature']) || isset($data['temperature_sensor_select']))) {
             app(\App\Services\DeviceService::class)->reassertRoomSensor($device->fresh() ?? $device);
         }
+        if ($isThermostat && isset($data['occupied_heating_setpoint'])) {
+            app(\App\Services\DeviceService::class)->releaseStuckBoost($device->fresh() ?? $device, $previousStatus);
+        }
 
         $fresh = $device->fresh();
         $sensorChanged = $this->sensorAttrsChanged($oldAttrs, $attrs);

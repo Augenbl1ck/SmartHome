@@ -100,15 +100,16 @@ class DeviceService
         $attrs = $device->extra();
         if ($mode === 'off') {
             $this->rememberComfortSetpoint($attrs);
+            $setpoint = $this->comfortSetpoint($attrs) ?? 20.0;
             $attrs['temporary_mode_duration'] = 0;
             $attrs['temporary_mode_select'] = '';
             $attrs['temporary_mode_until'] = null;
             $attrs['running_state'] = 'idle';
+            $attrs['setpoint'] = $setpoint;
             $device->update(['attributes' => $attrs]);
-            $this->publishMqttJson($device, [
-                'temporary_mode_duration' => 0,
-                'system_mode' => 'off',
-            ]);
+            // Getrennt und in dieser Reihenfolge: sonst bleibt der Boost-Sollwert 35 °C
+            // und system_mode off geht verloren, solange Boost noch läuft.
+            $this->publishBoostRelease($device, 'off', $setpoint);
 
             return;
         }
@@ -144,6 +145,12 @@ class DeviceService
         $occupied = round($occupied, 1);
         $attrs['reported_occupied_setpoint'] = $occupied;
         $off = strtolower((string) $mode) === 'off';
+        if ($off || $occupied >= 34) {
+            $kept = $this->comfortSetpoint($attrs);
+            if ($off || $kept !== null) {
+                return $attrs;
+            }
+        }
         if ($this->isFrostSetpoint($attrs, $occupied)) {
             $comfort = isset($attrs['comfort_setpoint']) && is_numeric($attrs['comfort_setpoint'])
                 ? (float) $attrs['comfort_setpoint']
@@ -170,7 +177,7 @@ class DeviceService
             return;
         }
         $setpoint = round((float) $attrs['setpoint'], 1);
-        if ($this->isFrostSetpoint($attrs, $setpoint)) {
+        if ($setpoint >= 34 || $this->isFrostSetpoint($attrs, $setpoint)) {
             return;
         }
         $attrs['comfort_setpoint'] = $setpoint;
@@ -186,7 +193,7 @@ class DeviceService
                 continue;
             }
             $value = round((float) $attrs[$key], 1);
-            if (! $this->isFrostSetpoint($attrs, $value)) {
+            if ($value < 34 && ! $this->isFrostSetpoint($attrs, $value)) {
                 return $value;
             }
         }
@@ -366,11 +373,10 @@ class DeviceService
         $setpoint = $this->restoreSetpointFrom($attrs);
         $mode = $this->restoreSystemModeFrom($attrs);
 
-        $this->publishMqttJson($device, ['temporary_mode_duration' => 0]);
-        $this->publishMqttJson($device, [
-            'occupied_heating_setpoint' => $setpoint,
-            'system_mode' => $mode,
-        ]);
+        if (strtolower((string) $device->status) === 'off') {
+            $mode = 'off';
+        }
+        $this->publishBoostRelease($device, $mode, $setpoint);
 
         return [
             'temporary_mode_duration' => 0,
@@ -465,6 +471,57 @@ class DeviceService
         $mode = strtolower((string) ($attrs['boost_restore_system_mode'] ?? $attrs['system_mode'] ?? 'heat'));
 
         return in_array($mode, ['off', 'auto', 'heat'], true) ? $mode : 'heat';
+    }
+
+    /**
+     * Boost lässt am TRVZB oft 35 °C stehen. Ohne laufenden Boost den Wunsch-Sollwert
+     * erneut schreiben, bei Aus auch den Modus.
+     */
+    public function releaseStuckBoost(Device $device, ?string $previousStatus = null): void
+    {
+        if ($device->type !== 'thermostat') {
+            return;
+        }
+        $attrs = $device->extra();
+        $occupied = $attrs['reported_occupied_setpoint'] ?? null;
+        if (! is_numeric($occupied) || (float) $occupied < 34) {
+            return;
+        }
+        $until = $attrs['temporary_mode_until'] ?? null;
+        if (is_string($until) && $until !== '' && strtotime($until) !== false && strtotime($until) > time()) {
+            return;
+        }
+        $select = strtolower((string) ($attrs['temporary_mode_select'] ?? ''));
+        if (in_array($select, ['boost', 'timer'], true) && (int) ($attrs['temporary_mode_duration'] ?? 0) > 0) {
+            return;
+        }
+
+        $mode = strtolower((string) ($previousStatus ?: $device->status ?: 'heat'));
+        if ($mode === 'auto') {
+            $mode = 'heat';
+        }
+        if (! in_array($mode, ['off', 'heat'], true)) {
+            $mode = 'heat';
+        }
+        if (! Cache::add('thermostat-boost-release:'.$device->id, 1, now()->addMinutes(3))) {
+            return;
+        }
+
+        $setpoint = $this->comfortSetpoint($attrs) ?? $this->restoreSetpointFrom($attrs);
+        Log::info("[Thermostat] {$device->name}: Boost-Sollwert {$occupied} °C zurück auf {$setpoint} °C");
+        $this->publishBoostRelease($device, $mode, $setpoint);
+        if ($mode === 'off') {
+            $attrs['running_state'] = 'idle';
+            $attrs['setpoint'] = $setpoint;
+            $device->update(['status' => 'off', 'attributes' => $attrs]);
+        }
+    }
+
+    private function publishBoostRelease(Device $device, string $mode, float $setpoint): void
+    {
+        $this->publishMqttJson($device, ['temporary_mode_duration' => 0]);
+        $this->publishMqttJson($device, ['occupied_heating_setpoint' => $setpoint]);
+        $this->publishMqttJson($device, ['system_mode' => $mode]);
     }
 
     public function sensorTemperature(Device $device): ?float

@@ -261,7 +261,7 @@ class ActionExecutor
             return true;
         }
         $val = round((float) ($action['value'] ?? 5), 1);
-        $val = max(4.0, min(35.0, $val));
+        $val = max(4.0, min(10.0, $val));
         $cap = ThermostatCapabilities::encodeCapStatus('frost_protection_temperature', (string) $val);
         if (! $this->trySetStatus($device, $cap)) {
             return false;

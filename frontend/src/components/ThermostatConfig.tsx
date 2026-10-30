@@ -115,11 +115,12 @@ export default function ThermostatConfig({
         </label>
         <label className="rounded-2xl border bg-card p-4 space-y-2 block">
           <span className="text-sm font-medium">Frostschutz (°C)</span>
+          <p className="text-sm text-muted-foreground">Gilt nur bei Aus. Darüber heizt der Kopf weiter.</p>
           <input
             type="number"
             step={0.5}
             min={4}
-            max={35}
+            max={10}
             disabled={disabled}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm tabular-nums"
             defaultValue={getFrostProtection(device.attributes)}
@@ -127,7 +128,7 @@ export default function ThermostatConfig({
             onBlur={(e) => {
               const raw = Number(e.target.value);
               if (!Number.isFinite(raw)) return;
-              const val = Math.round(Math.min(35, Math.max(4, raw)) * 2) / 2;
+              const val = Math.round(Math.min(10, Math.max(4, raw)) * 2) / 2;
               if (val === getFrostProtection(device.attributes)) return;
               onCap(device, encodeCapStatus('frost_protection_temperature', String(val)), { frost_protection_temperature: val });
             }}

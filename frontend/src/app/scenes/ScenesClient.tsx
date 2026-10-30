@@ -426,7 +426,7 @@ export default function ScenesClient({ initialScenes, devices: initialDevices }:
       }
       if (a.type === 'set_thermostat_frost_protection') {
         const v = Number(a.frostProtection);
-        if (Number.isNaN(v) || v < 4 || v > 35) return `${label}: Frostschutz 4–35°C.`;
+        if (Number.isNaN(v) || v < 4 || v > 10) return `${label}: Frostschutz 4–10°C.`;
       }
     }
     return '';
